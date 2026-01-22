@@ -1,6 +1,8 @@
-def main():
-    print("Hello from ai!")
+from fastapi import FastAPI
+
+app = FastAPI(title="AquaMine AI API")
 
 
-if __name__ == "__main__":
-    main()
+@app.get("/health")
+def health_check() -> dict:
+    return {"status": "ok"}
