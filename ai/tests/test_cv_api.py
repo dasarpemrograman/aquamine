@@ -1,4 +1,3 @@
-import pytest
 
 
 class TestCVAnalyzeEndpoint:
@@ -8,7 +7,6 @@ class TestCVAnalyzeEndpoint:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "detected" in data
         assert "confidence" in data
         assert "severity" in data
         assert "bboxes" in data
@@ -60,7 +58,7 @@ class TestCVAnalyzeEndpoint:
         )
         assert response1.status_code == 200
         assert response2.status_code == 200
-        assert response1.json()["detected"] == response2.json()["detected"]
+        assert response1.json()["severity"] == response2.json()["severity"]
         assert response1.json()["confidence"] == response2.json()["confidence"]
         assert len(response1.json()["bboxes"]) == len(response2.json()["bboxes"])
 
@@ -100,6 +98,16 @@ class TestCVAnalyzeEndpoint:
             assert data["severity"] == "moderate"
         else:
             assert data["severity"] == "severe"
+
+    def test_file_too_large_returns_413(self, client):
+        large_file = b"x" * (10 * 1024 * 1024 + 1)
+        response = client.post(
+            "/api/v1/cv/analyze", files={"file": ("large.jpg", large_file, "image/jpeg")}
+        )
+        assert response.status_code == 413
+        data = response.json()
+        assert data["error"] == "FILE_TOO_LARGE"
+        assert "10MB" in data["detail"]
 
 
 class TestHealthEndpoint:

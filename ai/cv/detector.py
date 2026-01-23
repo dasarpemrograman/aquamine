@@ -92,8 +92,10 @@ class YellowBoyDetector:
 
     def _mock_detect(self, image_bytes: bytes, img_width: int, img_height: int) -> list[Detection]:
         """Generate deterministic mock detections based on image hash."""
-        # Use SHA256 for deterministic hash
-        hash_bytes = hashlib.sha256(image_bytes[:1024]).digest()
+        hash_input = (
+            image_bytes[:1024] + img_width.to_bytes(4, "big") + img_height.to_bytes(4, "big")
+        )
+        hash_bytes = hashlib.sha256(hash_input).digest()
         hash_val = int.from_bytes(hash_bytes[:8], "big")
 
         # Determine number of detections (0-3 based on hash)

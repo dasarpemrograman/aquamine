@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import io
@@ -24,7 +26,7 @@ app.add_middleware(
 detector = YellowBoyDetector()
 
 
-def calculate_severity(confidence: float) -> str:
+def calculate_severity(confidence: float) -> Literal["none", "mild", "moderate", "severe"]:
     if confidence < 0.3:
         return "none"
     elif confidence < 0.5:
@@ -85,7 +87,6 @@ async def analyze_image(file: UploadFile | None = File(None)):
     max_conf = highest.confidence if highest else 0.0
 
     return ImageAnalysisResponse(
-        detected=len(bboxes) > 0 and max_conf >= 0.3,
         confidence=max_conf,
         severity=calculate_severity(max_conf),
         bbox=highest,
