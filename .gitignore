@@ -19,3 +19,6 @@ dist/
 
 # OS
 Thumbs.db
+
+# Sisyphus (local planning)
+.sisyphus/
