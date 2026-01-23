@@ -1,8 +1,9 @@
 {
-  "active_plan": "/Users/macbook/Documents/coding/aquamine/.sisyphus/plans/cv-reimplementation.md",
-  "started_at": "2026-01-22T16:47:35.279Z",
+  "active_plan": "/Users/macbook/Documents/coding/aquamine/.sisyphus/plans/ml-forecasting-anomaly-v2.md",
+  "started_at": "2026-01-23T16:00:28.070Z",
   "session_ids": [
-    "ses_419ca398cffeZOUKr8uw5o8Nau"
+    "ses_414d9a689ffe6b1HC2UYwjA2V0",
+    "ses_412c95fd3ffeBL79JaKN49Z1GA"
   ],
-  "plan_name": "cv-reimplementation"
+  "plan_name": "ml-forecasting-anomaly-v2"
 }
