@@ -1,0 +1,9 @@
+# Model weights (large binary files)
+models/*.pt
+models/*.onnx
+
+# Keep .gitkeep
+!models/.gitkeep
+
+# Ultralytics cache
+runs/
