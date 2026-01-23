@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import io
+import os
 import time
 from PIL import Image
 
@@ -10,9 +11,11 @@ from utils.responses import error_response
 
 app = FastAPI(title="AquaMine AI API")
 
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -67,7 +70,7 @@ async def analyze_image(file: UploadFile | None = File(None)):
 
     start_time = time.perf_counter()
     try:
-        detections, warnings = detector.detect(content)
+        detections, warnings = detector.detect(content, img=img)
     except ImageDecodeError as e:
         return error_response(422, "IMAGE_DECODE_FAILED", str(e))
     except Exception as e:

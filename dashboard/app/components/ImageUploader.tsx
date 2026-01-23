@@ -20,7 +20,10 @@ export default function ImageUploader() {
     setFile(selectedFile);
     
     const objectUrl = URL.createObjectURL(selectedFile);
-    setPreview(objectUrl);
+    setPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return objectUrl;
+    });
     
     analyze(selectedFile);
   };

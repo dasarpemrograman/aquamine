@@ -51,12 +51,15 @@ class YellowBoyDetector:
                 pass
         return self._model
 
-    def detect(self, image_bytes: bytes) -> tuple[list[Detection], list[str]]:
+    def detect(
+        self, image_bytes: bytes, img: Image.Image | None = None
+    ) -> tuple[list[Detection], list[str]]:
         """
         Detect yellow boy in image.
 
         Args:
             image_bytes: Raw image bytes (JPEG or PNG)
+            img: Optional pre-decoded PIL Image (avoids double decoding)
 
         Returns:
             Tuple of (detections, warnings)
@@ -65,12 +68,14 @@ class YellowBoyDetector:
         """
         warnings = []
 
-        # Decode image to get dimensions
-        try:
-            img = Image.open(io.BytesIO(image_bytes))
-            img_width, img_height = img.size
-        except Exception as e:
-            raise ImageDecodeError(f"Could not decode image: {e}")
+        # Use provided image or decode
+        if img is None:
+            try:
+                img = Image.open(io.BytesIO(image_bytes))
+            except Exception as e:
+                raise ImageDecodeError(f"Could not decode image: {e}")
+
+        img_width, img_height = img.size
 
         # Check for small images
         if img_width < 100 or img_height < 100:
@@ -79,7 +84,7 @@ class YellowBoyDetector:
         # Use real model if available
         model = self._load_model()
         if model is not None:
-            return self._real_detect(model, image_bytes, img_width, img_height, warnings)
+            return self._real_detect(model, img, img_width, img_height, warnings)
 
         # Fall back to mock
         detections = self._mock_detect(image_bytes, img_width, img_height)
@@ -123,13 +128,10 @@ class YellowBoyDetector:
         return sorted(detections, key=lambda d: d.confidence, reverse=True)
 
     def _real_detect(
-        self, model, image_bytes: bytes, img_width: int, img_height: int, warnings: list[str]
+        self, model, img: Image.Image, img_width: int, img_height: int, warnings: list[str]
     ) -> tuple[list[Detection], list[str]]:
         """Run real YOLO inference."""
-        # Convert bytes to PIL Image for YOLO
-        img = Image.open(io.BytesIO(image_bytes))
-
-        # Run inference
+        # Run inference directly with PIL Image
         results = model.predict(img, conf=0.25, verbose=False)
 
         detections = []
