@@ -45,3 +45,47 @@ export async function analyzeImage(file: File): Promise<AnalysisResponse> {
 
   return response.json();
 }
+
+export interface ForecastRequest {
+  data: Array<{
+    timestamp: string;
+    sensor_id: string;
+    ph: number;
+    turbidity: number;
+    conductivity: number;
+    temperature: number;
+  }>;
+  horizon_days: number;
+}
+
+export interface ForecastResponse {
+  forecasts: Array<{
+    timestamp: string;
+    sensor_id: string;
+    parameter: string;
+    predicted: number;
+    lower_bound: number;
+    upper_bound: number;
+  }>;
+  horizon_days: number;
+  data_points: number;
+}
+
+export interface AlertStatesResponse {
+  alert_states: Record<string, string>;
+  last_updated: string | null;
+}
+
+export async function fetchForecast(data: ForecastRequest): Promise<ForecastResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/forecast`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function fetchAlertStates(): Promise<AlertStatesResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/alerts`);
+  return res.json();
+}

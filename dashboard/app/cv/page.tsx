@@ -14,7 +14,7 @@ export default function CVAnalysisPage() {
           Yellow Boy Detection
         </h1>
         <p className="text-center text-zinc-600 dark:text-zinc-400 mb-12 max-w-2xl mx-auto">
-          Upload an image of a water source to detect the presence and severity of "Yellow Boy" 
+          Upload an image of a water source to detect the presence and severity of &quot;Yellow Boy&quot; 
           (iron hydroxide precipitate), a key indicator of Acid Mine Drainage.
         </p>
         <ImageUploader />
