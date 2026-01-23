@@ -56,7 +56,6 @@ def corrupted_bytes():
 
 @pytest.fixture(scope="session")
 def db_connection():
-    """Database connection for integration tests."""
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
         pytest.skip("DATABASE_URL not set")
@@ -67,3 +66,25 @@ def db_connection():
     conn = psycopg.connect(db_url)
     yield conn
     conn.close()
+
+
+@pytest.fixture(scope="function")
+def db_session():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from db.models import Base
+
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        pytest.skip("DATABASE_URL not set")
+
+    engine = create_engine(db_url, echo=False)
+    Base.metadata.create_all(engine)
+
+    SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+    session = SessionLocal()
+
+    yield session
+
+    session.rollback()
+    session.close()
