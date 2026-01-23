@@ -238,12 +238,12 @@ def test_generator_deterministic():
 **Acceptance Criteria**:
 
 **TDD:**
-- [ ] Test file: `ai/tests/test_data_generator.py`
-- [ ] Tests cover: normal/warning/critical scenarios, correct columns, 5-min intervals
-- [ ] `cd ai && uv run pytest tests/test_data_generator.py -v` → PASS
+- [x] Test file: `ai/tests/test_data_generator.py`
+- [x] Tests cover: normal/warning/critical scenarios, correct columns, 5-min intervals
+- [x] `cd ai && uv run pytest tests/test_data_generator.py -v` → PASS (14 tests)
 
 **Manual Verification:**
-- [ ] `cd ai && uv run python -c "from data_generator import SyntheticDataGenerator; g = SyntheticDataGenerator(); df = g.generate('normal', hours=1); print(df.head()); print(df.shape)"` → Shows DataFrame with expected columns and ~12 rows (60min/5min)
+- [x] `cd ai && uv run python -c "from data_generator import SyntheticDataGenerator; g = SyntheticDataGenerator(); df = g.generate('normal', hours=1); print(df.head()); print(df.shape)"` → Shows DataFrame with expected columns and ~12 rows (60min/5min)
 
 **Commit**: YES
 - Message: `feat(ai): add synthetic data generator for AMD scenarios`
