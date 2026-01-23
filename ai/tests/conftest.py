@@ -2,6 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 import io
+import os
+import psycopg
 
 
 @pytest.fixture(autouse=True)
@@ -50,3 +52,18 @@ def small_image_bytes():
 def corrupted_bytes():
     """Generate corrupted/invalid image bytes."""
     return b"not a valid image file content"
+
+
+@pytest.fixture(scope="session")
+def db_connection():
+    """Database connection for integration tests."""
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        pytest.skip("DATABASE_URL not set")
+
+    if db_url.startswith("postgresql+psycopg://"):
+        db_url = db_url.replace("postgresql+psycopg://", "postgresql://")
+
+    conn = psycopg.connect(db_url)
+    yield conn
+    conn.close()
