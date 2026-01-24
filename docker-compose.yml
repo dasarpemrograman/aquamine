@@ -26,6 +26,9 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
+      NIXTLA_API_KEY: ${NIXTLA_API_KEY}
+      FONNTE_API_TOKEN: ${FONNTE_API_TOKEN}
+      RESEND_API_KEY: ${RESEND_API_KEY}
     depends_on:
       - db
       - redis
