@@ -39,7 +39,7 @@ class Sensor(Base):
 class Reading(Base):
     __tablename__ = "readings"
 
-    id: Mapped[int] = mapped_column(Integer, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     sensor_id: Mapped[int] = mapped_column(ForeignKey("sensors.id"), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, primary_key=True
@@ -50,10 +50,9 @@ class Reading(Base):
     battery_voltage: Mapped[Optional[float]] = mapped_column(Float)
     signal_strength: Mapped[Optional[int]] = mapped_column(Integer)
 
-    # Composite PK handled by id + timestamp (required for hypertables usually, but id serial works too if carefully managed)
-    # But for SQLAlchemy, if we want to partition by timestamp, it's good to include it in PK or index.
-    # The plan says "PRIMARY KEY (id, timestamp)"
-    __table_args__ = ({"postgresql_partition_by": "RANGE (timestamp)"},)
+    # Composite PK (id, timestamp) required for TimescaleDB hypertables
+    # TimescaleDB will handle partitioning automatically via hypertable
+    __table_args__ = ()
 
     sensor: Mapped["Sensor"] = relationship(back_populates="readings")
 

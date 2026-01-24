@@ -10,17 +10,20 @@ class AnomalyDetector:
     def __init__(self, timegpt_client=None):
         self.timegpt = timegpt_client
 
-        # Hardcoded thresholds from plan
+        # Hardcoded thresholds for AMD detection
         self.thresholds = {
             "ph": {
-                "warning_low": 5.5,
-                "critical_low": 4.5,
-                "warning_high": 9.0,  # Assumed high limit too
+                "warning_low": 3.5,  # AMD warning: very acidic water
+                "critical_low": 2.5,  # AMD critical: severely acidic water
+                "warning_high": 9.0,  # High pH (less common in AMD)
                 "critical_high": 10.0,
             },
-            "turbidity": {"warning_high": 50.0, "critical_high": 100.0},
+            "turbidity": {
+                "warning_high": 100.0,  # High turbidity warning
+                "critical_high": 150.0,  # Critical turbidity (heavy sediment)
+            },
             "temperature": {
-                "warning_high": 35.0,  # Assumed
+                "warning_high": 35.0,  # High temperature warning
                 "critical_high": 40.0,
             },
         }
