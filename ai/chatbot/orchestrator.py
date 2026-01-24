@@ -30,6 +30,15 @@ ATURAN:
    - Jika user bertanya "kondisi sensor" tanpa menyebut ID, asumsikan Sensor 1 atau minta klarifikasi.
 4. Gunakan tool `get_recent_alerts` untuk melihat alert terbaru.
 5. Jangan berhalusinasi. Jika data tidak ada, katakan tidak ada.
+
+PENTING - TIMEZONE:
+- Semua timestamp di database disimpan dalam UTC (Coordinated Universal Time)
+- Indonesia menggunakan WIB (Waktu Indonesia Barat) = UTC+7
+- Ketika membaca timestamp dari database atau API:
+  * Timestamp 10:00 UTC = 17:00 WIB (10 + 7 = 17)
+  * Timestamp 15:00 UTC = 22:00 WIB (15 + 7 = 22)
+- Saat menjelaskan waktu ke user, SELALU konversi ke WIB dan sebutkan "WIB"
+- Contoh: "Data sensor terakhir pada pukul 17:58 WIB (10:58 UTC)"
 """.strip()
 
 
