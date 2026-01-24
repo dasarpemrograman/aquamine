@@ -7,9 +7,12 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
+<<<<<<< HEAD
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir .
 
+=======
+>>>>>>> 6d9dc91 (fix(cv): replace deprecated libgl1-mesa-glx with libgl1 and add better import error logging)
 COPY ./ai ./ai
 
 RUN pip install --no-cache-dir \
