@@ -24,8 +24,6 @@ export default function ImageUploader() {
       if (prev) URL.revokeObjectURL(prev);
       return objectUrl;
     });
-    
-    analyze(selectedFile);
   };
 
   const handleDrag = (e: DragEvent) => {
@@ -76,168 +74,219 @@ export default function ImageUploader() {
     }
   };
 
-  const getSeverityColor = (severity: string) => {
+  const getSeverityStyles = (severity: string) => {
     switch (severity) {
-      case "none": return "text-green-600 bg-green-100 border-green-200 dark:bg-green-900/30 dark:border-green-800 dark:text-green-400";
-      case "mild": return "text-yellow-600 bg-yellow-100 border-yellow-200 dark:bg-yellow-900/30 dark:border-yellow-800 dark:text-yellow-400";
-      case "moderate": return "text-orange-600 bg-orange-100 border-orange-200 dark:bg-orange-900/30 dark:border-orange-800 dark:text-orange-400";
-      case "severe": return "text-red-600 bg-red-100 border-red-200 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400";
-      default: return "text-zinc-600 bg-zinc-100 border-zinc-200";
-    }
-  };
-  
-  const getBoxColor = (severity: string) => {
-    switch (severity) {
-      case "none": return "border-green-500 bg-green-500/20";
-      case "mild": return "border-yellow-500 bg-yellow-500/20";
-      case "moderate": return "border-orange-500 bg-orange-500/20";
-      case "severe": return "border-red-500 bg-red-500/20";
-      default: return "border-zinc-500";
+      case "none": return {
+        bg: "bg-emerald-500",
+        text: "text-emerald-500",
+        border: "border-emerald-500",
+        badge: "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
+      };
+      case "mild": return {
+        bg: "bg-yellow-500",
+        text: "text-yellow-500",
+        border: "border-yellow-500",
+        badge: "bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800"
+      };
+      case "moderate": return {
+        bg: "bg-orange-500",
+        text: "text-orange-500",
+        border: "border-orange-500",
+        badge: "bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800"
+      };
+      case "severe": return {
+        bg: "bg-rose-500",
+        text: "text-rose-500",
+        border: "border-rose-500",
+        badge: "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800"
+      };
+      default: return {
+        bg: "bg-zinc-500",
+        text: "text-zinc-500",
+        border: "border-zinc-500",
+        badge: "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700"
+      };
     }
   };
 
+  const styles = result ? getSeverityStyles(result.severity) : getSeverityStyles("default");
+
   return (
-    <div className="w-full max-w-2xl mx-auto space-y-8">
+    <div className="w-full max-w-4xl mx-auto space-y-8">
       <div 
         className={`
-          relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200
+          group relative overflow-hidden rounded-2xl border-2 border-dashed transition-all duration-300 ease-out
           ${dragActive 
-            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/10" 
-            : "border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600 bg-white dark:bg-zinc-900"
+            ? "border-blue-500 bg-blue-50/50 dark:bg-blue-900/10 scale-[1.01]" 
+            : "border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600 bg-white dark:bg-zinc-900/50"
           }
+          ${preview ? "h-auto" : "h-64"}
         `}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
       >
+        {!preview && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <div className={`
+              p-4 rounded-full bg-zinc-100 dark:bg-zinc-800 mb-4 transition-transform duration-300
+              ${dragActive ? "scale-110" : "group-hover:scale-105"}
+            `}>
+              <svg className="w-8 h-8 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <p className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+              Drop image for analysis
+            </p>
+            <p className="text-sm text-zinc-500 mt-2">
+              or click to browse
+            </p>
+          </div>
+        )}
+
         <input 
           type="file" 
           id="image-upload" 
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          className={`absolute inset-0 w-full h-full opacity-0 cursor-pointer ${preview ? "hidden" : "block"}`}
           onChange={handleChange}
           accept="image/png, image/jpeg, image/jpg"
           disabled={loading}
         />
-        
-        <div className="flex flex-col items-center justify-center space-y-4 pointer-events-none">
-          <div className="p-4 bg-zinc-100 dark:bg-zinc-800 rounded-full">
-            <svg className="w-8 h-8 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-              Drop image here or click to upload
-            </p>
-            <p className="text-sm text-zinc-500 mt-1">
-              Supports PNG, JPG up to 10MB
-            </p>
-          </div>
-        </div>
-      </div>
 
-      {error && (
-        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 text-sm">
-          <strong>Error:</strong> {error}
-        </div>
-      )}
-
-      {loading && (
-        <div className="flex items-center justify-center p-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-900 dark:border-white"></div>
-          <span className="ml-3 text-zinc-600 dark:text-zinc-400">Analyzing image...</span>
-        </div>
-      )}
-
-      {preview && !loading && (
-        <div className="space-y-6">
-          <div className="relative rounded-lg overflow-hidden bg-black border border-zinc-200 dark:border-zinc-800">
+        {/* Preview Area */}
+        {preview && (
+          <div className="relative w-full">
             <img 
               ref={imgRef}
               src={preview} 
-              alt="Uploaded analysis target" 
+              alt="Analysis target" 
               className="w-full h-auto block"
               onLoad={handleImageLoad}
             />
             
-            {result && renderedSize.width > 0 && result.bboxes.map((bbox, i) => {
+            {preview && !loading && !result && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[1px] transition-all hover:bg-black/30">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (file) analyze(file);
+                  }}
+                  className="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-full shadow-lg transform transition-all hover:scale-105 active:scale-95 flex items-center space-x-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  </svg>
+                  <span>Run Analysis</span>
+                </button>
+              </div>
+            )}
+
+            {loading && (
+              <div className="absolute inset-0 bg-blue-500/10 overflow-hidden">
+                <div className="absolute inset-x-0 h-0.5 bg-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.8)] animate-[scan_2s_ease-in-out_infinite]" />
+              </div>
+            )}
+
+            {result && !loading && renderedSize.width > 0 && result.bboxes.map((bbox, i) => {
               const scaleX = renderedSize.width / result.image_width;
               const scaleY = renderedSize.height / result.image_height;
               
-              const style = {
-                left: `${bbox.x * scaleX}px`,
-                top: `${bbox.y * scaleY}px`,
-                width: `${bbox.width * scaleX}px`,
-                height: `${bbox.height * scaleY}px`,
-              };
-
               return (
                 <div 
                   key={i}
-                  className={`absolute border-2 ${getBoxColor(result.severity)} transition-all duration-300`}
-                  style={style}
+                  className={`absolute border-2 ${styles.border} transition-opacity duration-500`}
+                  style={{
+                    left: `${bbox.x * scaleX}px`,
+                    top: `${bbox.y * scaleY}px`,
+                    width: `${bbox.width * scaleX}px`,
+                    height: `${bbox.height * scaleY}px`,
+                    boxShadow: '0 0 20px rgba(0,0,0,0.1)'
+                  }}
                 >
-                  <span className="absolute -top-6 left-0 text-xs font-bold text-white bg-black/70 px-1 py-0.5 rounded">
+                  <div className={`absolute -top-7 left-0 px-2 py-0.5 text-xs font-bold text-white ${styles.bg} rounded-sm shadow-sm`}>
                     {(bbox.confidence * 100).toFixed(0)}%
-                  </span>
+                  </div>
                 </div>
               );
             })}
+
+            {!loading && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFile(null);
+                  setPreview(null);
+                  setResult(null);
+                }}
+                className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full backdrop-blur-sm transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-300 text-sm flex items-center animate-in slide-in-from-top-2">
+          <svg className="w-5 h-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {error}
+        </div>
+      )}
+
+      {result && !loading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-bottom-4 duration-500 fill-mode-backwards">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Analysis Report</h3>
+              <span className={`px-3 py-1 text-xs font-bold tracking-wider uppercase rounded-full border ${styles.badge}`}>
+                {result.severity}
+              </span>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex justify-between items-center py-3 border-b border-zinc-100 dark:border-zinc-800">
+                <span className="text-sm text-zinc-500">Confidence Score</span>
+                <span className="font-mono font-medium text-zinc-900 dark:text-zinc-100">{(result.confidence * 100).toFixed(1)}%</span>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-zinc-100 dark:border-zinc-800">
+                <span className="text-sm text-zinc-500">Detections</span>
+                <span className="font-mono font-medium text-zinc-900 dark:text-zinc-100">{result.bboxes.length} objects</span>
+              </div>
+              <div className="flex justify-between items-center py-3 border-b border-zinc-100 dark:border-zinc-800">
+                <span className="text-sm text-zinc-500">Processing Latency</span>
+                <span className="font-mono font-medium text-zinc-900 dark:text-zinc-100">{result.latency_ms}ms</span>
+              </div>
+              <div className="flex justify-between items-center py-3">
+                <span className="text-sm text-zinc-500">Model Version</span>
+                <span className="font-mono text-xs text-zinc-400">{result.model_version}</span>
+              </div>
+            </div>
           </div>
 
-          {result && (
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-sm">
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Analysis Results</h3>
-                  <p className="text-sm text-zinc-500">Model: {result.model_version}</p>
-                </div>
-                <div className={`px-4 py-1.5 rounded-full text-sm font-semibold border ${getSeverityColor(result.severity)}`}>
-                  {result.severity.toUpperCase()}
-                </div>
+          <div className="bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6">
+            <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">Interpretation</h4>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed mb-4">
+              {result.detected 
+                ? "The system has detected presence of iron hydroxide precipitates ('Yellow Boy'). This indicates active Acid Mine Drainage (AMD) in the water source." 
+                : "No significant visual indicators of Acid Mine Drainage were detected in this sample."}
+            </p>
+            
+            {result.warnings && result.warnings.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-700">
+                <h5 className="text-xs font-semibold text-yellow-600 dark:text-yellow-500 uppercase tracking-wider mb-2">System Warnings</h5>
+                <ul className="text-xs text-zinc-500 space-y-1">
+                  {result.warnings.map((w, i) => <li key={i}>• {w}</li>)}
+                </ul>
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg">
-                  <div className="text-sm text-zinc-500 mb-1">Confidence</div>
-                  <div className="text-2xl font-mono font-medium text-zinc-900 dark:text-zinc-100">
-                    {(result.confidence * 100).toFixed(1)}%
-                  </div>
-                </div>
-                
-                <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg">
-                  <div className="text-sm text-zinc-500 mb-1">Processing Time</div>
-                  <div className="text-2xl font-mono font-medium text-zinc-900 dark:text-zinc-100">
-                    {result.latency_ms}ms
-                  </div>
-                </div>
-                
-                <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg">
-                  <div className="text-sm text-zinc-500 mb-1">Detections</div>
-                  <div className="text-2xl font-mono font-medium text-zinc-900 dark:text-zinc-100">
-                    {result.bboxes.length}
-                  </div>
-                </div>
-
-                <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg">
-                  <div className="text-sm text-zinc-500 mb-1">Resolution</div>
-                  <div className="text-lg font-mono font-medium text-zinc-900 dark:text-zinc-100">
-                    {result.image_width}x{result.image_height}
-                  </div>
-                </div>
-              </div>
-              
-              {result.warnings && result.warnings.length > 0 && (
-                <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/10 text-yellow-800 dark:text-yellow-200 text-sm rounded border border-yellow-200 dark:border-yellow-800/30">
-                  <div className="font-semibold mb-1">Warnings:</div>
-                  <ul className="list-disc list-inside">
-                    {result.warnings.map((w, i) => <li key={i}>{w}</li>)}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>
