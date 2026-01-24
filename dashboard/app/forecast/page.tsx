@@ -6,7 +6,7 @@ import AlertList from "@/app/components/AlertList";
 import SensorStatus from "@/app/components/SensorStatus";
 
 export default function ForecastPage() {
-  const wsUrl = process.env.NEXT_PUBLIC_WS_BASE_URL ? `${process.env.NEXT_PUBLIC_WS_BASE_URL}/ws/realtime` : "ws://localhost:8000/ws/realtime";
+  const wsUrl = process.env.NEXT_PUBLIC_WS_BASE_URL ? `${process.env.NEXT_PUBLIC_WS_BASE_URL}/ws/realtime` : "ws://localhost:8181/ws/realtime";
   const { lastMessage, isConnected } = useWebSocket(wsUrl);
 
   return (
