@@ -31,7 +31,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
+RUN bun install --frozen-lockfile
 
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
