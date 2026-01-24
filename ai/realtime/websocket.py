@@ -35,20 +35,28 @@ class ConnectionManager:
                 self.disconnect(connection)
 
     async def start_redis_listener(self):
-        """Subscribe to Redis channels and forward to WebSockets."""
-        self.redis = redis.from_url(self.redis_url)
-        self.pubsub = self.redis.pubsub()
-        await self.pubsub.subscribe("aquamine:updates")
+        """Subscribe to Redis channels and forward to WebSockets with reconnection."""
+        retry_delay = 1
+        max_retry_delay = 60
 
-        logger.info("Redis listener started")
+        while True:
+            try:
+                self.redis = redis.from_url(self.redis_url)
+                self.pubsub = self.redis.pubsub()
+                await self.pubsub.subscribe("aquamine:updates")
 
-        try:
-            async for message in self.pubsub.listen():
-                if message["type"] == "message":
-                    data = message["data"].decode("utf-8")
-                    await self.broadcast(data)
-        except Exception as e:
-            logger.error(f"Redis listener error: {e}")
+                logger.info("Redis listener started")
+                retry_delay = 1
+
+                async for message in self.pubsub.listen():
+                    if message["type"] == "message":
+                        data = message["data"].decode("utf-8")
+                        await self.broadcast(data)
+
+            except Exception as e:
+                logger.error(f"Redis listener error: {e}. Reconnecting in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, max_retry_delay)
 
     async def publish_update(self, type: str, data: Dict):
         """Publish update to Redis."""

@@ -881,5 +881,11 @@ async def websocket_endpoint(websocket: WebSocket):
 # Startup event to launch Redis listener
 @app.on_event("startup")
 async def startup_event():
-    # Start Redis listener in background
-    asyncio.create_task(ws_manager.start_redis_listener())
+    task = asyncio.create_task(ws_manager.start_redis_listener())
+    app.state.redis_listener_task = task
+
+    def task_done_callback(t):
+        if t.exception():
+            logger.error(f"Redis listener task crashed: {t.exception()}")
+
+    task.add_done_callback(task_done_callback)
