@@ -52,6 +52,26 @@ services:
     ports:
       - "3000:3000"
 
+  simulator:
+    build:
+      context: .
+      dockerfile: ./ai/Dockerfile
+    container_name: aquamine-simulator
+    volumes:
+      - ./scripts:/app/scripts
+      - ./ai:/app/ai
+    command: >
+      python -u /app/scripts/esp32_simulator.py
+      --realtime
+      --interval=60
+      --scenario=auto
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      - db
+    restart: unless-stopped
+
 volumes:
   db-data:
   dashboard-node-modules:
