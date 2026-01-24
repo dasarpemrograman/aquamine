@@ -22,3 +22,6 @@ Thumbs.db
 
 # Sisyphus (local planning)
 .sisyphus/
+
+# YOLOv8 Dataset files
+ai/dataset/
