@@ -39,6 +39,7 @@ services:
   dashboard:
     build:
       context: ./dashboard
+    # DEV ONLY: Hot-reload with volume mounts. Use docker-compose.prod.yml for production.
     volumes:
       - ./dashboard:/app
       - dashboard-node-modules:/app/node_modules

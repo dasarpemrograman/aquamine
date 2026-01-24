@@ -61,7 +61,7 @@ class ChatOrchestrator:
 
         messages.append({"role": "user", "content": user_message})
 
-        for _ in range(5):
+        for _ in range(10):
             response = await self.cerebras_client.chat_completion(messages, tools=TOOLS_SCHEMA)
             message = self._extract_message(response)
             if message is None:

@@ -1,4 +1,5 @@
 import os
+import asyncio
 import httpx
 import logging
 import resend
@@ -98,7 +99,7 @@ class NotificationService:
                 "html": html_content,
             }
 
-            resend.Emails.send(params)
+            await asyncio.to_thread(resend.Emails.send, params)
             logger.info(f"Email sent to {email}")
         except Exception as e:
             logger.error(f"Email Send Error: {e}")

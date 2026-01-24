@@ -13,6 +13,8 @@ from fastapi import (
     BackgroundTasks,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import SQLAlchemyError
+from pydantic import ValidationError
 import io
 import os
 import time
@@ -320,10 +322,10 @@ async def analyze_image(file: UploadFile | None = File(None)):
 
     content = await file.read()
 
-    if len(content) > 10 * 1024 * 1024:
+    if len(content) > 5 * 1024 * 1024:
         size_mb = len(content) / (1024 * 1024)
         return error_response(
-            413, "FILE_TOO_LARGE", f"File exceeds 10MB limit. Received: {size_mb:.1f}MB"
+            413, "FILE_TOO_LARGE", f"File exceeds 5MB limit. Received: {size_mb:.1f}MB"
         )
 
     if file.content_type not in ["image/jpeg", "image/png"]:
@@ -424,12 +426,6 @@ async def ingest_sensor_data(
             await db.commit()
             await db.refresh(db_state)
 
-        # 2. Sync state machine cache from DB
-        alert_sm.state_cache[sensor.id] = {
-            "state": db_state.current_state,
-            "last_alert_at": db_state.last_alert_at,
-        }
-
         anomalies = anomaly_detector.detect_threshold_anomalies(
             sensor.id,
             {key: value for key, value in payload.readings.items() if value is not None},
@@ -453,7 +449,7 @@ async def ingest_sensor_data(
                 severity = "critical" if "critical" in (anom.detection_method or "") else "warning"
                 message = f"{anom.parameter.upper()} {severity}: {anom.value:.2f}"
 
-                alert = alert_sm.process_anomaly(sensor.id, severity, message)
+                alert = await alert_sm.process_anomaly(sensor.id, severity, message)
                 if alert:
                     alert_triggered = alert  # Keep track
                     db_alert = Alert(
@@ -502,7 +498,7 @@ async def ingest_sensor_data(
                     )
         else:
             # Check for recovery
-            alert = alert_sm.process_recovery(sensor.id)
+            alert = await alert_sm.process_recovery(sensor.id)
             if alert:
                 alert_triggered = alert  # Keep track
                 db_alert = Alert(
@@ -561,9 +557,16 @@ async def ingest_sensor_data(
         await ws_manager.publish_update("sensor_reading", payload.model_dump(mode="json"))
 
         return {"status": "ingested", "anomalies_detected": len(anomalies)}
+    except ValidationError as e:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=f"Validation error: {str(e)}")
+    except SQLAlchemyError as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Unexpected error during ingestion: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/v1/forecast/{sensor_id}", response_model=List[PredictionResponse])
