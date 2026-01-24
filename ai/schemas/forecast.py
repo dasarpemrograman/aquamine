@@ -1,16 +1,18 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import ConfigDict
+
+from .base import BaseSchema
 
 
-class ForecastPoint(BaseModel):
+class ForecastPoint(BaseSchema):
     timestamp: datetime
     value: float
     lower: Optional[float] = None
     upper: Optional[float] = None
 
 
-class PredictionBase(BaseModel):
+class PredictionBase(BaseSchema):
     sensor_id: int
     forecast_start: datetime
     forecast_end: datetime

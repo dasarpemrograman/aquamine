@@ -1,10 +1,10 @@
 import os
 import logging
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 from nixtla import NixtlaClient
-from ai.schemas.forecast import ForecastPoint, PredictionCreate
+from ..schemas.forecast import ForecastPoint, PredictionCreate
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class TimeGPTClient:
     ) -> Dict[str, List[ForecastPoint]]:
         """Generate dummy forecast when API key is missing or fails."""
         results = {}
-        future_dates = [datetime.now() + timedelta(hours=i + 1) for i in range(horizon)]
+        future_dates = [datetime.now(timezone.utc) + timedelta(hours=i + 1) for i in range(horizon)]
 
         for uid, group in df.groupby("unique_id"):
             last_val = group.iloc[-1]["y"]

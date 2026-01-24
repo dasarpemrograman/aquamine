@@ -1,9 +1,11 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
+
+from .base import BaseSchema
 
 
-class AlertBase(BaseModel):
+class AlertBase(BaseSchema):
     sensor_id: int
     severity: str  # warning, critical
     previous_state: Optional[str] = None
@@ -23,7 +25,7 @@ class AlertResponse(AlertBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class AnomalyBase(BaseModel):
+class AnomalyBase(BaseSchema):
     sensor_id: int
     timestamp: datetime
     parameter: str
@@ -43,7 +45,7 @@ class AnomalyResponse(AnomalyBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class RecipientBase(BaseModel):
+class RecipientBase(BaseSchema):
     name: str
     phone: Optional[str] = None
     email: Optional[str] = None

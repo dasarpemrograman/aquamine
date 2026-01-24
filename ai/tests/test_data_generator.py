@@ -1,12 +1,12 @@
 import pytest
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 from ai.data_generator.synthetic import AMDWaterQualityGenerator
 
 
 def test_normal_data_generation():
-    generator = AMDWaterQualityGenerator(start_date=datetime.now(), days=1)
+    generator = AMDWaterQualityGenerator(start_date=datetime.now(timezone.utc), days=1)
     df = generator.generate_normal_data()
 
     assert len(df) == 24  # 1 day, hourly interval
@@ -16,7 +16,7 @@ def test_normal_data_generation():
 
 
 def test_warning_scenario():
-    generator = AMDWaterQualityGenerator(start_date=datetime.now(), days=2)
+    generator = AMDWaterQualityGenerator(start_date=datetime.now(timezone.utc), days=2)
     df = generator.generate_warning_data()
 
     # Check that pH generally decreases (end < start)
@@ -26,7 +26,7 @@ def test_warning_scenario():
 
 
 def test_critical_scenario():
-    generator = AMDWaterQualityGenerator(start_date=datetime.now(), days=2)
+    generator = AMDWaterQualityGenerator(start_date=datetime.now(timezone.utc), days=2)
     df = generator.generate_critical_data()
 
     # Check for crash (pH < 4.0 at the end)
@@ -37,7 +37,7 @@ def test_critical_scenario():
 
 def test_ph_turbidity_correlation():
     # In warning/critical, pH drops and turbidity rises -> negative correlation
-    generator = AMDWaterQualityGenerator(start_date=datetime.now(), days=7)
+    generator = AMDWaterQualityGenerator(start_date=datetime.now(timezone.utc), days=7)
     df = generator.generate_critical_data()
 
     corr = df["ph"].corr(df["turbidity"])
@@ -45,13 +45,13 @@ def test_ph_turbidity_correlation():
 
 
 def test_no_missing_values():
-    generator = AMDWaterQualityGenerator(start_date=datetime.now(), days=1)
+    generator = AMDWaterQualityGenerator(start_date=datetime.now(timezone.utc), days=1)
     df = generator.generate_normal_data()
     assert not df.isnull().values.any()
 
 
 def test_timegpt_format():
-    generator = AMDWaterQualityGenerator(start_date=datetime.now(), days=1)
+    generator = AMDWaterQualityGenerator(start_date=datetime.now(timezone.utc), days=1)
     df = generator.generate_normal_data()
     timegpt_df = generator.to_timegpt_format(df, unique_id="test_sensor")
 

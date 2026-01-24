@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 from typing import List, Dict, Optional, Literal
 
@@ -93,7 +93,7 @@ class AMDWaterQualityGenerator:
         crash_point = self.n_samples // 2
 
         # Pre-crash: normal
-        # Post-crash: pH < 3.5 (Acidic)
+        # Post-crash: pH < 4.5 (Acidic)
         df.loc[crash_point:, "ph"] = df.loc[crash_point:, "ph"] - 4.0
 
         # Strong Negative Correlation: Turbidity SPIKE
@@ -149,7 +149,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    generator = AMDWaterQualityGenerator(start_date=datetime.now(), days=args.days)
+    generator = AMDWaterQualityGenerator(start_date=datetime.now(timezone.utc), days=args.days)
 
     if args.scenario == "normal":
         df = generator.generate_normal_data()

@@ -1,10 +1,9 @@
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from ai.db.models import Sensor, Reading
-from ai.schemas.sensor import SensorDataIngest
-from ai.db.connection import AsyncSessionLocal
-from datetime import datetime
+from ..db.models import Sensor, Reading
+from ..schemas.sensor import SensorDataIngest
+from ..db.connection import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 

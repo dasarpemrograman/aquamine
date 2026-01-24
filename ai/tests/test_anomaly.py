@@ -1,12 +1,12 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from ai.anomaly.detector import AnomalyDetector
 
 
 def test_ph_thresholds():
     detector = AnomalyDetector()
     sensor_id = 1
-    ts = datetime.now()
+    ts = datetime.now(timezone.utc)
 
     # Normal pH
     anomalies = detector.detect_threshold_anomalies(sensor_id, {"ph": 7.0}, ts)
@@ -30,7 +30,7 @@ def test_ph_thresholds():
 def test_turbidity_thresholds():
     detector = AnomalyDetector()
     sensor_id = 1
-    ts = datetime.now()
+    ts = datetime.now(timezone.utc)
 
     # Normal
     anomalies = detector.detect_threshold_anomalies(sensor_id, {"turbidity": 20.0}, ts)

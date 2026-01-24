@@ -3,6 +3,24 @@ from typing import List, Dict, Optional
 from datetime import datetime
 from ai.schemas.alert import AnomalyCreate
 
+# Timeline-specified general water quality thresholds for demos, not AMD-specific.
+ANOMALY_THRESHOLDS = {
+    "ph": {
+        "warning_low": 5.5,  # Warning when pH dips below safe range
+        "critical_low": 4.5,  # Critical acidity threshold
+        "warning_high": 9.0,  # High pH (less common in AMD)
+        "critical_high": 10.0,
+    },
+    "turbidity": {
+        "warning_high": 50.0,  # Elevated turbidity warning
+        "critical_high": 100.0,  # Critical turbidity
+    },
+    "temperature": {
+        "warning_high": 35.0,  # High temperature warning
+        "critical_high": 40.0,
+    },
+}
+
 
 class AnomalyDetector:
     """Hybrid anomaly detection using thresholds and TimeGPT."""
@@ -10,23 +28,7 @@ class AnomalyDetector:
     def __init__(self, timegpt_client=None):
         self.timegpt = timegpt_client
 
-        # Hardcoded thresholds for AMD detection
-        self.thresholds = {
-            "ph": {
-                "warning_low": 3.5,  # AMD warning: very acidic water
-                "critical_low": 2.5,  # AMD critical: severely acidic water
-                "warning_high": 9.0,  # High pH (less common in AMD)
-                "critical_high": 10.0,
-            },
-            "turbidity": {
-                "warning_high": 100.0,  # High turbidity warning
-                "critical_high": 150.0,  # Critical turbidity (heavy sediment)
-            },
-            "temperature": {
-                "warning_high": 35.0,  # High temperature warning
-                "critical_high": 40.0,
-            },
-        }
+        self.thresholds = ANOMALY_THRESHOLDS
 
     def detect_threshold_anomalies(
         self, sensor_id: int, reading: Dict[str, float], timestamp: datetime
