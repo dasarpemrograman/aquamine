@@ -27,10 +27,10 @@ from ai.utils.responses import error_response
 
 # Import IoT/ML modules
 from ai.db.connection import get_db
-from ai.db.models import Sensor, Reading, Prediction, Alert, Anomaly
+from ai.db.models import Sensor, Reading, Prediction, Alert, Anomaly, NotificationRecipient
 from ai.schemas.sensor import SensorResponse, ReadingResponse, SensorDataIngest
 from ai.schemas.forecast import PredictionResponse
-from ai.schemas.alert import AlertResponse, AlertCreate
+from ai.schemas.alert import AlertResponse, AlertCreate, AnomalyResponse, RecipientResponse
 from ai.iot.mqtt_bridge import process_mqtt_message
 from ai.forecasting.timegpt_client import TimeGPTClient
 from ai.anomaly.detector import AnomalyDetector
@@ -161,22 +161,124 @@ async def get_sensor_readings(sensor_id: int, hours: int = 24, db: AsyncSession 
 
 
 @app.post("/api/v1/sensors/ingest")
-async def ingest_sensor_data(payload: SensorDataIngest, background_tasks: BackgroundTasks):
+async def ingest_sensor_data(
+    payload: SensorDataIngest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
+):
     try:
-        # Process storage async (in production, use Queue)
         await process_mqtt_message(payload)
 
-        # Real-time components
-        # 1. Anomaly Detection
-        # 2. Alert Logic
-        # 3. WebSocket Broadcast
+        result = await db.execute(select(Sensor).where(Sensor.sensor_id == payload.sensor_id))
+        sensor = result.scalar_one_or_none()
+        if not sensor:
+            raise HTTPException(status_code=404, detail="Sensor not found after ingestion")
 
-        # We need the numeric ID, so we might need to fetch it again or cache it
-        # For simplicity in this endpoint, we'll just broadcast the raw payload for now
+        anomalies = anomaly_detector.detect_threshold_anomalies(
+            sensor.id, payload.readings, payload.timestamp
+        )
+
+        if anomalies:
+            for anom in anomalies:
+                db_anomaly = Anomaly(
+                    sensor_id=anom.sensor_id,
+                    timestamp=anom.timestamp,
+                    parameter=anom.parameter,
+                    value=anom.value,
+                    anomaly_score=anom.anomaly_score,
+                    detection_method=anom.detection_method,
+                )
+                db.add(db_anomaly)
+
+                severity = "critical" if "critical" in anom.detection_method else "warning"
+                message = f"{anom.parameter.upper()} {severity}: {anom.value:.2f}"
+
+                alert = alert_sm.process_anomaly(sensor.id, severity, message)
+                if alert:
+                    db_alert = Alert(
+                        sensor_id=alert.sensor_id,
+                        severity=alert.severity,
+                        previous_state=alert.previous_state,
+                        message=alert.message,
+                    )
+                    db.add(db_alert)
+                    await db.commit()
+                    await db.refresh(db_alert)
+
+                    # Fetch recipients
+                    recipients_result = await db.execute(
+                        select(NotificationRecipient).where(NotificationRecipient.is_active == True)
+                    )
+                    recipients = recipients_result.scalars().all()
+
+                    # Convert DB recipients to Pydantic
+                    pydantic_recipients = [RecipientResponse.model_validate(r) for r in recipients]
+
+                    # Convert DB alert to Pydantic
+                    pydantic_alert = AlertCreate(
+                        sensor_id=db_alert.sensor_id,
+                        severity=db_alert.severity,
+                        previous_state=db_alert.previous_state,
+                        message=db_alert.message,
+                    )
+
+                    background_tasks.add_task(
+                        notifier.send_notifications, pydantic_alert, pydantic_recipients
+                    )
+
+                    await ws_manager.publish_update(
+                        "alert",
+                        {
+                            "severity": alert.severity,
+                            "message": alert.message,
+                            "sensor_id": sensor.id,
+                        },
+                    )
+        else:
+            # Check for recovery
+            alert = alert_sm.process_recovery(sensor.id)
+            if alert:
+                db_alert = Alert(
+                    sensor_id=alert.sensor_id,
+                    severity=alert.severity,
+                    previous_state=alert.previous_state,
+                    message=alert.message,
+                )
+                db.add(db_alert)
+                await db.commit()
+                await db.refresh(db_alert)
+
+                # Fetch recipients
+                recipients_result = await db.execute(
+                    select(NotificationRecipient).where(NotificationRecipient.is_active == True)
+                )
+                recipients = recipients_result.scalars().all()
+
+                # Convert DB recipients to Pydantic
+                pydantic_recipients = [RecipientResponse.model_validate(r) for r in recipients]
+
+                # Convert DB alert to Pydantic
+                pydantic_alert = AlertCreate(
+                    sensor_id=db_alert.sensor_id,
+                    severity=db_alert.severity,
+                    previous_state=db_alert.previous_state,
+                    message=db_alert.message,
+                )
+
+                background_tasks.add_task(
+                    notifier.send_notifications, pydantic_alert, pydantic_recipients
+                )
+
+                await ws_manager.publish_update(
+                    "alert",
+                    {"severity": alert.severity, "message": alert.message, "sensor_id": sensor.id},
+                )
+
+        await db.commit()
+
         await ws_manager.publish_update("sensor_reading", payload.model_dump(mode="json"))
 
-        return {"status": "ingested"}
+        return {"status": "ingested", "anomalies_detected": len(anomalies)}
     except Exception as e:
+        await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -199,6 +301,23 @@ async def generate_forecast_endpoint(sensor_id: int, background_tasks: Backgroun
     # TODO: Implement full forecast generation logic (fetch history -> TimeGPT -> Store)
     # This is a placeholder as the core logic is in the TimeGPT client
     return {"status": "generation_scheduled"}
+
+
+@app.get("/api/v1/anomalies", response_model=List[AnomalyResponse])
+async def list_anomalies(
+    sensor_id: Optional[int] = None,
+    parameter: Optional[str] = None,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(Anomaly).order_by(desc(Anomaly.timestamp)).limit(limit)
+    if sensor_id:
+        query = query.where(Anomaly.sensor_id == sensor_id)
+    if parameter:
+        query = query.where(Anomaly.parameter == parameter)
+
+    result = await db.execute(query)
+    return result.scalars().all()
 
 
 @app.get("/api/v1/alerts", response_model=List[AlertResponse])
