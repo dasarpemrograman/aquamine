@@ -11,10 +11,9 @@ class BoundingBox(BaseModel):
 
 
 class ImageAnalysisResponse(BaseModel):
+    detected: bool  # True if yellow boy detected with confidence above threshold
     confidence: float  # highest confidence among all detections (0.0 if none)
-    severity: Literal[
-        "none", "mild", "moderate", "severe"
-    ]  # derive detected from severity != "none"
+    severity: Literal["none", "mild", "moderate", "severe"]  # severity based on confidence level
     bbox: BoundingBox | None  # primary detection (highest confidence), null if none
     bboxes: list[BoundingBox]  # all detections, empty list if none
     latency_ms: int  # inference time in milliseconds

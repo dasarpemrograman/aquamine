@@ -29,6 +29,21 @@ Tooling:
 - Backend: ruff
 - Frontend: eslint + prettier
 
+## P1 Verification Status (Jan 2026)
+
+✅ **Completed:**
+- Docker setup fixed (API hot-reload enabled)
+- TimescaleDB integration (Hypertable created successfully)
+- IoT Ingestion pipeline (MQTT → DB → WebSocket)
+- Anomaly Detection (Threshold-based triggers for pH/Turbidity)
+- Alert System (State machine + critical alerts)
+- Dashboard connectivity
+
+⏳ **Pending / Next Steps:**
+- P2: Computer Vision integration (YOLOv8)
+- P3: Advanced Forecasting (Integration with real TimeGPT key)
+- Production deployment hardening
+
 ## Local Development
 
 1) Copy env file:
@@ -37,10 +52,11 @@ Tooling:
 cp .env.example .env
 ```
 
-2) Start services:
+2) Start services (Hot Reload Enabled):
 
 ```bash
-docker compose up --build
+# Volume mount enables instant code changes without rebuilding
+docker compose up -d
 ```
 
 3) Verify:

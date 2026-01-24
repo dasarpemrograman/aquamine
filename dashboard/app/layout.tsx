@@ -43,10 +43,28 @@ export default function RootLayout({
                     Dashboard
                   </Link>
                   <Link 
+                    href="/forecast" 
+                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                  >
+                    Forecast
+                  </Link>
+                  <Link 
+                    href="/recipients" 
+                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                  >
+                    Recipients
+                  </Link>
+                  <Link 
                     href="/cv" 
                     className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                   >
                     CV Analysis
+                  </Link>
+                  <Link 
+                    href="/chat" 
+                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                  >
+                    AI Assistant
                   </Link>
                 </div>
               </div>

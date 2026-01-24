@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8181";
 
 export interface BoundingBox {
   x: number;
@@ -26,6 +26,10 @@ export interface ErrorResponse {
   detail: string;
 }
 
+export interface ChatResponse {
+  response: string;
+}
+
 export async function analyzeImage(file: File): Promise<AnalysisResponse> {
   const formData = new FormData();
   formData.append("file", file);
@@ -33,6 +37,29 @@ export async function analyzeImage(file: File): Promise<AnalysisResponse> {
   const response = await fetch(`${API_BASE}/api/v1/cv/analyze`, {
     method: "POST",
     body: formData,
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function sendChatMessage(
+  message: string,
+  sessionId: string
+): Promise<ChatResponse> {
+  const response = await fetch(`${API_BASE}/api/v1/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ message, session_id: sessionId })
   });
 
   if (!response.ok) {

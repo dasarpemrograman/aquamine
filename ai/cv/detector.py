@@ -146,17 +146,15 @@ class YellowBoyDetector:
     def _real_detect(
         self, model, img: Image.Image, img_width: int, img_height: int, warnings: list[str]
     ) -> tuple[list[Detection], list[str]]:
-        """Run real YOLO inference."""
-        # Run inference directly with PIL Image
-        results = model.predict(img, conf=0.25, verbose=False)
+        results = model.predict(
+            img, conf=0.65, iou=0.6, max_det=20, agnostic_nms=False, verbose=False
+        )
 
         detections = []
         for result in results:
             for box in result.boxes:
-                # box.xyxy is tensor [[x1, y1, x2, y2]]
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
                 conf = float(box.conf[0])
-                # Convert xyxy → xywh (our contract format)
                 x = int(round(x1))
                 y = int(round(y1))
                 width = int(round(x2 - x1))
