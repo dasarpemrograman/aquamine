@@ -1,6 +1,6 @@
 import asyncio
-from typing import Literal, List, Optional
 from datetime import datetime, timedelta
+from typing import List, Literal, Optional
 
 from fastapi import (
     FastAPI,
@@ -17,6 +17,7 @@ import io
 import os
 import time
 from PIL import Image
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
@@ -24,6 +25,7 @@ from sqlalchemy import select, desc
 from ai.schemas.cv import BoundingBox, ImageAnalysisResponse
 from ai.cv.detector import YellowBoyDetector, ImageDecodeError
 from ai.utils.responses import error_response
+from ai.chatbot.orchestrator import ChatOrchestrator
 
 # Import IoT/ML modules
 from ai.db.connection import get_db
@@ -63,6 +65,7 @@ timegpt = TimeGPTClient()
 anomaly_detector = AnomalyDetector(timegpt_client=timegpt)
 alert_sm = AlertStateMachine()
 notifier = NotificationService()
+chat_orchestrator = ChatOrchestrator()
 
 # --- Helpers ---
 
@@ -81,9 +84,20 @@ def calculate_severity(confidence: float) -> Literal["none", "mild", "moderate",
 # --- Endpoints ---
 
 
+class ChatRequest(BaseModel):
+    message: str
+    session_id: str
+
+
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/api/v1/chat")
+async def chat(request: ChatRequest) -> dict[str, str]:
+    response = await chat_orchestrator.process_user_message(request.message, request.session_id)
+    return {"response": response}
 
 
 # --- CV Endpoints ---
