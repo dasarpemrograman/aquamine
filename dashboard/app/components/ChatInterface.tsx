@@ -48,8 +48,7 @@ export default function ChatInterface() {
     );
   }, []);
   const isSpeechRecognitionSupported = Boolean(speechRecognitionConstructor);
-  const isTTSSupported =
-    typeof window !== "undefined" && "speechSynthesis" in window;
+  const [isTTSSupported, setIsTTSSupported] = useState(false);
   const sessionId = useMemo(() => {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
       return crypto.randomUUID();
@@ -127,6 +126,10 @@ export default function ChatInterface() {
     return () => {
       recognitionRef.current?.stop();
     };
+  }, []);
+
+  useEffect(() => {
+    setIsTTSSupported(typeof window !== "undefined" && "speechSynthesis" in window);
   }, []);
 
   useEffect(() => {
