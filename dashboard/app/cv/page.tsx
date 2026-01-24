@@ -1,13 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ImageUploader from "../components/ImageUploader";
 import LiveCameraView from "../components/LiveCameraView";
+import VideoFileView from "../components/VideoFileView";
 
 type Mode = "live" | "video" | "image";
 
 export default function CVAnalysisPage() {
+  /**
+   * CV DEMO CHECKLIST:
+   * 1. Live Camera: Start Camera → Start Inference → See bboxes update ~1 FPS
+   * 2. Video File: Upload video → Play → Start Inference → See bboxes
+   * 3. Image Upload: Upload image → See analysis result (original feature)
+   * 4. Mode Switching: Verify camera stops when switching away from Live
+   */
   const [mode, setMode] = useState<Mode>("live");
+
+  const liveStreamRef = useRef<MediaStream | null>(null);
+  const videoObjectUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (mode === "live" && liveStreamRef.current) {
+        liveStreamRef.current.getTracks().forEach((t) => t.stop());
+        liveStreamRef.current = null;
+      }
+
+      if (mode === "video" && videoObjectUrlRef.current) {
+        URL.revokeObjectURL(videoObjectUrlRef.current);
+        videoObjectUrlRef.current = null;
+      }
+    };
+  }, [mode]);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black selection:bg-blue-500/30">
@@ -70,13 +95,15 @@ export default function CVAnalysisPage() {
           </div>
         </div>
 
-        {mode === "live" && <LiveCameraView />}
+        {mode === "live" && (
+          <LiveCameraView onStreamReady={(s) => (liveStreamRef.current = s)} />
+        )}
         {mode === "video" && (
-          <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-8 text-center">
-            <p className="text-zinc-500 dark:text-zinc-400">
-              Video File mode coming soon (Task 5)
-            </p>
-          </div>
+          <VideoFileView
+            onVideoUrlChange={(url) => {
+              videoObjectUrlRef.current = url;
+            }}
+          />
         )}
         {mode === "image" && <ImageUploader />}
         
