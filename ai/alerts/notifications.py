@@ -92,15 +92,11 @@ class NotificationService:
             # Resend SDK is sync, but we wrap it or just call it directly (it's fast)
             # ideally run in threadpool if blocking
             params = {
-                "from": "AquaMine <alerts@aquamine.ai>",  # Change to verified domain
+                "from": "AquaMine Alert <alerts@draftanakitb.tech>",
                 "to": [email],
                 "subject": subject,
                 "html": html_content,
             }
-            # For hackathon, using 'onboarding@resend.dev' if domain not verified
-            if "resend.dev" in os.getenv("RESEND_DOMAIN", ""):
-                params["from"] = "onboarding@resend.dev"
-                params["to"] = ["delivered@resend.dev"]  # Sandbox constraint
 
             resend.Emails.send(params)
             logger.info(f"Email sent to {email}")

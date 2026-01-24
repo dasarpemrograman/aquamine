@@ -39,7 +39,14 @@ from .db.models import (
 )
 from .schemas.sensor import SensorResponse, ReadingResponse, SensorDataIngest
 from .schemas.forecast import PredictionResponse
-from .schemas.alert import AlertResponse, AlertCreate, AnomalyResponse, RecipientResponse
+from .schemas.alert import (
+    AlertResponse,
+    AlertCreate,
+    AnomalyResponse,
+    RecipientBase,
+    RecipientCreate,
+    RecipientResponse,
+)
 from .schemas.base import BaseSchema
 from .iot.mqtt_bridge import process_mqtt_message
 from .forecasting.timegpt_client import TimeGPTClient
@@ -114,12 +121,19 @@ def _format_forecast_points(
         if value is None:
             continue
 
+        if not isinstance(value, (int, float)):
+            continue
+
+        lower_val = float(lower) if isinstance(lower, (int, float)) else None
+        upper_val = float(upper) if isinstance(upper, (int, float)) else None
+        value_val = float(value)
+
         points.append(
             {
                 "timestamp": timestamp,
-                "ph_pred": float(value),
+                "ph_pred": value_val,
                 "confidence": _calculate_forecast_confidence(
-                    float(value), lower, upper, data_quality=data_quality
+                    value_val, lower_val, upper_val, data_quality=data_quality
                 ),
             }
         )
@@ -399,7 +413,9 @@ async def ingest_sensor_data(
         }
 
         anomalies = anomaly_detector.detect_threshold_anomalies(
-            sensor.id, payload.readings, payload.timestamp
+            sensor.id,
+            {key: value for key, value in payload.readings.items() if value is not None},
+            payload.timestamp,
         )
 
         alert_triggered = None  # Track if any alert happened to update DB
@@ -416,7 +432,7 @@ async def ingest_sensor_data(
                 )
                 db.add(db_anomaly)
 
-                severity = "critical" if "critical" in anom.detection_method else "warning"
+                severity = "critical" if "critical" in (anom.detection_method or "") else "warning"
                 message = f"{anom.parameter.upper()} {severity}: {anom.value:.2f}"
 
                 alert = alert_sm.process_anomaly(sensor.id, severity, message)
@@ -439,7 +455,12 @@ async def ingest_sensor_data(
                     recipients = recipients_result.scalars().all()
 
                     # Convert DB recipients to Pydantic
-                    pydantic_recipients = [RecipientResponse.model_validate(r) for r in recipients]
+                    pydantic_recipients = [
+                        RecipientBase(
+                            **RecipientResponse.model_validate(r).model_dump(exclude={"id"})
+                        )
+                        for r in recipients
+                    ]
 
                     # Convert DB alert to Pydantic
                     pydantic_alert = AlertCreate(
@@ -483,7 +504,10 @@ async def ingest_sensor_data(
                 recipients = recipients_result.scalars().all()
 
                 # Convert DB recipients to Pydantic
-                pydantic_recipients = [RecipientResponse.model_validate(r) for r in recipients]
+                pydantic_recipients = [
+                    RecipientBase(**RecipientResponse.model_validate(r).model_dump(exclude={"id"}))
+                    for r in recipients
+                ]
 
                 # Convert DB alert to Pydantic
                 pydantic_alert = AlertCreate(
@@ -731,6 +755,56 @@ async def list_alerts(
     return result.scalars().all()
 
 
+@app.post("/api/v1/recipients", response_model=RecipientResponse)
+async def create_recipient(recipient: RecipientCreate, db: AsyncSession = Depends(get_db)):
+    db_recipient = NotificationRecipient(**recipient.model_dump())
+    db.add(db_recipient)
+    await db.commit()
+    await db.refresh(db_recipient)
+    return RecipientResponse.model_validate(db_recipient)
+
+
+@app.get("/api/v1/recipients", response_model=List[RecipientResponse])
+async def list_recipients(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(NotificationRecipient).order_by(NotificationRecipient.id))
+    recipients = result.scalars().all()
+    return [RecipientResponse.model_validate(r) for r in recipients]
+
+
+@app.patch("/api/v1/recipients/{recipient_id}", response_model=RecipientResponse)
+async def update_recipient(
+    recipient_id: int, updates: RecipientBase, db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(NotificationRecipient).where(NotificationRecipient.id == recipient_id)
+    )
+    recipient = result.scalar_one_or_none()
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+
+    for key, value in updates.model_dump(exclude_unset=True).items():
+        setattr(recipient, key, value)
+
+    db.add(recipient)
+    await db.commit()
+    await db.refresh(recipient)
+    return RecipientResponse.model_validate(recipient)
+
+
+@app.delete("/api/v1/recipients/{recipient_id}")
+async def delete_recipient(recipient_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(NotificationRecipient).where(NotificationRecipient.id == recipient_id)
+    )
+    recipient = result.scalar_one_or_none()
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+
+    await db.delete(recipient)
+    await db.commit()
+    return {"status": "deleted"}
+
+
 @app.delete("/api/v1/test-data")
 async def clear_test_data(db: AsyncSession = Depends(get_db)):
     anomalies_stmt = delete(Anomaly).where(
@@ -748,8 +822,8 @@ async def clear_test_data(db: AsyncSession = Depends(get_db)):
     await db.commit()
 
     return {
-        "anomalies_deleted": anomalies_result.rowcount or 0,
-        "alerts_deleted": alerts_result.rowcount or 0,
+        "anomalies_deleted": int(getattr(anomalies_result, "rowcount", 0) or 0),
+        "alerts_deleted": int(getattr(alerts_result, "rowcount", 0) or 0),
     }
 
 
