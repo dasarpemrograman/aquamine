@@ -1,12 +1,14 @@
-import ImageUploader from "../components/ImageUploader";
-import { Metadata } from "next";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Visual Analysis | AquaMine",
-  description: "AI-powered detection of Acid Mine Drainage indicators",
-};
+import { useState } from "react";
+import ImageUploader from "../components/ImageUploader";
+import LiveCameraView from "../components/LiveCameraView";
+
+type Mode = "live" | "video" | "image";
 
 export default function CVAnalysisPage() {
+  const [mode, setMode] = useState<Mode>("live");
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black selection:bg-blue-500/30">
       <div className="relative py-20 px-4 overflow-hidden">
@@ -33,7 +35,50 @@ export default function CVAnalysisPage() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 pb-24">
-        <ImageUploader />
+        <div className="mb-8">
+          <div className="flex items-center justify-center gap-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-1 w-fit mx-auto">
+            <button
+              onClick={() => setMode("live")}
+              className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
+                mode === "live"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+              }`}
+            >
+              📷 Live Camera
+            </button>
+            <button
+              onClick={() => setMode("video")}
+              className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
+                mode === "video"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+              }`}
+            >
+              🎥 Video File
+            </button>
+            <button
+              onClick={() => setMode("image")}
+              className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
+                mode === "image"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+              }`}
+            >
+              🖼️ Image Upload
+            </button>
+          </div>
+        </div>
+
+        {mode === "live" && <LiveCameraView />}
+        {mode === "video" && (
+          <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-8 text-center">
+            <p className="text-zinc-500 dark:text-zinc-400">
+              Video File mode coming soon (Task 5)
+            </p>
+          </div>
+        )}
+        {mode === "image" && <ImageUploader />}
         
         <div className="mt-16 pt-8 border-t border-zinc-200 dark:border-zinc-800 text-center">
           <p className="text-xs text-zinc-400 uppercase tracking-widest">
