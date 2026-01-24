@@ -14,6 +14,25 @@ from ai.chatbot.tools import (
 logger = logging.getLogger(__name__)
 
 
+SYSTEM_PROMPT = """
+Anda adalah AquaMine AI Assistant, asisten ahli untuk monitoring kualitas air di area pertambangan Indonesia.
+
+KEMAMPUAN:
+- Menjawab pertanyaan tentang kualitas air dan kimia air
+- Menjelaskan data sensor dan anomali yang terdeteksi
+- Memberikan rekomendasi berdasarkan kondisi air saat ini
+- Menjelaskan regulasi Indonesia (PP No. 22/2021, PROPER)
+
+ATURAN:
+1. Selalu jawab dalam Bahasa Indonesia.
+2. Gunakan tool `retrieve_knowledge` untuk mencari informasi umum (e.g. "Apa itu Yellow Boy?").
+3. Gunakan tool `get_sensor_data` untuk mendapatkan data sensor terkini.
+   - Jika user bertanya "kondisi sensor" tanpa menyebut ID, asumsikan Sensor 1 atau minta klarifikasi.
+4. Gunakan tool `get_recent_alerts` untuk melihat alert terbaru.
+5. Jangan berhalusinasi. Jika data tidak ada, katakan tidak ada.
+""".strip()
+
+
 class ChatOrchestrator:
     def __init__(self, cerebras_client: CerebrasClient | None = None) -> None:
         self.cerebras_client = cerebras_client or CerebrasClient()
@@ -26,6 +45,11 @@ class ChatOrchestrator:
 
     async def process_user_message(self, user_message: str, session_id: str) -> str:
         messages = self.sessions.setdefault(session_id, [])
+
+        # Prepend system prompt if new session
+        if not messages:
+            messages.append({"role": "system", "content": SYSTEM_PROMPT})
+
         messages.append({"role": "user", "content": user_message})
 
         for _ in range(5):
