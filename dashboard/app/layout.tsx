@@ -48,6 +48,12 @@ export default function RootLayout({
                   >
                     CV Analysis
                   </Link>
+                  <Link 
+                    href="/chat" 
+                    className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                  >
+                    AI Assistant
+                  </Link>
                 </div>
               </div>
             </div>
