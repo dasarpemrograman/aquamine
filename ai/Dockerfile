@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./ai ./ai
+COPY ./scripts/entrypoint.sh /entrypoint.sh
+
+RUN chmod +x /entrypoint.sh
 
 RUN pip install --no-cache-dir \
     'fastapi>=0.115.0' \
@@ -34,4 +37,5 @@ RUN pip install --no-cache-dir \
 
 EXPOSE 8181
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "ai.main:app", "--host", "0.0.0.0", "--port", "8181"]
