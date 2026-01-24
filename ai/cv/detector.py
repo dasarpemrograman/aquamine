@@ -1,9 +1,13 @@
 import hashlib
 import os
 import io
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from PIL import Image
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImageDecodeError(Exception):
@@ -31,8 +35,14 @@ class YellowBoyDetector:
 
     @property
     def version(self) -> str:
-        if self._force_mock or not self._model_path.exists():
-            return "mock-v1"
+        if self._force_mock:
+            return "mock-v1-forced"
+        if not self._model_path.exists():
+            return "mock-v1-no-model"
+
+        if self._load_model() is None:
+            return "mock-v1-import-failed"
+
         return "yolov8n-yellowboy-v1"
 
     @property
@@ -46,8 +56,12 @@ class YellowBoyDetector:
                 from ultralytics import YOLO  # Lazy import
 
                 self._model = YOLO(str(self._model_path))
-            except ImportError:
+            except ImportError as e:
                 # ultralytics not installed yet, fall back to mock
+                logger.warning(f"Failed to import ultralytics, falling back to mock: {e}")
+                pass
+            except Exception as e:
+                logger.error(f"Failed to load YOLO model: {e}")
                 pass
         return self._model
 
