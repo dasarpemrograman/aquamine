@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional
 
 from fastapi import (
@@ -17,19 +17,18 @@ import io
 import os
 import time
 from PIL import Image
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, delete, or_, func
 
 # Import CV modules
-from ai.schemas.cv import BoundingBox, ImageAnalysisResponse
-from ai.cv.detector import YellowBoyDetector, ImageDecodeError
-from ai.utils.responses import error_response
-from ai.chatbot.orchestrator import ChatOrchestrator
+from .schemas.cv import BoundingBox, ImageAnalysisResponse
+from .cv.detector import YellowBoyDetector, ImageDecodeError
+from .utils.responses import error_response
+from .chatbot.orchestrator import ChatOrchestrator
 
 # Import IoT/ML modules
-from ai.db.connection import get_db
-from ai.db.models import (
+from .db.connection import get_db
+from .db.models import (
     Sensor,
     Reading,
     Prediction,
@@ -38,15 +37,16 @@ from ai.db.models import (
     NotificationRecipient,
     SensorAlertState,
 )
-from ai.schemas.sensor import SensorResponse, ReadingResponse, SensorDataIngest
-from ai.schemas.forecast import PredictionResponse
-from ai.schemas.alert import AlertResponse, AlertCreate, AnomalyResponse, RecipientResponse
-from ai.iot.mqtt_bridge import process_mqtt_message
-from ai.forecasting.timegpt_client import TimeGPTClient
-from ai.anomaly.detector import AnomalyDetector
-from ai.alerts.state_machine import AlertStateMachine
-from ai.alerts.notifications import NotificationService
-from ai.realtime.websocket import manager as ws_manager
+from .schemas.sensor import SensorResponse, ReadingResponse, SensorDataIngest
+from .schemas.forecast import PredictionResponse
+from .schemas.alert import AlertResponse, AlertCreate, AnomalyResponse, RecipientResponse
+from .schemas.base import BaseSchema
+from .iot.mqtt_bridge import process_mqtt_message
+from .forecasting.timegpt_client import TimeGPTClient
+from .anomaly.detector import AnomalyDetector, ANOMALY_THRESHOLDS
+from .alerts.state_machine import AlertStateMachine
+from .alerts.notifications import NotificationService
+from .realtime.websocket import manager as ws_manager
 
 app = FastAPI(title="AquaMine AI API")
 
@@ -81,12 +81,198 @@ def calculate_severity(confidence: float) -> Literal["none", "mild", "moderate",
         return "severe"
 
 
+def _calculate_forecast_confidence(
+    value: float, lower: Optional[float], upper: Optional[float], data_quality: float = 1.0
+) -> float:
+    if lower is None or upper is None:
+        base_confidence = 0.7
+    else:
+        span = abs(upper - lower)
+        base = max(abs(value), 1.0)
+        base_confidence = 1 - min(span / base, 1.0)
+    data_quality = max(min(data_quality, 1.0), 0.0)
+    confidence = base_confidence * (0.5 + 0.5 * data_quality)
+    return round(max(confidence, 0.0), 2)
+
+
+def _format_forecast_points(
+    forecast_values: list[dict[str, object]], data_quality: float = 1.0
+) -> list[dict[str, object]]:
+    points = []
+    for point in forecast_values or []:
+        if isinstance(point, dict):
+            timestamp = point.get("timestamp")
+            value = point.get("value")
+            lower = point.get("lower")
+            upper = point.get("upper")
+        else:
+            timestamp = getattr(point, "timestamp", None)
+            value = getattr(point, "value", None)
+            lower = getattr(point, "lower", None)
+            upper = getattr(point, "upper", None)
+
+        if value is None:
+            continue
+
+        points.append(
+            {
+                "timestamp": timestamp,
+                "ph_pred": float(value),
+                "confidence": _calculate_forecast_confidence(
+                    float(value), lower, upper, data_quality=data_quality
+                ),
+            }
+        )
+
+    return points
+
+
+def _format_anomaly_label(parameter: Optional[str]) -> str:
+    if not parameter:
+        return "Sensor"
+    if parameter.lower() == "ph":
+        return "pH"
+    return parameter.capitalize()
+
+
+def _format_anomaly_summary(anomaly: Optional[Anomaly]) -> dict[str, object]:
+    if not anomaly:
+        return {"score": 0.0, "severity": "none", "reason": "No anomalies detected"}
+
+    score = float(anomaly.anomaly_score or 0.0)
+    detection_method = (anomaly.detection_method or "").lower()
+    if "critical" in detection_method:
+        severity = "critical"
+    elif "warning" in detection_method:
+        severity = "warning"
+    elif score >= 8.0:
+        severity = "critical"
+    elif score >= 3.0:
+        severity = "warning"
+    else:
+        severity = "none"
+
+    label = _format_anomaly_label(anomaly.parameter)
+    if detection_method:
+        reason = f"{label} {detection_method.replace('_', ' ')}"
+    else:
+        reason = f"{label} anomaly detected"
+
+    return {"score": score, "severity": severity, "reason": reason}
+
+
+async def _get_latest_reading(db: AsyncSession, sensor_id: int) -> Optional[Reading]:
+    query = (
+        select(Reading)
+        .where(Reading.sensor_id == sensor_id)
+        .order_by(desc(Reading.timestamp))
+        .limit(1)
+    )
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
+
+
+def _format_current_sensor_state(latest: Optional[Reading]) -> dict[str, object]:
+    if not latest:
+        return {
+            "score": 0.0,
+            "severity": "unknown",
+            "reason": "No data",
+            "last_updated": None,
+        }
+
+    candidates: list[tuple[float, str, str]] = []
+    label = _format_anomaly_label("ph")
+    if latest.ph is not None:
+        if latest.ph < ANOMALY_THRESHOLDS["ph"]["critical_low"]:
+            candidates.append((10.0, "critical", f"{label} critical: {latest.ph:.2f}"))
+        elif latest.ph < ANOMALY_THRESHOLDS["ph"]["warning_low"]:
+            candidates.append((5.0, "warning", f"{label} warning: {latest.ph:.2f}"))
+        if latest.ph > ANOMALY_THRESHOLDS["ph"]["critical_high"]:
+            candidates.append((10.0, "critical", f"{label} critical: {latest.ph:.2f}"))
+        elif latest.ph > ANOMALY_THRESHOLDS["ph"]["warning_high"]:
+            candidates.append((5.0, "warning", f"{label} warning: {latest.ph:.2f}"))
+
+    label = _format_anomaly_label("turbidity")
+    if latest.turbidity is not None:
+        if latest.turbidity > ANOMALY_THRESHOLDS["turbidity"]["critical_high"]:
+            candidates.append((10.0, "critical", f"{label} critical: {latest.turbidity:.1f}"))
+        elif latest.turbidity > ANOMALY_THRESHOLDS["turbidity"]["warning_high"]:
+            candidates.append((5.0, "warning", f"{label} warning: {latest.turbidity:.1f}"))
+
+    label = _format_anomaly_label("temperature")
+    if latest.temperature is not None:
+        if latest.temperature > ANOMALY_THRESHOLDS["temperature"]["critical_high"]:
+            candidates.append((10.0, "critical", f"{label} critical: {latest.temperature:.1f}"))
+        elif latest.temperature > ANOMALY_THRESHOLDS["temperature"]["warning_high"]:
+            candidates.append((5.0, "warning", f"{label} warning: {latest.temperature:.1f}"))
+
+    if not candidates:
+        return {
+            "score": 0.0,
+            "severity": "normal",
+            "reason": "All parameters normal",
+            "last_updated": latest.timestamp,
+        }
+
+    score, severity, reason = max(candidates, key=lambda item: item[0])
+    return {
+        "score": score,
+        "severity": severity,
+        "reason": reason,
+        "last_updated": latest.timestamp,
+    }
+
+
+async def _get_latest_anomaly(
+    db: AsyncSession, sensor_id: Optional[int] = None
+) -> Optional[Anomaly]:
+    query = select(Anomaly).order_by(desc(Anomaly.timestamp)).limit(1)
+    if sensor_id is not None:
+        query = query.where(Anomaly.sensor_id == sensor_id)
+
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
+
+
 # --- Endpoints ---
 
 
-class ChatRequest(BaseModel):
+class ChatRequest(BaseSchema):
     message: str
     session_id: str
+
+
+class ForecastCompatibilityRequest(BaseSchema):
+    sensor_id: int
+
+
+class TimelineForecastPoint(BaseSchema):
+    timestamp: datetime
+    ph_pred: float
+    confidence: float
+
+
+class TimelineAnomalySummary(BaseSchema):
+    score: float
+    severity: str
+    reason: str
+    last_updated: Optional[datetime] = None
+
+
+class LatestReadingSnapshot(BaseSchema):
+    timestamp: datetime
+    ph: Optional[float] = None
+    turbidity: Optional[float] = None
+    temperature: Optional[float] = None
+
+
+class TimelineForecastResponse(BaseSchema):
+    forecast: List[TimelineForecastPoint]
+    anomaly: TimelineAnomalySummary
+    latest_reading: Optional[LatestReadingSnapshot] = None
+    history_hours: Optional[int] = None
+    warning: Optional[str] = None
 
 
 @app.get("/health")
@@ -171,7 +357,7 @@ async def list_sensors(db: AsyncSession = Depends(get_db)):
 
 @app.get("/api/v1/sensors/{sensor_id}/readings", response_model=List[ReadingResponse])
 async def get_sensor_readings(sensor_id: int, hours: int = 24, db: AsyncSession = Depends(get_db)):
-    start_time = datetime.now() - timedelta(hours=hours)
+    start_time = datetime.now(timezone.utc) - timedelta(hours=hours)
     query = (
         select(Reading)
         .where(Reading.sensor_id == sensor_id, Reading.timestamp >= start_time)
@@ -352,13 +538,102 @@ async def get_forecast(sensor_id: int, db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
+@app.post("/api/v1/forecast", response_model=TimelineForecastResponse)
+async def get_forecast_compatibility(
+    payload: ForecastCompatibilityRequest, db: AsyncSession = Depends(get_db)
+):
+    latest_reading = await _get_latest_reading(db, payload.sensor_id)
+    anomaly_summary = _format_current_sensor_state(latest_reading)
+
+    history_hours = None
+    if latest_reading:
+        history_window_start = datetime.now(timezone.utc) - timedelta(hours=168)
+        earliest_result = await db.execute(
+            select(Reading.timestamp)
+            .where(
+                Reading.sensor_id == payload.sensor_id,
+                Reading.timestamp >= history_window_start,
+            )
+            .order_by(Reading.timestamp)
+            .limit(1)
+        )
+        earliest = earliest_result.scalar_one_or_none()
+        if earliest:
+            history_hours = max(
+                int((latest_reading.timestamp - earliest).total_seconds() / 3600), 1
+            )
+
+    data_window_start = datetime.now(timezone.utc) - timedelta(hours=24)
+    count_result = await db.execute(
+        select(func.count())
+        .select_from(Reading)
+        .where(
+            Reading.sensor_id == payload.sensor_id,
+            Reading.timestamp >= data_window_start,
+            Reading.ph.is_not(None),
+        )
+    )
+    recent_ph_count = int(count_result.scalar_one() or 0)
+    if recent_ph_count < 12:
+        warning = "Insufficient data for pH forecast (need 24h of data)"
+        latest_snapshot = (
+            LatestReadingSnapshot(
+                timestamp=latest_reading.timestamp,
+                ph=latest_reading.ph,
+                turbidity=latest_reading.turbidity,
+                temperature=latest_reading.temperature,
+            )
+            if latest_reading
+            else None
+        )
+        return {
+            "forecast": [],
+            "anomaly": anomaly_summary,
+            "latest_reading": latest_snapshot,
+            "history_hours": history_hours,
+            "warning": warning,
+        }
+
+    prediction_query = (
+        select(Prediction)
+        .where(Prediction.sensor_id == payload.sensor_id, Prediction.parameter == "ph")
+        .order_by(desc(Prediction.created_at))
+        .limit(1)
+    )
+    result = await db.execute(prediction_query)
+    prediction = result.scalar_one_or_none()
+    data_quality = min(recent_ph_count / 24.0, 1.0)
+    forecast = _format_forecast_points(
+        prediction.forecast_values if prediction else [], data_quality=data_quality
+    )
+
+    latest_snapshot = (
+        LatestReadingSnapshot(
+            timestamp=latest_reading.timestamp,
+            ph=latest_reading.ph,
+            turbidity=latest_reading.turbidity,
+            temperature=latest_reading.temperature,
+        )
+        if latest_reading
+        else None
+    )
+
+    return {
+        "forecast": forecast,
+        "anomaly": anomaly_summary,
+        "latest_reading": latest_snapshot,
+        "history_hours": history_hours,
+        "warning": None,
+    }
+
+
 @app.post("/api/v1/forecast/generate")
 async def generate_forecast_endpoint(
     sensor_id: int, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
 ):
     """Generate forecast for a sensor."""
     # 1. Fetch historical data (7 days)
-    start_time = datetime.now() - timedelta(days=7)
+    start_time = datetime.now(timezone.utc) - timedelta(days=7)
     query = (
         select(Reading)
         .where(Reading.sensor_id == sensor_id, Reading.timestamp >= start_time)
@@ -421,6 +696,12 @@ async def generate_forecast_endpoint(
     return {"status": "success", "predictions_generated": count}
 
 
+@app.get("/api/v1/anomaly", response_model=TimelineAnomalySummary)
+async def get_anomaly_summary(sensor_id: Optional[int] = None, db: AsyncSession = Depends(get_db)):
+    anomaly = await _get_latest_anomaly(db, sensor_id)
+    return _format_anomaly_summary(anomaly)
+
+
 @app.get("/api/v1/anomalies", response_model=List[AnomalyResponse])
 async def list_anomalies(
     sensor_id: Optional[int] = None,
@@ -450,6 +731,28 @@ async def list_alerts(
     return result.scalars().all()
 
 
+@app.delete("/api/v1/test-data")
+async def clear_test_data(db: AsyncSession = Depends(get_db)):
+    anomalies_stmt = delete(Anomaly).where(
+        Anomaly.detection_method == "threshold_critical", Anomaly.value.in_([1.5, 2.0])
+    )
+    alerts_stmt = delete(Alert).where(
+        or_(
+            Alert.message.ilike("%PH critical: 1.50%"),
+            Alert.message.ilike("%PH critical: 2.00%"),
+        )
+    )
+
+    anomalies_result = await db.execute(anomalies_stmt)
+    alerts_result = await db.execute(alerts_stmt)
+    await db.commit()
+
+    return {
+        "anomalies_deleted": anomalies_result.rowcount or 0,
+        "alerts_deleted": alerts_result.rowcount or 0,
+    }
+
+
 @app.post("/api/v1/alerts/{alert_id}/acknowledge")
 async def acknowledge_alert(
     alert_id: int, username: str = "admin", db: AsyncSession = Depends(get_db)
@@ -460,7 +763,7 @@ async def acknowledge_alert(
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
 
-    alert.acknowledged_at = datetime.now()
+    alert.acknowledged_at = datetime.now(timezone.utc)
     alert.acknowledged_by = username
     await db.commit()
     return {"status": "acknowledged"}

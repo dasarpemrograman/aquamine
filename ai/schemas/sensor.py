@@ -1,9 +1,21 @@
 from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional
+from pydantic import ConfigDict, computed_field
+
+from .base import BaseSchema
+
+__all__: list[str] = [
+    "SensorBase",
+    "SensorCreate",
+    "SensorResponse",
+    "ReadingBase",
+    "ReadingCreate",
+    "ReadingResponse",
+    "SensorDataIngest",
+]
 
 
-class SensorBase(BaseModel):
+class SensorBase(BaseSchema):
     sensor_id: str
     name: str
     latitude: Optional[float] = None
@@ -22,7 +34,7 @@ class SensorResponse(SensorBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class ReadingBase(BaseModel):
+class ReadingBase(BaseSchema):
     timestamp: datetime
     ph: Optional[float] = None
     turbidity: Optional[float] = None
@@ -41,10 +53,17 @@ class ReadingResponse(ReadingBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @computed_field
+    @property
+    def ph_level(self) -> Optional[float]:
+        return self.ph
 
-class SensorDataIngest(BaseModel):
+
+class SensorDataIngest(BaseSchema):
     sensor_id: str
     timestamp: datetime
-    location: Optional[dict] = None  # {lat: float, lon: float}
-    readings: dict  # {ph: float, turbidity: float, temperature: float}
-    metadata: Optional[dict] = None  # {battery_voltage: float, signal_strength: int}
+    location: Optional[dict[str, float]] = None  # {lat: float, lon: float}
+    readings: dict[str, float | None]  # {ph: float, turbidity: float, temperature: float}
+    metadata: Optional[dict[str, float | int]] = (
+        None  # {battery_voltage: float, signal_strength: int}
+    )

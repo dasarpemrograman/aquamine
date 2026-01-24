@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle, Info } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
+import { formatWIB } from "@/lib/dateUtils";
 
 export default function AlertList() {
   const [alerts, setAlerts] = useState([]);
@@ -42,7 +43,7 @@ export default function AlertList() {
               <div>
                 <p className="font-semibold text-sm">Sensor {alert.sensor_id} - {alert.severity.toUpperCase()}</p>
                 <p className="text-sm text-gray-700">{alert.message}</p>
-                <p className="text-xs text-gray-500 mt-1">{new Date(alert.created_at).toLocaleString()}</p>
+                <p className="text-xs text-gray-500 mt-1">{formatWIB(alert.created_at)}</p>
               </div>
             </div>
           ))

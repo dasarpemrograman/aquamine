@@ -64,10 +64,10 @@ Day 15-16: Buffer + Final Submission
   - [ ] Sign up Nixtla account
   - [ ] Test API call with dummy pH time-series
   - [ ] Handle API errors/rate limits
-- [ ] XGBoost fallback model
-  - [ ] Feature engineering: lag features (t-1, t-7), rolling mean/std
-  - [ ] Train on synthetic data (create 100-day pH simulation)
-  - [ ] Serialize model (pickle/joblib)
+- [ ] ~~XGBoost fallback model~~ **SKIPPED: Using TimeGPT-only**
+  - [ ] ~~Feature engineering: lag features (t-1, t-7), rolling mean/std~~
+  - [ ] ~~Train on synthetic data (create 100-day pH simulation)~~
+  - [ ] ~~Serialize model (pickle/joblib)~~
 - [ ] Output: `/api/v1/forecast` endpoint spec (JSON schema)
 - **Deliverable:** Working forecast function (local test)
 - **Dependency:** None (parallel with others)
@@ -77,9 +77,9 @@ Day 15-16: Buffer + Final Submission
   - [ ] pH < 5.5 → warning
   - [ ] pH < 4.5 → critical
   - [ ] Turbidity > 50 NTU → warning
-- [ ] Isolation Forest anomaly scoring
-  - [ ] Train on synthetic normal data
-  - [ ] Output anomaly score (0-10)
+- [ ] ~~Isolation Forest anomaly scoring~~ **SKIPPED: Using threshold-based detection only**
+  - [ ] ~~Train on synthetic normal data~~
+  - [ ] ~~Output anomaly score (0-10)~~
 - [ ] Alert severity logic (combine threshold + anomaly score)
 - **Deliverable:** Anomaly detection function + unit tests
 - **Dependency:** None
@@ -103,14 +103,14 @@ Day 15-16: Buffer + Final Submission
 - [ ] Calibrate confidence intervals
 - [ ] Add model versioning (v1.0)
 - [ ] Document model parameters + accuracy metrics
-- **Deliverable:** Model card (accuracy, limitations, inputs/outputs)
+- **Deliverable:** Model card (accuracy, limitations, inputs/outputs) in `docs/ml1-model-card.md`
 
 #### Week 2 (29 Jan - 4 Feb)
 
 **Day 8-9 (29-30 Jan): Error Handling + Fallback**
-- [ ] TimeGPT failure → auto-fallback to XGBoost
+- [ ] ~~TimeGPT failure → auto-fallback to XGBoost~~ **SKIPPED: Using TimeGPT-only**
 - [ ] Missing data handling (interpolation/forward-fill)
-- [ ] Add prediction explanation (SHAP for XGBoost)
+- [ ] ~~Add prediction explanation (SHAP for XGBoost)~~ **SKIPPED: Using TimeGPT-only**
 - **Deliverable:** Robust inference pipeline
 
 **Day 10-11 (31 Jan - 1 Feb): Demo Scenarios**
@@ -156,7 +156,7 @@ Day 15-16: Buffer + Final Submission
 **Day 3 (24 Jan): Dataset Labeling**
 - [x] Create 50 labeled samples (Yellow Boy: yes/no) — achieved 112 original images
 - [x] Augmentation (brightness, contrast, rotation) via Roboflow
-- [x] Save as dataset (YOLO format with .txt labels)
+- [x] Save as dataset (YOLO format with .txt labels) at `ai/dataset/yellow-boy-detection.v2i.yolov8/`
 - **Deliverable:** Dataset v1.0 ✅
 - **Dependency:** None
 

@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -44,19 +44,25 @@ async def seed_database():
 
         # Day 1-3: Normal
         gen_normal = AMDWaterQualityGenerator(
-            start_date=datetime.now() - timedelta(days=7), days=3, interval_minutes=60
+            start_date=datetime.now(timezone.utc) - timedelta(days=7),
+            days=3,
+            interval_minutes=60,
         )
         df_normal = gen_normal.generate_normal_data()
 
         # Day 4-5: Warning (Drift down)
         gen_warning = AMDWaterQualityGenerator(
-            start_date=datetime.now() - timedelta(days=4), days=2, interval_minutes=60
+            start_date=datetime.now(timezone.utc) - timedelta(days=4),
+            days=2,
+            interval_minutes=60,
         )
         df_warning = gen_warning.generate_warning_data()
 
         # Day 6-7: Critical (Crash)
         gen_critical = AMDWaterQualityGenerator(
-            start_date=datetime.now() - timedelta(days=2), days=2, interval_minutes=60
+            start_date=datetime.now(timezone.utc) - timedelta(days=2),
+            days=2,
+            interval_minutes=60,
         )
         df_critical = gen_critical.generate_critical_data()
 

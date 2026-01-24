@@ -41,8 +41,8 @@ services:
       context: ./dashboard
     volumes:
       - ./dashboard:/app
-      - /app/node_modules
-      - /app/.next
+      - dashboard-node-modules:/app/node_modules
+      - dashboard-next:/app/.next
     command: bun run dev
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
@@ -54,3 +54,5 @@ services:
 
 volumes:
   db-data:
+  dashboard-node-modules:
+  dashboard-next:
