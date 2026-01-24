@@ -78,11 +78,19 @@ chat_orchestrator = ChatOrchestrator()
 
 
 def calculate_severity(confidence: float) -> Literal["none", "mild", "moderate", "severe"]:
-    if confidence < 0.3:
+    """Calculate severity based on detection confidence.
+
+    Thresholds:
+    - < 0.5 (50%): none (false positive likely)
+    - 0.5-0.65:    mild
+    - 0.65-0.8:    moderate
+    - >= 0.8:      severe
+    """
+    if confidence < 0.5:
         return "none"
-    elif confidence < 0.5:
+    elif confidence < 0.65:
         return "mild"
-    elif confidence < 0.7:
+    elif confidence < 0.8:
         return "moderate"
     else:
         return "severe"
@@ -340,14 +348,24 @@ async def analyze_image(file: UploadFile | None = File(None)):
         return error_response(500, "INFERENCE_FAILED", f"Model inference failed: {str(e)}")
     elapsed_ms = int((time.perf_counter() - start_time) * 1000)
 
+    # Detection confidence threshold for yellow boy
+    DETECTION_THRESHOLD = 0.65
+
+    # Filter detections by threshold
+    valid_detections = [d for d in detections if d.confidence >= DETECTION_THRESHOLD]
+
     bboxes = [
         BoundingBox(x=d.x, y=d.y, width=d.width, height=d.height, confidence=d.confidence)
-        for d in detections
+        for d in valid_detections
     ]
     highest = max(bboxes, key=lambda b: b.confidence) if bboxes else None
     max_conf = highest.confidence if highest else 0.0
 
+    # Detected = True if we have at least one detection above threshold
+    detected = len(bboxes) > 0
+
     return ImageAnalysisResponse(
+        detected=detected,
         confidence=max_conf,
         severity=calculate_severity(max_conf),
         bbox=highest,
