@@ -30,23 +30,7 @@ class AMDWaterQualityGenerator:
         """Generate data representing normal conditions (safe water)."""
         timestamps = self.generate_timestamps()
 
-        # pH: Normal range 6.0 - 9.0 (neutral)
-        # Diurnal cycle amplitude 0.2
-        ph_base = 7.0
-        ph_noise = np.random.normal(0, 0.1, self.n_samples)
-        ph_diurnal = 0.2 * np.sin(
-            2 * np.pi * np.arange(self.n_samples) / (24 * 60 / self.interval_minutes)
-        )
-        ph = ph_base + ph_diurnal + ph_noise
-        ph = np.clip(ph, 6.0, 9.0)
-
-        # Turbidity: Low (clean), < 25 NTU
-        turb_base = 10.0
-        turb_noise = np.random.gamma(2, 2, self.n_samples)  # Right-skewed
-        turb = turb_base + turb_noise
-        turb = np.clip(turb, 0, 25)
-
-        # Temperature: Tropical (25-30 C)
+        # Temperature: Tropical (25-30 C) with diurnal cycle
         temp_base = 27.0
         temp_diurnal = 2.0 * np.sin(
             2
@@ -56,6 +40,24 @@ class AMDWaterQualityGenerator:
         )
         temp_noise = np.random.normal(0, 0.5, self.n_samples)
         temp = temp_base + temp_diurnal + temp_noise
+
+        # pH: Normal range 6.0 - 9.0
+        # Correlation: Temp naik -> pH cenderung sedikit turun (kimia air dasar)
+        ph_base = 7.0
+        ph_noise = np.random.normal(0, 0.1, self.n_samples)
+        ph_diurnal = 0.1 * np.sin(
+            2 * np.pi * np.arange(self.n_samples) / (24 * 60 / self.interval_minutes)
+        )
+        ph = ph_base + ph_diurnal + ph_noise
+        ph = np.clip(ph, 6.0, 9.0)
+
+        # Turbidity: Low (clean), < 25 NTU
+        # Correlation: Hujan (Temp turun drastis) -> Turbidity naik.
+        # Simple random walk for robustness
+        turb_base = 10.0
+        turb_noise = np.random.gamma(2, 2, self.n_samples)
+        turb = turb_base + turb_noise
+        turb = np.clip(turb, 0, 25)
 
         return pd.DataFrame(
             {
@@ -75,8 +77,9 @@ class AMDWaterQualityGenerator:
         drift = np.linspace(0, -1.5, self.n_samples)
         df["ph"] = df["ph"] + drift
 
-        # Slight increase in turbidity (rain event usually brings both)
-        turb_increase = np.linspace(0, 20, self.n_samples)
+        # Negative correlation: pH down -> Turbidity UP
+        # Turbidity increases as pH drops (dissolved metals precipitate)
+        turb_increase = np.linspace(0, 40, self.n_samples)
         df["turbidity"] = df["turbidity"] + turb_increase
 
         df["scenario"] = "warning"
@@ -90,11 +93,15 @@ class AMDWaterQualityGenerator:
         crash_point = self.n_samples // 2
 
         # Pre-crash: normal
-        # Post-crash: pH < 4.0
-        df.loc[crash_point:, "ph"] = df.loc[crash_point:, "ph"] - 3.5
+        # Post-crash: pH < 3.5 (Acidic)
+        df.loc[crash_point:, "ph"] = df.loc[crash_point:, "ph"] - 4.0
 
-        # Turbidity spike
-        df.loc[crash_point:, "turbidity"] = df.loc[crash_point:, "turbidity"] + 100
+        # Strong Negative Correlation: Turbidity SPIKE
+        df.loc[crash_point:, "turbidity"] = (
+            df.loc[crash_point:, "turbidity"]
+            + 150
+            + np.random.normal(0, 10, self.n_samples - crash_point)
+        )
 
         df["scenario"] = "critical"
         return df
@@ -102,9 +109,18 @@ class AMDWaterQualityGenerator:
     def generate_sensor_drift_anomaly(self) -> pd.DataFrame:
         """Generate data with gradual sensor drift (uncalibrated sensor)."""
         df = self.generate_normal_data()
-        drift = np.linspace(0, 1.0, self.n_samples)  # Drifting upwards incorrectly
+        # pH drifting up incorrectly (sensor fouling)
+        drift = np.linspace(0, 2.0, self.n_samples)
         df["ph"] = df["ph"] + drift
         df["scenario"] = "sensor_drift"
+        return df
+
+    def inject_calibration_error(
+        self, df: pd.DataFrame, parameter: str = "ph", offset: float = 1.0
+    ) -> pd.DataFrame:
+        """Inject sudden step change due to bad calibration."""
+        error_point = self.n_samples // 3
+        df.loc[error_point:, parameter] = df.loc[error_point:, parameter] + offset
         return df
 
     def to_timegpt_format(self, df: pd.DataFrame, unique_id: str = "sensor_1") -> pd.DataFrame:

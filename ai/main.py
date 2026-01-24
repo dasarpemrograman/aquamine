@@ -27,7 +27,15 @@ from ai.utils.responses import error_response
 
 # Import IoT/ML modules
 from ai.db.connection import get_db
-from ai.db.models import Sensor, Reading, Prediction, Alert, Anomaly, NotificationRecipient
+from ai.db.models import (
+    Sensor,
+    Reading,
+    Prediction,
+    Alert,
+    Anomaly,
+    NotificationRecipient,
+    SensorAlertState,
+)
 from ai.schemas.sensor import SensorResponse, ReadingResponse, SensorDataIngest
 from ai.schemas.forecast import PredictionResponse
 from ai.schemas.alert import AlertResponse, AlertCreate, AnomalyResponse, RecipientResponse
@@ -172,9 +180,29 @@ async def ingest_sensor_data(
         if not sensor:
             raise HTTPException(status_code=404, detail="Sensor not found after ingestion")
 
+        # --- Alert State Management (Persistence) ---
+        # 1. Fetch current state from DB
+        stmt = select(SensorAlertState).where(SensorAlertState.sensor_id == sensor.id)
+        result = await db.execute(stmt)
+        db_state = result.scalar_one_or_none()
+
+        if not db_state:
+            db_state = SensorAlertState(sensor_id=sensor.id, current_state="normal")
+            db.add(db_state)
+            await db.commit()
+            await db.refresh(db_state)
+
+        # 2. Sync state machine cache from DB
+        alert_sm.state_cache[sensor.id] = {
+            "state": db_state.current_state,
+            "last_alert_at": db_state.last_alert_at,
+        }
+
         anomalies = anomaly_detector.detect_threshold_anomalies(
             sensor.id, payload.readings, payload.timestamp
         )
+
+        alert_triggered = None  # Track if any alert happened to update DB
 
         if anomalies:
             for anom in anomalies:
@@ -193,6 +221,7 @@ async def ingest_sensor_data(
 
                 alert = alert_sm.process_anomaly(sensor.id, severity, message)
                 if alert:
+                    alert_triggered = alert  # Keep track
                     db_alert = Alert(
                         sensor_id=alert.sensor_id,
                         severity=alert.severity,
@@ -236,6 +265,7 @@ async def ingest_sensor_data(
             # Check for recovery
             alert = alert_sm.process_recovery(sensor.id)
             if alert:
+                alert_triggered = alert  # Keep track
                 db_alert = Alert(
                     sensor_id=alert.sensor_id,
                     severity=alert.severity,
@@ -272,6 +302,18 @@ async def ingest_sensor_data(
                     {"severity": alert.severity, "message": alert.message, "sensor_id": sensor.id},
                 )
 
+        # 3. Update Alert State in DB if changed
+        if alert_triggered:
+            # If severity is 'info' (recovery), new state is normal
+            new_state = "normal" if alert_triggered.severity == "info" else alert_triggered.severity
+            db_state.current_state = new_state
+            # We use DB timestamp for consistency, but alert_triggered doesn't have it (it's Pydantic)
+            # Use current time or db_alert.created_at if available.
+            # db_alert is local in loop, not available here easily. Use datetime.now()
+            db_state.last_alert_at = datetime.now(timezone.utc)
+            db.add(db_state)
+            await db.commit()
+
         await db.commit()
 
         await ws_manager.publish_update("sensor_reading", payload.model_dump(mode="json"))
@@ -297,10 +339,72 @@ async def get_forecast(sensor_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @app.post("/api/v1/forecast/generate")
-async def generate_forecast_endpoint(sensor_id: int, background_tasks: BackgroundTasks):
-    # TODO: Implement full forecast generation logic (fetch history -> TimeGPT -> Store)
-    # This is a placeholder as the core logic is in the TimeGPT client
-    return {"status": "generation_scheduled"}
+async def generate_forecast_endpoint(
+    sensor_id: int, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
+):
+    """Generate forecast for a sensor."""
+    # 1. Fetch historical data (7 days)
+    start_time = datetime.now() - timedelta(days=7)
+    query = (
+        select(Reading)
+        .where(Reading.sensor_id == sensor_id, Reading.timestamp >= start_time)
+        .order_by(Reading.timestamp)
+    )
+    result = await db.execute(query)
+    readings = result.scalars().all()
+
+    if not readings:
+        return {"status": "error", "message": "No data found for forecasting"}
+
+    # 2. Prepare data for TimeGPT
+    # We need a DataFrame with unique_id, ds, y
+    data = []
+    sensor_str = f"sensor_{sensor_id}"
+    for r in readings:
+        # Flatten parameters
+        if r.ph is not None:
+            data.append({"unique_id": f"{sensor_str}_ph", "ds": r.timestamp, "y": r.ph})
+        if r.turbidity is not None:
+            data.append(
+                {"unique_id": f"{sensor_str}_turbidity", "ds": r.timestamp, "y": r.turbidity}
+            )
+        if r.temperature is not None:
+            data.append(
+                {"unique_id": f"{sensor_str}_temperature", "ds": r.timestamp, "y": r.temperature}
+            )
+
+    import pandas as pd
+
+    df = pd.DataFrame(data)
+
+    # 3. Generate Forecast (Async)
+    # We run this in background or await if fast enough. Mock is fast.
+    # For now, let's await it to return immediate status.
+    forecasts = timegpt.generate_forecast(df, horizon=168)  # 7 days
+
+    # 4. Store Predictions
+    count = 0
+    for uid, points in forecasts.items():
+        # uid: sensor_1_ph -> parameter: ph
+        parameter = uid.split("_")[-1]
+
+        # Serialize values
+        forecast_values = [p.model_dump(mode="json") for p in points]
+
+        prediction = Prediction(
+            sensor_id=sensor_id,
+            forecast_start=points[0].timestamp,
+            forecast_end=points[-1].timestamp,
+            parameter=parameter,
+            forecast_values=forecast_values,
+            model_version="timegpt-1",
+        )
+        db.add(prediction)
+        count += 1
+
+    await db.commit()
+
+    return {"status": "success", "predictions_generated": count}
 
 
 @app.get("/api/v1/anomalies", response_model=List[AnomalyResponse])
