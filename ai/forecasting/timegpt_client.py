@@ -1,16 +1,16 @@
 import os
 import logging
-from typing import List, Dict, Any
+
 from datetime import datetime, timedelta, timezone
 import pandas as pd
 from nixtla import NixtlaClient
-from ..schemas.forecast import ForecastPoint, PredictionCreate
+from ..schemas.forecast import ForecastPoint
 
 logger = logging.getLogger(__name__)
 
 
 class TimeGPTClient:
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: str | None = None):
         self.api_key = api_key or os.getenv("NIXTLA_API_KEY")
         if not self.api_key:
             logger.warning("NIXTLA_API_KEY not found. Forecasting will fail.")
@@ -18,13 +18,77 @@ class TimeGPTClient:
         else:
             self.client = NixtlaClient(api_key=self.api_key)
 
+    def preprocess_timeseries(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Fill short gaps so TimeGPT sees a contiguous hourly series.
+
+        Strategy (per unique_id):
+        - Reindex to a complete hourly range
+        - Interpolate inside gaps up to 6 hours
+        - Forward-fill remaining NaNs up to 12 hours
+        - Drop anything still NaN (gap too large)
+        """
+
+        if df.empty:
+            return df
+
+        required_cols = {"unique_id", "ds", "y"}
+        missing = required_cols - set(df.columns)
+        if missing:
+            raise ValueError(f"TimeGPT input df missing columns: {sorted(missing)}")
+
+        df = df.copy()
+        df["ds"] = pd.to_datetime(df["ds"], utc=True)
+
+        value_cols = [c for c in df.columns if c not in ("unique_id", "ds")]
+        processed: list[pd.DataFrame] = []
+
+        for uid, group in df.groupby("unique_id"):
+            group = group.sort_values("ds").drop_duplicates(subset=["ds"], keep="last")
+
+            start = group["ds"].min()
+            end = group["ds"].max()
+            if start is pd.NaT or end is pd.NaT:
+                continue
+
+            hourly_index = pd.date_range(start=start, end=end, freq="h")
+            reindexed = group.set_index("ds")[value_cols].reindex(hourly_index)
+
+            numeric_cols = reindexed.select_dtypes(include="number").columns.tolist()
+            other_cols = [c for c in value_cols if c not in numeric_cols]
+
+            if numeric_cols:
+                reindexed.loc[:, numeric_cols] = reindexed.loc[:, numeric_cols].interpolate(
+                    method="time", limit=6, limit_area="inside"
+                )
+                reindexed.loc[:, numeric_cols] = reindexed.loc[:, numeric_cols].ffill(limit=12)
+
+            if other_cols:
+                reindexed.loc[:, other_cols] = reindexed.loc[:, other_cols].ffill(limit=12)
+
+            reindexed = reindexed.dropna(how="any")
+            if reindexed.empty:
+                continue
+
+            reindexed["unique_id"] = uid
+            reindexed = (
+                reindexed.reset_index()
+                .rename(columns={"index": "ds"})
+                .loc[:, ["unique_id", "ds", *value_cols]]
+            )
+            processed.append(reindexed)
+
+        if not processed:
+            return df.iloc[0:0].copy()
+
+        return pd.concat(processed, ignore_index=True)
+
     def generate_forecast(
         self,
         df: pd.DataFrame,
         horizon: int = 168,  # 7 days * 24 hours
         freq: str = "h",
-        level: List[int] = [90],
-    ) -> Dict[str, List[ForecastPoint]]:
+        level: list[int | float] = [90],
+    ) -> dict[str, list[ForecastPoint]]:
         """
         Generate forecast using TimeGPT.
         df must have columns: unique_id, ds, y
@@ -38,6 +102,8 @@ class TimeGPTClient:
             logger.info(
                 f"Generating forecast for {len(df['unique_id'].unique())} series, horizon={horizon}"
             )
+
+            df = self.preprocess_timeseries(df)
             forecast_df = self.client.forecast(
                 df=df, h=horizon, freq=freq, level=level, add_history=False
             )
@@ -67,7 +133,7 @@ class TimeGPTClient:
 
     def generate_mock_forecast(
         self, df: pd.DataFrame, horizon: int = 168
-    ) -> Dict[str, List[ForecastPoint]]:
+    ) -> dict[str, list[ForecastPoint]]:
         """Generate dummy forecast when API key is missing or fails."""
         results = {}
         future_dates = [datetime.now(timezone.utc) + timedelta(hours=i + 1) for i in range(horizon)]
