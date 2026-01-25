@@ -46,6 +46,8 @@ Tooling:
 
 ## Local Development
 
+**Note:** If switching from bun to npm locally, delete `node_modules` and `dashboard/.next`, then run `npm install` in dashboard directory.
+
 1) Copy env file:
 
 ```bash
@@ -64,6 +66,13 @@ docker compose up -d
 - Dashboard: `http://localhost:3000`
 
 ## VPS Deployment (Ubuntu 22.04)
+
+### Pre-Flight Checklist
+Before deploying to VPS, ensure:
+1. Update `.env` with VPS domain/IP (replace `localhost`).
+2. Ensure ports 80/443 are open in firewall (`sudo ufw allow 80/tcp && sudo ufw allow 443/tcp`).
+3. Verify Docker and Docker Compose are installed (`docker --version && docker compose version`).
+4. (Optional) Generate SSL certs before starting if using HTTPS (`sudo certbot certonly --standalone -d your-domain.com`).
 
 1) Install Docker + Compose on the VPS.
 2) Copy project and create `.env` based on `.env.example`.
@@ -94,6 +103,16 @@ docker compose -f docker-compose.prod.yml start nginx
 ```
 
 4) Mount `/etc/letsencrypt` into nginx and add an HTTPS server block in `deploy/nginx/default.conf`.
+
+## Troubleshooting
+
+Common VPS issues and fixes:
+
+- **502 Bad Gateway**: Check Nginx logs (`docker compose -f docker-compose.prod.yml logs nginx`) and API container status.
+- **"failed to fetch" in browser**: Open browser DevTools → Network tab. Check the request URL; it should be your VPS IP/domain, NOT localhost:8181. If it is localhost, update `.env` and rebuild.
+- **WebSocket not connecting**: Check Nginx logs for `/ws/` requests. Look for mixed content warnings in browser console (using ws:// on https:// page).
+- **CV upload fails (413)**: Check Nginx error logs (`docker compose -f docker-compose.prod.yml logs nginx | grep 413`).
+- **API/simulator crash loops**: Check DB health (`docker compose -f docker-compose.prod.yml ps db` should show "healthy").
 
 ## Notes
 
