@@ -8,6 +8,11 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "aquamine", "-d", "aquamine_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - aquamine-internal
     restart: unless-stopped
@@ -32,8 +37,10 @@ services:
       FONNTE_API_TOKEN: ${FONNTE_API_TOKEN}
       RESEND_API_KEY: ${RESEND_API_KEY}
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - aquamine-internal
     restart: unless-stopped
@@ -71,7 +78,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       PYTHONUNBUFFERED: "1"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - aquamine-internal
     restart: unless-stopped
