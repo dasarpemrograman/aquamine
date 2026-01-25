@@ -24,6 +24,7 @@ services:
       dockerfile: ./ai/Dockerfile
     command: uvicorn ai.main:app --host 0.0.0.0 --port 8181 --workers 4
     environment:
+      CORS_ORIGINS: ${CORS_ORIGINS}
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       NIXTLA_API_KEY: ${NIXTLA_API_KEY}
@@ -42,6 +43,10 @@ services:
       context: ./dashboard
       dockerfile: Dockerfile
       target: production
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+        - NEXT_PUBLIC_WS_BASE_URL=${NEXT_PUBLIC_WS_BASE_URL}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
       NEXT_PUBLIC_WS_BASE_URL: ${NEXT_PUBLIC_WS_BASE_URL}
