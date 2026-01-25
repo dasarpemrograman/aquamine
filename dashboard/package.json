@@ -12,7 +12,6 @@
   "dependencies": {
     "@influxdata/influxdb3-client": "^2.0.0",
     "@tailwindcss/typography": "^0.5.19",
-  "devDependencies": {
     "lucide-react": "^0.563.0",
     "next": "16.1.4",
     "react": "19.2.3",
