@@ -196,7 +196,7 @@ export default function RecipientsPage() {
   };
 
   return (
-    <div className="p-8 bg-gray-50 dark:bg-black min-h-screen">
+    <div className="p-8 bg-white min-h-screen">
       {/* Toast Notification */}
       {toast && (
         <div className={`fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 text-white transition-opacity ${
@@ -207,7 +207,7 @@ export default function RecipientsPage() {
       )}
 
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">Notification Recipients</h1>
+        <h1 className="text-3xl font-bold text-zinc-900">Notification Recipients</h1>
         <button
           onClick={openAddModal}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center gap-2 transition-colors"
@@ -222,30 +222,30 @@ export default function RecipientsPage() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
       ) : (
-        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow overflow-hidden">
+        <div className="bg-white rounded-lg shadow overflow-hidden">
           {recipients.length === 0 ? (
-            <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+            <div className="p-8 text-center text-gray-500">
               No recipients found. Add one to get started.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left">
-                <thead className="bg-gray-50 dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700">
+                <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-6 py-3 text-sm font-medium text-gray-500 dark:text-gray-400">Name</th>
-                    <th className="px-6 py-3 text-sm font-medium text-gray-500 dark:text-gray-400">Contact Info</th>
-                    <th className="px-6 py-3 text-sm font-medium text-gray-500 dark:text-gray-400">Status</th>
-                    <th className="px-6 py-3 text-sm font-medium text-gray-500 dark:text-gray-400">Preferences</th>
-                    <th className="px-6 py-3 text-sm font-medium text-gray-500 dark:text-gray-400 text-right">Actions</th>
+                    <th className="px-6 py-3 text-sm font-medium text-gray-500">Name</th>
+                    <th className="px-6 py-3 text-sm font-medium text-gray-500">Contact Info</th>
+                    <th className="px-6 py-3 text-sm font-medium text-gray-500">Status</th>
+                    <th className="px-6 py-3 text-sm font-medium text-gray-500">Preferences</th>
+                    <th className="px-6 py-3 text-sm font-medium text-gray-500 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-zinc-800">
+                <tbody className="divide-y divide-gray-200">
                   {recipients.map((recipient) => (
-                    <tr key={recipient.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-gray-100">
+                    <tr key={recipient.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 font-medium text-zinc-900">
                         {recipient.name}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
+                      <td className="px-6 py-4 text-sm text-gray-600">
                         <div className="flex flex-col gap-1">
                           {recipient.phone && <span>📞 {recipient.phone}</span>}
                           {recipient.email && <span>✉️ {recipient.email}</span>}
@@ -255,8 +255,8 @@ export default function RecipientsPage() {
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           recipient.is_active 
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                            : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-gray-100 text-gray-800'
                         }`}>
                           {recipient.is_active ? 'Active' : 'Inactive'}
                         </span>
@@ -264,12 +264,12 @@ export default function RecipientsPage() {
                       <td className="px-6 py-4">
                         <div className="flex gap-2">
                           <span title="Notify Warning" className={`p-1 rounded ${
-                            recipient.notify_warning ? 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400' : 'text-gray-300 dark:text-zinc-700'
+                            recipient.notify_warning ? 'text-yellow-600 bg-yellow-100' : 'text-gray-300'
                           }`}>
                             <AlertTriangle size={18} />
                           </span>
                           <span title="Notify Critical" className={`p-1 rounded ${
-                            recipient.notify_critical ? 'text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400' : 'text-gray-300 dark:text-zinc-700'
+                            recipient.notify_critical ? 'text-red-600 bg-red-100' : 'text-gray-300'
                           }`}>
                             <AlertOctagon size={18} />
                           </span>
@@ -305,15 +305,15 @@ export default function RecipientsPage() {
       {/* Delete Confirmation Modal */}
       {deleteConfirmOpen !== null && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-zinc-900 rounded-lg p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">Delete Recipient?</h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-xl">
+            <h3 className="text-lg font-bold text-zinc-900 mb-2">Delete Recipient?</h3>
+            <p className="text-gray-600 mb-6">
               Are you sure you want to delete this recipient? This action cannot be undone.
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDeleteConfirmOpen(null)}
-                className="px-4 py-2 rounded text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-zinc-800 transition-colors"
+                className="px-4 py-2 rounded text-gray-600 hover:bg-gray-100 transition-colors"
               >
                 Cancel
               </button>
@@ -331,26 +331,26 @@ export default function RecipientsPage() {
       {/* Create/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-zinc-900 rounded-lg max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 dark:border-zinc-700 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+          <div className="bg-white rounded-lg max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-zinc-900">
                 {editingRecipient ? "Edit Recipient" : "Add New Recipient"}
               </h2>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
                 <X size={24} />
               </button>
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className={`w-full px-3 py-2 border rounded-md dark:bg-zinc-800 dark:border-zinc-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     formErrors.name ? "border-red-500" : "border-gray-300"
                   }`}
                   placeholder="John Doe"
@@ -359,14 +359,14 @@ export default function RecipientsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Phone (WhatsApp)
                 </label>
                 <input
                   type="text"
                   value={formData.phone}
                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                  className={`w-full px-3 py-2 border rounded-md dark:bg-zinc-800 dark:border-zinc-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     formErrors.phone ? "border-red-500" : "border-gray-300"
                   }`}
                   placeholder="628123456789"
@@ -375,14 +375,14 @@ export default function RecipientsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
                 </label>
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className={`w-full px-3 py-2 border rounded-md dark:bg-zinc-800 dark:border-zinc-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     formErrors.email ? "border-red-500" : "border-gray-300"
                   }`}
                   placeholder="john@example.com"
@@ -404,11 +404,11 @@ export default function RecipientsPage() {
                     onChange={(e) => setFormData({...formData, is_active: e.target.checked})}
                     className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
                   />
-                  <span className="text-gray-700 dark:text-gray-300">Active (Receive Notifications)</span>
+                  <span className="text-gray-700">Active (Receive Notifications)</span>
                 </label>
 
-                <div className="border-t border-gray-100 dark:border-zinc-800 pt-3">
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Notification Types</p>
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Notification Types</p>
                   <div className="flex flex-col gap-2">
                     <label className="flex items-center space-x-3 cursor-pointer">
                       <input
@@ -417,7 +417,7 @@ export default function RecipientsPage() {
                         onChange={(e) => setFormData({...formData, notify_warning: e.target.checked})}
                         className="w-5 h-5 text-yellow-500 rounded focus:ring-yellow-400"
                       />
-                      <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <span className="text-gray-700 flex items-center gap-2">
                         <AlertTriangle size={16} className="text-yellow-500" />
                         Warning Alerts
                       </span>
@@ -430,7 +430,7 @@ export default function RecipientsPage() {
                         onChange={(e) => setFormData({...formData, notify_critical: e.target.checked})}
                         className="w-5 h-5 text-red-600 rounded focus:ring-red-500"
                       />
-                      <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                      <span className="text-gray-700 flex items-center gap-2">
                         <AlertOctagon size={16} className="text-red-600" />
                         Critical Alerts
                       </span>
@@ -443,7 +443,7 @@ export default function RecipientsPage() {
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded transition-colors"
                 >
                   Cancel
                 </button>

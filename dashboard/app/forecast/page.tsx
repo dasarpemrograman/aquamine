@@ -10,9 +10,9 @@ export default function ForecastPage() {
   const { lastMessage, isConnected } = useWebSocket(wsUrl);
 
   return (
-    <div className="p-8 bg-gray-50 min-h-screen">
+    <div className="p-8 bg-white min-h-screen">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">AquaMine AI Dashboard</h1>
+        <h1 className="text-3xl font-bold text-zinc-900">AquaMine AI Dashboard</h1>
         <div className={`px-3 py-1 rounded text-sm ${isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
             {isConnected ? 'Real-time Connected' : 'Connecting...'}
         </div>
