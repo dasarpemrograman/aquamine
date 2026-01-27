@@ -1,0 +1,9 @@
+/* Plus Jakarta Sans font import for Next.js (dashboard)
+   Place this in /dashboard/app/fonts/plus-jakarta-sans.css
+   Source: Google Fonts CDN
+*/
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap');
+
+:root {
+  --font-plus-jakarta-sans: 'Plus Jakarta Sans', Arial, Helvetica, sans-serif;
+}
