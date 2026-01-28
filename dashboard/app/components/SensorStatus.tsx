@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import { StatusChip } from "@/app/components/ui/StatusChip";
-import { Activity, Battery, Signal } from "lucide-react";
+import { Activity, Battery, Signal, WifiOff } from "lucide-react";
 
 export default function SensorStatus() {
   const [sensors, setSensors] = useState([]);
@@ -34,17 +34,28 @@ export default function SensorStatus() {
                 size="sm"
               />
             </div>
-            <div className="text-sm text-gray-500">ID: {sensor.sensor_id}</div>
-            <div className="flex gap-4 mt-2">
-                <div className="flex items-center gap-1 text-xs text-gray-600">
-                    <Battery size={14} /> 100%
-                </div>
-                <div className="flex items-center gap-1 text-xs text-gray-600">
-                    <Signal size={14} /> -65 dBm
-                </div>
+
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              <div className="flex items-center gap-2 text-xs text-foreground-muted bg-background/50 p-2 rounded-lg">
+                <Battery size={14} className={sensor.battery < 20 ? "text-danger" : "text-success"} />
+                <span>Battery: 100%</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-foreground-muted bg-background/50 p-2 rounded-lg">
+                <Signal size={14} className="text-primary" />
+                <span>Signal: -65 dBm</span>
+              </div>
             </div>
+            
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary/0 via-primary/5 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
           </div>
         ))}
+
+        {sensors.length === 0 && (
+          <div className="text-center py-8 text-foreground-muted">
+            <WifiOff className="mx-auto w-8 h-8 mb-2 opacity-50" />
+            <p>No sensors connected</p>
+          </div>
+        )}
       </div>
     </GlassCard>
   );

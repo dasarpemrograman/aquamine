@@ -11,13 +11,6 @@ import { Camera, Video, Image as ImageIcon, Sparkles } from "lucide-react";
 type Mode = "live" | "video" | "image";
 
 export default function CVAnalysisPage() {
-  /**
-   * CV DEMO CHECKLIST:
-   * 1. Live Camera: Start Camera → Start Inference → See bboxes update ~1 FPS
-   * 2. Video File: Upload video → Play → Start Inference → See bboxes
-   * 3. Image Upload: Upload image → See analysis result (original feature)
-   * 4. Mode Switching: Verify camera stops when switching away from Live
-   */
   const [mode, setMode] = useState<Mode>("live");
 
   const liveStreamRef = useRef<MediaStream | null>(null);

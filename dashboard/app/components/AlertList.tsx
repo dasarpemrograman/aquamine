@@ -34,7 +34,7 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h" }:
       }
     }
     fetchAlerts();
-    const interval = setInterval(fetchAlerts, 10000); // Refresh every 10s
+    const interval = setInterval(fetchAlerts, 10000);
     return () => clearInterval(interval);
   }, []);
 

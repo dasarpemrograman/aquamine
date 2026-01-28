@@ -199,6 +199,7 @@ export default function Home() {
                   <AlertList />
               </div>
           </div>
+           <div className="absolute right-0 bottom-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl -mr-8 -mb-8" />
         </div>
       </div>
     </div>

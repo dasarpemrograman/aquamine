@@ -231,7 +231,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
         )}
       </div>
 
-      <div className="h-96">
+      <div className="h-96 w-full">
         {data.length ? (
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data}>
@@ -315,7 +315,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
                   stroke="#0ea5e9"
                   strokeWidth={2}
                   label={{
-                    value: `Last Reading (${formatWIBShort(lastReadingTimestamp)})`,
+                    value: `Last Reading`,
                     position: "top",
                     fill: "#0ea5e9",
                     fontSize: 11,
@@ -333,14 +333,19 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
 
       <div className="mt-4 space-y-1 text-sm text-slate-600">
         {latestReading ? (
-          <div>
-            Last Reading: pH {latestReading.ph?.toFixed(2) ?? "--"} at{" "}
-            {formatWIB(latestReading.timestamp)}
+          <div className="p-3 bg-background/50 rounded-xl border border-white/5">
+            <span className="block text-xs font-bold uppercase tracking-wider mb-1 text-primary">Last Reading</span>
+             pH {latestReading.ph?.toFixed(2) ?? "--"} at {formatWIB(latestReading.timestamp)}
           </div>
         ) : (
-          <div>Last Reading: No data</div>
+          <div className="p-3 bg-background/50 rounded-xl border border-white/5">Last Reading: No data</div>
         )}
-        {forecastStart ? <div>Forecast start: {forecastStart}</div> : null}
+        {forecastStart ? (
+           <div className="p-3 bg-background/50 rounded-xl border border-white/5">
+              <span className="block text-xs font-bold uppercase tracking-wider mb-1 text-primary">Forecast Start</span>
+              {forecastStart}
+           </div>
+        ) : null}
       </div>
 
       {anomaly && anomaly.reason ? (

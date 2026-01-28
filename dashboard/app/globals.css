@@ -37,6 +37,9 @@
   --color-muted: var(--color-text-muted);
 
   --font-sans: var(--font-plus-jakarta-sans);
+  
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
 }
 
 body {

@@ -154,7 +154,6 @@ export default function ImageUploader() {
           disabled={loading}
         />
 
-        {/* Preview Area */}
         {preview && (
           <div className="relative w-full">
             <img 
@@ -199,10 +198,10 @@ export default function ImageUploader() {
                     top: `${bbox.y * scaleY}px`,
                     width: `${bbox.width * scaleX}px`,
                     height: `${bbox.height * scaleY}px`,
-                    boxShadow: '0 0 20px rgba(0,0,0,0.1)'
+                    boxShadow: '0 0 20px rgba(0,0,0,0.3)'
                   }}
                 >
-                  <div className={`absolute -top-7 left-0 px-2 py-0.5 text-xs font-bold text-white ${styles.bg} rounded-sm shadow-sm`}>
+                  <div className={`absolute -top-7 left-0 px-2 py-0.5 text-xs font-bold text-background ${styles.bg} rounded-sm shadow-sm`}>
                     {(bbox.confidence * 100).toFixed(0)}%
                   </div>
                 </div>

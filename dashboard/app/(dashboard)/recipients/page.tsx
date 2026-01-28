@@ -36,7 +36,6 @@ export default function RecipientsPage() {
   const [editingRecipient, setEditingRecipient] = useState<Recipient | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<number | null>(null);
   
-  // Form State
   const [formData, setFormData] = useState<RecipientFormData>({
     name: "",
     phone: "",
@@ -48,7 +47,6 @@ export default function RecipientsPage() {
   const [formErrors, setFormErrors] = useState<{[key: string]: string}>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Toast State
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
   useEffect(() => {
@@ -92,7 +90,6 @@ export default function RecipientsPage() {
     }
 
     if (formData.phone) {
-      // Basic validation for ID/global phone (08xx or 62xx)
       if (!/^(08|62)\d+$/.test(formData.phone)) {
         errors.phone = "Phone must start with 08 or 62 and contain only digits";
       }
@@ -313,7 +310,6 @@ export default function RecipientsPage() {
         </GlassPanel>
       </div>
 
-      {/* Delete Confirmation Modal */}
       {deleteConfirmOpen !== null && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="glass p-6 rounded-3xl max-w-sm w-full shadow-2xl">
@@ -339,7 +335,6 @@ export default function RecipientsPage() {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="glass p-0 rounded-3xl max-w-md w-full shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
