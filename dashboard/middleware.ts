@@ -1,4 +1,4 @@
-import { clerkClient, clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 const isPublicRoute = createRouteMatcher([
@@ -10,7 +10,7 @@ const isPublicRoute = createRouteMatcher([
 const isAccessPendingRoute = createRouteMatcher(["/access-pending(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
 
   if (userId && req.nextUrl.pathname.startsWith('/login')) {
     return NextResponse.redirect(new URL("/", req.url));
@@ -24,10 +24,7 @@ export default clerkMiddleware(async (auth, req) => {
     return;
   }
 
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  
-  const allowlisted = user.publicMetadata.allowlisted === true;
+  const allowlisted = sessionClaims?.metadata?.allowlisted === true;
 
   if (!allowlisted && !isAccessPendingRoute(req)) {
     return NextResponse.redirect(new URL("/access-pending", req.url));

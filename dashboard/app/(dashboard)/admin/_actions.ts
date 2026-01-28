@@ -4,38 +4,26 @@ import { clerkClient } from '@clerk/nextjs/server'
 import { checkRole, Role } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 
-export async function listUsers() {
+export async function listUsers(params?: { limit?: number; offset?: number }) {
   if (!await checkRole('superadmin')) {
     throw new Error('Unauthorized')
   }
 
   const client = await clerkClient()
-  const limit = 100
-  let offset = 0
-  const users = [] as unknown[]
+  const limit = params?.limit ?? 20
+  const offset = params?.offset ?? 0
 
-  while (true) {
-    const response = await client.users.getUserList({ limit, offset })
-    const page = Array.isArray(response) ? response : response.data
+  const [response, totalCount] = await Promise.all([
+    client.users.getUserList({ limit, offset }),
+    client.users.getCount(),
+  ])
 
-    users.push(...page)
+  const users = Array.isArray(response) ? response : response.data
 
-    if (Array.isArray(response) || page.length < limit) {
-      break
-    }
-
-    offset += limit
+  return {
+    users: JSON.parse(JSON.stringify(users)),
+    totalCount,
   }
-
-  return JSON.parse(JSON.stringify(users))
-}
-
-type PublicMetadata = Record<string, unknown>
-
-const getPublicMetadata = async (userId: string) => {
-  const client = await clerkClient()
-  const user = await client.users.getUser(userId)
-  return (user.publicMetadata ?? {}) as PublicMetadata
 }
 
 export async function setRole(userId: string, role: Role | null) {
@@ -44,18 +32,9 @@ export async function setRole(userId: string, role: Role | null) {
   }
 
   const client = await clerkClient()
-  const currentMetadata = await getPublicMetadata(userId)
-  const nextMetadata = {
-    ...currentMetadata,
-    role: role ?? undefined,
-  } as PublicMetadata
-
-  if (role === null) {
-    delete (nextMetadata as { role?: unknown }).role
-  }
-
+  
   await client.users.updateUserMetadata(userId, {
-    publicMetadata: nextMetadata,
+    publicMetadata: { role },
   })
   
   revalidatePath('/admin/users')
@@ -68,14 +47,9 @@ export async function setAllowlisted(userId: string, allowlisted: boolean) {
   }
 
   const client = await clerkClient()
-  const currentMetadata = await getPublicMetadata(userId)
-  const nextMetadata = {
-    ...currentMetadata,
-    allowlisted,
-  } as PublicMetadata
 
   await client.users.updateUserMetadata(userId, {
-    publicMetadata: nextMetadata,
+    publicMetadata: { allowlisted },
   })
   
   revalidatePath('/admin/users')
