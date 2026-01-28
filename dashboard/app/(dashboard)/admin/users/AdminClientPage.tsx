@@ -29,7 +29,7 @@ export default function AdminClientPage() {
 
   useEffect(() => {
     loadData();
-  }, [activeTab]);
+  }, []);
 
   useEffect(() => {
     if (toast) {

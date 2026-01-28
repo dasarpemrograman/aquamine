@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { plusJakartaSans } from "./fonts/plus-jakarta-sans";
 import "./globals.css";
 
-import { bootstrapSuperadmin } from "@/lib/bootstrap";
 
 export const metadata: Metadata = {
   title: "AquaMine Dashboard",
@@ -15,20 +14,14 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  try {
-    await bootstrapSuperadmin();
-  } catch (error) {
-    console.error("Bootstrap error:", error);
-  }
-
   return (
     <ClerkProvider
       appearance={{
         elements: {
-          footer: "hidden",
-          footerAction: "hidden",
-          footerActionText: "hidden",
-          footerActionLink: "hidden",
+          footer: { display: "none" },
+          footerAction: { display: "none" },
+          footerActionText: { display: "none" },
+          footerActionLink: { display: "none" },
         },
       }}
     >

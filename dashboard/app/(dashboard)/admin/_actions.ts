@@ -10,9 +10,11 @@ export async function listUsers() {
   }
 
   const client = await clerkClient()
+  type ClerkClient = Awaited<ReturnType<typeof clerkClient>>
+  type ClerkUser = Awaited<ReturnType<ClerkClient["users"]["getUser"]>>
   const limit = 100
   let offset = 0
-  const users = [] as unknown[]
+  const users = [] as ClerkUser[]
 
   while (true) {
     const response = await client.users.getUserList({ limit, offset })
