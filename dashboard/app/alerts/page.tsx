@@ -7,7 +7,7 @@ import { SectionHeader } from "@/app/components/ui/SectionHeader";
 
 export default function AlertsPage() {
   const [severityFilter, setSeverityFilter] = useState("all");
-  const [timeRange, setTimeRange] = useState("24h");
+  const [timeRange, setTimeRange] = useState("30d");
 
   return (
     <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">

@@ -168,14 +168,18 @@ export default function Home() {
                             <h3 className="text-lg font-bold text-slate-800">Quick Actions</h3>
                         </div>
                         <div className="grid grid-cols-2 gap-3 flex-1">
-                            <div className="p-3 rounded-lg bg-white/50 border border-white/60 hover:bg-white hover:border-cyan-200 transition-all text-sm font-medium text-slate-600 flex flex-col items-center justify-center gap-2 group cursor-pointer h-full min-h-[100px]">
-                                <Waves size={18} className="text-cyan-600 group-hover:scale-110 transition-transform" />
-                                <span>Forecast</span>
-                            </div>
-                            <div className="p-3 rounded-lg bg-white/50 border border-white/60 hover:bg-white hover:border-rose-200 transition-all text-sm font-medium text-slate-600 flex flex-col items-center justify-center gap-2 group cursor-pointer h-full min-h-[100px]">
-                                <AlertTriangle size={18} className="text-rose-500 group-hover:scale-110 transition-transform" />
-                                <span>Alerts</span>
-                            </div>
+                            <Link href="/forecast" className="block h-full">
+                                <div className="p-3 rounded-lg bg-white/50 border border-white/60 hover:bg-white hover:border-cyan-200 transition-all text-sm font-medium text-slate-600 flex flex-col items-center justify-center gap-2 group cursor-pointer h-full min-h-[100px]">
+                                    <Waves size={18} className="text-cyan-600 group-hover:scale-110 transition-transform" />
+                                    <span>Forecast</span>
+                                </div>
+                            </Link>
+                            <Link href="/alerts" className="block h-full">
+                                <div className="p-3 rounded-lg bg-white/50 border border-white/60 hover:bg-white hover:border-rose-200 transition-all text-sm font-medium text-slate-600 flex flex-col items-center justify-center gap-2 group cursor-pointer h-full min-h-[100px]">
+                                    <AlertTriangle size={18} className="text-rose-500 group-hover:scale-110 transition-transform" />
+                                    <span>Alerts</span>
+                                </div>
+                            </Link>
                         </div>
                     </div>
                 </GlassCard>
