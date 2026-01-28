@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Edit2, Trash2, X, AlertTriangle, AlertOctagon, Check } from "lucide-react";
+import { Plus, Edit2, Trash2, X, AlertTriangle, AlertOctagon, Check, Mail, Phone } from "lucide-react";
 
 interface Recipient {
   id: number;
@@ -33,7 +33,6 @@ export default function RecipientsPage() {
   const [editingRecipient, setEditingRecipient] = useState<Recipient | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<number | null>(null);
   
-  // Form State
   const [formData, setFormData] = useState<RecipientFormData>({
     name: "",
     phone: "",
@@ -45,7 +44,6 @@ export default function RecipientsPage() {
   const [formErrors, setFormErrors] = useState<{[key: string]: string}>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Toast State
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
   useEffect(() => {
@@ -89,7 +87,6 @@ export default function RecipientsPage() {
     }
 
     if (formData.phone) {
-      // Basic validation for ID/global phone (08xx or 62xx)
       if (!/^(08|62)\d+$/.test(formData.phone)) {
         errors.phone = "Phone must start with 08 or 62 and contain only digits";
       }
@@ -196,21 +193,23 @@ export default function RecipientsPage() {
   };
 
   return (
-    <div className="p-8 bg-white min-h-screen">
-      {/* Toast Notification */}
+    <div className="space-y-8">
       {toast && (
         <div className={`fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 text-white transition-opacity ${
-          toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+          toast.type === 'success' ? 'bg-success' : 'bg-danger'
         }`}>
           {toast.message}
         </div>
       )}
 
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-zinc-900">Notification Recipients</h1>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Notification Recipients</h1>
+          <p className="text-foreground-muted mt-1">Manage who receives alerts via WhatsApp or Email.</p>
+        </div>
         <button
           onClick={openAddModal}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center gap-2 transition-colors"
+          className="bg-primary hover:bg-primary-glow text-background font-bold px-4 py-2 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-primary/20"
         >
           <Plus size={18} />
           Add Recipient
@@ -219,59 +218,59 @@ export default function RecipientsPage() {
 
       {loading ? (
         <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="bg-surface border border-white/5 rounded-2xl shadow-lg overflow-hidden">
           {recipients.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-12 text-center text-foreground-muted">
               No recipients found. Add one to get started.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-background/50 border-b border-white/5">
                   <tr>
-                    <th className="px-6 py-3 text-sm font-medium text-gray-500">Name</th>
-                    <th className="px-6 py-3 text-sm font-medium text-gray-500">Contact Info</th>
-                    <th className="px-6 py-3 text-sm font-medium text-gray-500">Status</th>
-                    <th className="px-6 py-3 text-sm font-medium text-gray-500">Preferences</th>
-                    <th className="px-6 py-3 text-sm font-medium text-gray-500 text-right">Actions</th>
+                    <th className="px-6 py-4 text-sm font-medium text-foreground-muted">Name</th>
+                    <th className="px-6 py-4 text-sm font-medium text-foreground-muted">Contact Info</th>
+                    <th className="px-6 py-4 text-sm font-medium text-foreground-muted">Status</th>
+                    <th className="px-6 py-4 text-sm font-medium text-foreground-muted">Preferences</th>
+                    <th className="px-6 py-4 text-sm font-medium text-foreground-muted text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-white/5">
                   {recipients.map((recipient) => (
-                    <tr key={recipient.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-zinc-900">
+                    <tr key={recipient.id} className="hover:bg-white/5 transition-colors">
+                      <td className="px-6 py-4 font-medium text-foreground">
                         {recipient.name}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
+                      <td className="px-6 py-4 text-sm text-foreground-muted">
                         <div className="flex flex-col gap-1">
-                          {recipient.phone && <span>📞 {recipient.phone}</span>}
-                          {recipient.email && <span>✉️ {recipient.email}</span>}
-                          {!recipient.phone && !recipient.email && <span className="text-gray-400">-</span>}
+                          {recipient.phone && <span className="flex items-center gap-2"><Phone size={14} className="text-primary" /> {recipient.phone}</span>}
+                          {recipient.email && <span className="flex items-center gap-2"><Mail size={14} className="text-primary" /> {recipient.email}</span>}
+                          {!recipient.phone && !recipient.email && <span className="text-foreground-muted opacity-50">-</span>}
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
                           recipient.is_active 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-gray-100 text-gray-800'
+                            ? 'bg-success/10 text-success border-success/20' 
+                            : 'bg-background/50 text-foreground-muted border-white/10'
                         }`}>
                           {recipient.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex gap-2">
-                          <span title="Notify Warning" className={`p-1 rounded ${
-                            recipient.notify_warning ? 'text-yellow-600 bg-yellow-100' : 'text-gray-300'
+                          <span title="Notify Warning" className={`p-1.5 rounded-lg border ${
+                            recipient.notify_warning ? 'bg-warning/10 text-warning border-warning/20' : 'bg-background/30 text-foreground-muted opacity-30 border-transparent'
                           }`}>
-                            <AlertTriangle size={18} />
+                            <AlertTriangle size={16} />
                           </span>
-                          <span title="Notify Critical" className={`p-1 rounded ${
-                            recipient.notify_critical ? 'text-red-600 bg-red-100' : 'text-gray-300'
+                          <span title="Notify Critical" className={`p-1.5 rounded-lg border ${
+                            recipient.notify_critical ? 'bg-danger/10 text-danger border-danger/20' : 'bg-background/30 text-foreground-muted opacity-30 border-transparent'
                           }`}>
-                            <AlertOctagon size={18} />
+                            <AlertOctagon size={16} />
                           </span>
                         </div>
                       </td>
@@ -279,14 +278,14 @@ export default function RecipientsPage() {
                         <div className="flex justify-end gap-2">
                           <button
                             onClick={() => openEditModal(recipient)}
-                            className="bg-zinc-600 hover:bg-zinc-700 text-white p-2 rounded text-sm transition-colors"
+                            className="bg-white/5 hover:bg-white/10 text-foreground-muted hover:text-foreground p-2 rounded-lg transition-colors"
                             title="Edit"
                           >
                             <Edit2 size={16} />
                           </button>
                           <button
                             onClick={() => setDeleteConfirmOpen(recipient.id)}
-                            className="bg-red-600 hover:bg-red-700 text-white p-2 rounded text-sm transition-colors"
+                            className="bg-danger/10 hover:bg-danger/20 text-danger p-2 rounded-lg transition-colors"
                             title="Delete"
                           >
                             <Trash2 size={16} />
@@ -302,24 +301,23 @@ export default function RecipientsPage() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {deleteConfirmOpen !== null && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-lg font-bold text-zinc-900 mb-2">Delete Recipient?</h3>
-            <p className="text-gray-600 mb-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-surface border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 className="text-lg font-bold text-foreground mb-2">Delete Recipient?</h3>
+            <p className="text-foreground-muted mb-6">
               Are you sure you want to delete this recipient? This action cannot be undone.
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDeleteConfirmOpen(null)}
-                className="px-4 py-2 rounded text-gray-600 hover:bg-gray-100 transition-colors"
+                className="px-4 py-2 rounded-xl text-foreground-muted hover:bg-white/5 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleDelete(deleteConfirmOpen)}
-                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                className="px-4 py-2 rounded-xl bg-danger text-white hover:bg-danger/90 transition-colors font-medium"
               >
                 Delete
               </button>
@@ -328,110 +326,109 @@ export default function RecipientsPage() {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-zinc-900">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-surface border border-white/10 rounded-2xl max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-white/10 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-foreground">
                 {editingRecipient ? "Edit Recipient" : "Add New Recipient"}
               </h2>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
+              <button onClick={closeModal} className="text-foreground-muted hover:text-foreground">
                 <X size={24} />
               </button>
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name <span className="text-red-500">*</span>
+                <label className="block text-sm font-medium text-foreground-muted mb-1">
+                  Name <span className="text-danger">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    formErrors.name ? "border-red-500" : "border-gray-300"
+                  className={`w-full px-3 py-2 bg-background border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground ${
+                    formErrors.name ? "border-danger" : "border-white/10"
                   }`}
                   placeholder="John Doe"
                 />
-                {formErrors.name && <p className="text-red-500 text-xs mt-1">{formErrors.name}</p>}
+                {formErrors.name && <p className="text-danger text-xs mt-1">{formErrors.name}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground-muted mb-1">
                   Phone (WhatsApp)
                 </label>
                 <input
                   type="text"
                   value={formData.phone}
                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    formErrors.phone ? "border-red-500" : "border-gray-300"
+                  className={`w-full px-3 py-2 bg-background border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground ${
+                    formErrors.phone ? "border-danger" : "border-white/10"
                   }`}
                   placeholder="628123456789"
                 />
-                {formErrors.phone && <p className="text-red-500 text-xs mt-1">{formErrors.phone}</p>}
+                {formErrors.phone && <p className="text-danger text-xs mt-1">{formErrors.phone}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-foreground-muted mb-1">
                   Email
                 </label>
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    formErrors.email ? "border-red-500" : "border-gray-300"
+                  className={`w-full px-3 py-2 bg-background border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-foreground ${
+                    formErrors.email ? "border-danger" : "border-white/10"
                   }`}
                   placeholder="john@example.com"
                 />
-                {formErrors.email && <p className="text-red-500 text-xs mt-1">{formErrors.email}</p>}
+                {formErrors.email && <p className="text-danger text-xs mt-1">{formErrors.email}</p>}
               </div>
 
               {formErrors.contact && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm">
+                <div className="p-3 bg-danger/10 border border-danger/20 rounded-xl text-danger text-sm">
                   {formErrors.contact}
                 </div>
               )}
 
               <div className="pt-2 space-y-3">
-                <label className="flex items-center space-x-3 cursor-pointer">
+                <label className="flex items-center space-x-3 cursor-pointer group">
                   <input
                     type="checkbox"
                     checked={formData.is_active}
                     onChange={(e) => setFormData({...formData, is_active: e.target.checked})}
-                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                    className="w-5 h-5 text-primary rounded bg-background border-white/10 focus:ring-primary"
                   />
-                  <span className="text-gray-700">Active (Receive Notifications)</span>
+                  <span className="text-foreground group-hover:text-primary transition-colors">Active (Receive Notifications)</span>
                 </label>
 
-                <div className="border-t border-gray-100 pt-3">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Notification Types</p>
+                <div className="border-t border-white/10 pt-3">
+                  <p className="text-sm font-medium text-foreground-muted mb-2">Notification Types</p>
                   <div className="flex flex-col gap-2">
-                    <label className="flex items-center space-x-3 cursor-pointer">
+                    <label className="flex items-center space-x-3 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={formData.notify_warning}
                         onChange={(e) => setFormData({...formData, notify_warning: e.target.checked})}
-                        className="w-5 h-5 text-yellow-500 rounded focus:ring-yellow-400"
+                        className="w-5 h-5 text-warning rounded bg-background border-white/10 focus:ring-warning"
                       />
-                      <span className="text-gray-700 flex items-center gap-2">
-                        <AlertTriangle size={16} className="text-yellow-500" />
+                      <span className="text-foreground group-hover:text-warning transition-colors flex items-center gap-2">
+                        <AlertTriangle size={16} className="text-warning" />
                         Warning Alerts
                       </span>
                     </label>
 
-                    <label className="flex items-center space-x-3 cursor-pointer">
+                    <label className="flex items-center space-x-3 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={formData.notify_critical}
                         onChange={(e) => setFormData({...formData, notify_critical: e.target.checked})}
-                        className="w-5 h-5 text-red-600 rounded focus:ring-red-500"
+                        className="w-5 h-5 text-danger rounded bg-background border-white/10 focus:ring-danger"
                       />
-                      <span className="text-gray-700 flex items-center gap-2">
-                        <AlertOctagon size={16} className="text-red-600" />
+                      <span className="text-foreground group-hover:text-danger transition-colors flex items-center gap-2">
+                        <AlertOctagon size={16} className="text-danger" />
                         Critical Alerts
                       </span>
                     </label>
@@ -439,22 +436,22 @@ export default function RecipientsPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-zinc-700 mt-4">
+              <div className="flex justify-end gap-3 pt-4 border-t border-white/10 mt-4">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                  className="px-4 py-2 text-foreground-muted hover:bg-white/5 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                  className="px-4 py-2 bg-primary text-background font-bold rounded-xl hover:bg-primary-glow disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                 >
                   {isSubmitting ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-background"></div>
                       Saving...
                     </>
                   ) : (

@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { analyzeImage, type AnalysisResponse } from "@/lib/api";
 import CVDetectionOverlay from "./CVDetectionOverlay";
+import { Camera, StopCircle, Play, AlertTriangle } from "lucide-react";
 
 interface LiveCameraViewProps {
   onStreamReady?: (stream: MediaStream) => void;
@@ -266,21 +267,21 @@ export default function LiveCameraView({
 
   if (!isClient) {
     return (
-      <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-6 text-center">
-        <div className="text-zinc-500 dark:text-zinc-400">Loading...</div>
+      <div className="bg-surface border border-white/5 rounded-2xl p-6 text-center">
+        <div className="text-foreground-muted">Loading...</div>
       </div>
     );
   }
 
   if (!isSecureContext) {
     return (
-      <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded-lg p-6 text-center">
-        <div className="text-rose-700 dark:text-rose-400 font-semibold mb-2">
+      <div className="bg-danger/10 border border-danger/20 rounded-2xl p-6 text-center">
+        <div className="text-danger font-bold mb-2">
           Camera Not Available
         </div>
-        <p className="text-sm text-rose-600 dark:text-rose-500">
+        <p className="text-sm text-foreground-muted">
           Camera access requires a secure context (HTTPS or localhost).
-          Please use <code className="bg-rose-100 dark:bg-rose-900 px-1 rounded">https://</code> or <code className="bg-rose-100 dark:bg-rose-900 px-1 rounded">http://localhost</code>.
+          Please use <code className="bg-danger/20 text-danger px-1 rounded">https://</code> or <code className="bg-danger/20 text-danger px-1 rounded">http://localhost</code>.
         </p>
       </div>
     );
@@ -292,22 +293,24 @@ export default function LiveCameraView({
   const containerHeight = videoRef.current?.clientHeight || 600;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-4 flex-wrap">
+    <div className="space-y-6">
+      <div className="flex items-center gap-4 flex-wrap bg-surface p-3 rounded-xl border border-white/5">
         {!stream ? (
             <button
               onClick={() => void startCamera()}
               disabled={isStarting}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-400 text-white font-medium rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-glow disabled:bg-foreground-muted text-background font-bold rounded-lg transition-colors"
             >
+              <Camera size={18} />
               {isStarting ? "Starting..." : "Start Camera"}
             </button>
         ) : (
           <>
             <button
               onClick={stopStream}
-              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-danger hover:bg-danger/90 text-white font-medium rounded-lg transition-colors"
             >
+              <StopCircle size={18} />
               Stop Camera
             </button>
 
@@ -315,7 +318,7 @@ export default function LiveCameraView({
               <select
                 value={selectedDeviceId}
                 onChange={(e) => handleDeviceChange(e.target.value)}
-                className="px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm"
+                className="px-3 py-2 bg-background border border-white/10 rounded-lg text-sm text-foreground focus:ring-2 focus:ring-primary/50 outline-none"
               >
                 {devices.map((device) => (
                   <option key={device.deviceId} value={device.deviceId}>
@@ -325,33 +328,35 @@ export default function LiveCameraView({
               </select>
             )}
 
-            <div className="h-8 w-px bg-zinc-300 dark:bg-zinc-700" />
+            <div className="h-8 w-px bg-white/10" />
 
             {!isInferenceActive ? (
               <button
                 onClick={startInference}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-success hover:bg-success/90 text-white font-medium rounded-lg transition-colors"
               >
+                <Play size={18} />
                 Start Inference
               </button>
             ) : (
               <button
                 onClick={stopInference}
-                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-warning hover:bg-warning/90 text-background font-medium rounded-lg transition-colors"
               >
+                <StopCircle size={18} />
                 Stop Inference
               </button>
             )}
 
             {isInferenceActive && isAnalyzing && (
-              <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
-                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+              <div className="flex items-center gap-2 text-sm text-foreground-muted">
+                <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
                 Analyzing...
               </div>
             )}
 
             {lastAnalyzedAt && (
-              <div className="text-xs text-zinc-500 dark:text-zinc-400">
+              <div className="text-xs text-foreground-muted ml-auto">
                 Last: {lastAnalyzedAt.toLocaleTimeString()}
               </div>
             )}
@@ -360,63 +365,69 @@ export default function LiveCameraView({
       </div>
 
       {error && (
-        <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded-lg p-4">
-          <div className="text-rose-700 dark:text-rose-400 text-sm font-medium mb-1">
-            {permissionDenied ? "Permission Denied" : "Error"}
-          </div>
-          <p className="text-sm text-rose-600 dark:text-rose-500">{error}</p>
+        <div className="bg-danger/10 border border-danger/20 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="text-danger w-5 h-5 flex-shrink-0" />
+          <div>
+            <div className="text-danger text-sm font-bold mb-1">
+              {permissionDenied ? "Permission Denied" : "Error"}
+            </div>
+            <p className="text-sm text-foreground-muted">{error}</p>
             {permissionDenied && (
               <button
                 onClick={() => void startCamera()}
-                className="mt-3 text-sm text-rose-700 dark:text-rose-400 underline hover:no-underline"
+                className="mt-2 text-sm text-danger underline hover:no-underline"
               >
                 Try Again
               </button>
             )}
+          </div>
         </div>
       )}
 
       {inferenceError && (
-        <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
-          <div className="text-orange-700 dark:text-orange-400 text-sm font-medium mb-1">
-            Inference Error
+        <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="text-warning w-5 h-5 flex-shrink-0" />
+          <div>
+            <div className="text-warning text-sm font-bold mb-1">
+              Inference Error
+            </div>
+            <p className="text-sm text-foreground-muted">{inferenceError}</p>
           </div>
-          <p className="text-sm text-orange-600 dark:text-orange-500">{inferenceError}</p>
         </div>
       )}
 
       {analysisResult && (
-        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-blue-700 dark:text-blue-400 text-sm font-medium">
+        <div className="bg-surface border border-primary/20 rounded-xl p-4 animate-in slide-in-from-top-2">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-primary text-sm font-bold">
               Detection Result
             </div>
-            <div className="text-xs text-blue-600 dark:text-blue-500">
+            <div className="text-xs text-foreground-muted">
               Latency: {analysisResult.latency_ms}ms
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <span className="text-zinc-600 dark:text-zinc-400">Detected:</span>{" "}
-              <span className="font-medium">{analysisResult.detected ? "Yes" : "No"}</span>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+            <div className="bg-background/50 p-2 rounded-lg">
+              <span className="text-foreground-muted block mb-1">Detected</span>
+              <span className="font-bold text-foreground text-sm">{analysisResult.detected ? "Yes" : "No"}</span>
             </div>
-            <div>
-              <span className="text-zinc-600 dark:text-zinc-400">Severity:</span>{" "}
-              <span className="font-medium capitalize">{analysisResult.severity}</span>
+            <div className="bg-background/50 p-2 rounded-lg">
+              <span className="text-foreground-muted block mb-1">Severity</span>
+              <span className="font-bold text-foreground text-sm capitalize">{analysisResult.severity}</span>
             </div>
-            <div>
-              <span className="text-zinc-600 dark:text-zinc-400">Bboxes:</span>{" "}
-              <span className="font-medium">{analysisResult.bboxes.length}</span>
+            <div className="bg-background/50 p-2 rounded-lg">
+              <span className="text-foreground-muted block mb-1">Bboxes</span>
+              <span className="font-bold text-foreground text-sm">{analysisResult.bboxes.length}</span>
             </div>
-            <div>
-              <span className="text-zinc-600 dark:text-zinc-400">Confidence:</span>{" "}
-              <span className="font-medium">{(analysisResult.confidence * 100).toFixed(1)}%</span>
+            <div className="bg-background/50 p-2 rounded-lg">
+              <span className="text-foreground-muted block mb-1">Confidence</span>
+              <span className="font-bold text-foreground text-sm">{(analysisResult.confidence * 100).toFixed(1)}%</span>
             </div>
           </div>
         </div>
       )}
 
-      <div className="relative bg-zinc-900 rounded-lg overflow-hidden aspect-video max-w-4xl">
+      <div className="relative bg-black rounded-2xl overflow-hidden aspect-video w-full shadow-2xl border border-white/5">
         <video
           ref={videoRef}
           autoPlay
@@ -425,10 +436,10 @@ export default function LiveCameraView({
           className="w-full h-full object-contain"
         />
         {!stream && !error && (
-          <div className="absolute inset-0 flex items-center justify-center text-zinc-400">
+          <div className="absolute inset-0 flex items-center justify-center text-foreground-muted">
             <div className="text-center">
-              <div className="text-6xl mb-4">📷</div>
-              <p className="text-sm">Click "Start Camera" to begin</p>
+              <div className="text-6xl mb-4 opacity-20">📷</div>
+              <p className="text-sm font-medium">Click "Start Camera" to begin</p>
             </div>
           </div>
         )}

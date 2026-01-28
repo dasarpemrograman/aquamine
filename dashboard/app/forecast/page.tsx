@@ -4,16 +4,25 @@ import { useWebSocket } from "@/lib/websocket";
 import ForecastChart from "@/app/components/ForecastChart";
 import AlertList from "@/app/components/AlertList";
 import SensorStatus from "@/app/components/SensorStatus";
+import { Activity } from "lucide-react";
 
 export default function ForecastPage() {
   const wsUrl = process.env.NEXT_PUBLIC_WS_BASE_URL ? `${process.env.NEXT_PUBLIC_WS_BASE_URL}/ws/realtime` : "ws://localhost:8181/ws/realtime";
   const { lastMessage, isConnected } = useWebSocket(wsUrl);
 
   return (
-    <div className="p-8 bg-white min-h-screen">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-zinc-900">AquaMine AI Dashboard</h1>
-        <div className={`px-3 py-1 rounded text-sm ${isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+    <div className="space-y-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            Forecast & Analytics
+          </h1>
+          <p className="text-foreground-muted mt-1">
+            Predictive modeling for water quality parameters.
+          </p>
+        </div>
+        <div className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${isConnected ? 'bg-success/10 text-success border border-success/20' : 'bg-danger/10 text-danger border border-danger/20'}`}>
+            <Activity size={16} className={isConnected ? "animate-pulse" : ""} />
             {isConnected ? 'Real-time Connected' : 'Connecting...'}
         </div>
       </div>
@@ -23,7 +32,7 @@ export default function ForecastPage() {
             <ForecastChart sensorId="1" />
             <SensorStatus />
         </div>
-        <div>
+        <div className="h-full">
             <AlertList />
         </div>
       </div>

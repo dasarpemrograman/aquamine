@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, Info, Bell, CheckCircle2 } from "lucide-react";
 import { formatWIB } from "@/lib/dateUtils";
 
 export default function AlertList() {
@@ -18,32 +18,66 @@ export default function AlertList() {
       }
     }
     fetchAlerts();
-    const interval = setInterval(fetchAlerts, 10000); // Refresh every 10s
+    const interval = setInterval(fetchAlerts, 10000);
     return () => clearInterval(interval);
   }, []);
 
   const getIcon = (severity: string) => {
     switch (severity) {
-      case "critical": return <AlertTriangle className="text-red-500" />;
-      case "warning": return <AlertTriangle className="text-yellow-500" />;
-      default: return <Info className="text-blue-500" />;
+      case "critical": return <AlertTriangle className="text-danger w-5 h-5 mt-0.5" />;
+      case "warning": return <AlertTriangle className="text-warning w-5 h-5 mt-0.5" />;
+      default: return <Info className="text-primary w-5 h-5 mt-0.5" />;
+    }
+  };
+
+  const getStyle = (severity: string) => {
+    switch (severity) {
+      case "critical": return "bg-danger/10 border-danger/20 hover:bg-danger/15";
+      case "warning": return "bg-warning/10 border-warning/20 hover:bg-warning/15";
+      default: return "bg-background/50 border-white/5 hover:bg-background/80";
     }
   };
 
   return (
-    <div className="bg-white p-4 rounded-lg shadow">
-      <h3 className="text-lg font-bold mb-4">Recent Alerts</h3>
-      <div className="space-y-3">
+    <div className="bg-surface border border-white/5 p-6 rounded-2xl shadow-lg h-full">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
+          <Bell className="text-primary" />
+          Recent Alerts
+        </h3>
+        <button className="text-xs text-primary hover:text-primary-glow font-medium transition-colors">
+          View All
+        </button>
+      </div>
+
+      <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
         {alerts.length === 0 ? (
-          <p className="text-gray-500">No active alerts</p>
+          <div className="flex flex-col items-center justify-center py-12 text-foreground-muted">
+            <CheckCircle2 className="w-12 h-12 mb-3 text-success opacity-50" />
+            <p>All systems normal</p>
+          </div>
         ) : (
           alerts.map((alert: any) => (
-            <div key={alert.id} className={`p-3 border rounded flex items-start gap-3 ${alert.severity === 'critical' ? 'bg-red-50 border-red-200' : 'bg-gray-50'}`}>
+            <div 
+              key={alert.id} 
+              className={`p-4 border rounded-xl flex items-start gap-4 transition-all duration-200 ${getStyle(alert.severity)}`}
+            >
               {getIcon(alert.severity)}
-              <div>
-                <p className="font-semibold text-sm">Sensor {alert.sensor_id} - {alert.severity.toUpperCase()}</p>
-                <p className="text-sm text-gray-700">{alert.message}</p>
-                <p className="text-xs text-gray-500 mt-1">{formatWIB(alert.created_at)}</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                    alert.severity === 'critical' ? 'bg-danger/20 text-danger' : 
+                    alert.severity === 'warning' ? 'bg-warning/20 text-warning' : 
+                    'bg-primary/20 text-primary'
+                  }`}>
+                    {alert.severity}
+                  </span>
+                  <span className="text-xs text-foreground-muted whitespace-nowrap ml-2">
+                    {formatWIB(alert.created_at)}
+                  </span>
+                </div>
+                <p className="font-semibold text-sm text-foreground mb-1">Sensor {alert.sensor_id}</p>
+                <p className="text-sm text-foreground-muted leading-relaxed">{alert.message}</p>
               </div>
             </div>
           ))

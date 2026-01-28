@@ -4,17 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import ImageUploader from "../components/ImageUploader";
 import LiveCameraView from "../components/LiveCameraView";
 import VideoFileView from "../components/VideoFileView";
+import { Camera, Film, Image as ImageIcon, CheckCircle2 } from "lucide-react";
 
 type Mode = "live" | "video" | "image";
 
 export default function CVAnalysisPage() {
-  /**
-   * CV DEMO CHECKLIST:
-   * 1. Live Camera: Start Camera → Start Inference → See bboxes update ~1 FPS
-   * 2. Video File: Upload video → Play → Start Inference → See bboxes
-   * 3. Image Upload: Upload image → See analysis result (original feature)
-   * 4. Mode Switching: Verify camera stops when switching away from Live
-   */
   const [mode, setMode] = useState<Mode>("live");
 
   const liveStreamRef = useRef<MediaStream | null>(null);
@@ -35,82 +29,89 @@ export default function CVAnalysisPage() {
   }, [mode]);
 
   return (
-    <div className="min-h-screen bg-white selection:bg-blue-500/30">
-      <div className="relative py-20 px-4 overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-100/40 via-transparent to-transparent" />
+    <div className="space-y-8 pb-20">
+      <div className="relative py-12 px-6 rounded-3xl overflow-hidden bg-surface border border-white/5 shadow-2xl">
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-transparent opacity-50" />
+        <div className="absolute right-0 top-0 w-96 h-96 bg-primary/20 rounded-full blur-3xl -mr-32 -mt-32" />
         
-        <div className="relative max-w-4xl mx-auto text-center space-y-6">
-          <div className="inline-flex items-center justify-center px-4 py-1.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium mb-4">
+        <div className="relative z-10 max-w-4xl mx-auto text-center space-y-6">
+          <div className="inline-flex items-center justify-center px-4 py-1.5 rounded-full border border-primary/20 bg-primary/10 text-primary text-sm font-bold mb-4 shadow-lg shadow-primary/20">
             <span className="relative flex h-2 w-2 mr-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
             </span>
             Computer Vision System v1.0
           </div>
           
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-zinc-900">
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground">
             Visual Analysis
           </h1>
           
-          <p className="text-lg text-zinc-600 max-w-2xl mx-auto leading-relaxed">
-            Upload site imagery to detect <span className="text-yellow-600 font-semibold">Yellow Boy</span> precipitates. 
+          <p className="text-lg text-foreground-muted max-w-2xl mx-auto leading-relaxed">
+            Upload site imagery to detect <span className="text-primary font-bold">Yellow Boy</span> precipitates. 
             Our model analyzes color signatures and texture patterns to assess contamination severity in real-time.
           </p>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 pb-24">
-        <div className="mb-8">
-          <div className="flex items-center justify-center gap-2 bg-white border border-zinc-200 rounded-lg p-1 w-fit mx-auto">
+      <div className="max-w-5xl mx-auto px-4">
+        <div className="mb-8 flex justify-center">
+          <div className="inline-flex p-1 bg-surface border border-white/5 rounded-xl shadow-lg">
             <button
               onClick={() => setMode("live")}
-              className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
+              className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
                 mode === "live"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-zinc-600 hover:text-zinc-900"
+                  ? "bg-primary text-background shadow-md shadow-primary/20"
+                  : "text-foreground-muted hover:text-foreground hover:bg-white/5"
               }`}
             >
-              📷 Live Camera
+              <Camera size={18} /> Live Camera
             </button>
             <button
               onClick={() => setMode("video")}
-              className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
+              className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
                 mode === "video"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-zinc-600 hover:text-zinc-900"
+                   ? "bg-primary text-background shadow-md shadow-primary/20"
+                  : "text-foreground-muted hover:text-foreground hover:bg-white/5"
               }`}
             >
-              🎥 Video File
+              <Film size={18} /> Video File
             </button>
             <button
               onClick={() => setMode("image")}
-              className={`px-6 py-2 rounded-md text-sm font-medium transition-all ${
+              className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
                 mode === "image"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-zinc-600 hover:text-zinc-900"
+                   ? "bg-primary text-background shadow-md shadow-primary/20"
+                  : "text-foreground-muted hover:text-foreground hover:bg-white/5"
               }`}
             >
-              🖼️ Image Upload
+              <ImageIcon size={18} /> Image Upload
             </button>
           </div>
         </div>
 
-        {mode === "live" && (
-          <LiveCameraView onStreamReady={(s) => (liveStreamRef.current = s)} />
-        )}
-        {mode === "video" && (
-          <VideoFileView
-            onVideoUrlChange={(url) => {
-              videoObjectUrlRef.current = url;
-            }}
-          />
-        )}
-        {mode === "image" && <ImageUploader />}
+        <div className="bg-surface border border-white/5 rounded-2xl shadow-xl overflow-hidden min-h-[500px] flex flex-col p-1">
+           {mode === "live" && (
+             <LiveCameraView onStreamReady={(s) => (liveStreamRef.current = s)} />
+           )}
+           {mode === "video" && (
+             <VideoFileView
+               onVideoUrlChange={(url) => {
+                 videoObjectUrlRef.current = url;
+               }}
+             />
+           )}
+           {mode === "image" && <ImageUploader />}
+        </div>
         
-        <div className="mt-16 pt-8 border-t border-zinc-200 text-center">
-          <p className="text-xs text-zinc-400 uppercase tracking-widest">
-            Powered by YOLOv8 • Inference Time &lt;100ms • Accuracy 94%
+        <div className="mt-12 pt-8 border-t border-white/5 flex flex-col items-center justify-center gap-2 text-foreground-muted">
+          <p className="text-xs font-bold uppercase tracking-widest text-primary/50">
+            Powered by YOLOv8
           </p>
+          <div className="flex items-center gap-6 text-sm">
+            <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-success" /> Inference Time &lt;100ms</span>
+            <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-success" /> Accuracy 94%</span>
+          </div>
         </div>
       </div>
     </div>

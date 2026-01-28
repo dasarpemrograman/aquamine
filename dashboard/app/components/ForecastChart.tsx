@@ -124,67 +124,84 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
     return [min, max] as [number, number];
   }, [data, lastReadingTimestamp, nowTimestamp]);
 
-  if (loading) return <div>Loading forecast...</div>;
+  if (loading) return <div className="text-foreground-muted animate-pulse">Loading forecast...</div>;
 
   const statusTone = anomaly
     ? anomaly.severity === "critical"
-      ? "bg-red-100 text-red-800"
+      ? "bg-danger/10 text-danger border border-danger/20"
       : anomaly.severity === "warning"
-      ? "bg-yellow-100 text-yellow-800"
+      ? "bg-warning/10 text-warning border border-warning/20"
       : anomaly.severity === "normal"
-      ? "bg-green-100 text-green-800"
-      : "bg-gray-100 text-gray-700"
-    : "bg-gray-100 text-gray-700";
+      ? "bg-success/10 text-success border border-success/20"
+      : "bg-surface text-foreground-muted border border-white/10"
+    : "bg-surface text-foreground-muted border border-white/10";
 
   const statusLabel = anomaly ? anomaly.severity.toUpperCase() : "UNKNOWN";
   const lastUpdatedLabel = anomaly?.last_updated ? formatWIB(anomaly.last_updated) : null;
   const forecastStart = data.length ? formatWIB(data[0].timestamp) : null;
 
   return (
-    <div className="w-full bg-white p-4 rounded-lg shadow">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
+    <div className="w-full bg-surface border border-white/5 p-6 rounded-2xl shadow-lg">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-6">
         <div>
-          <h3 className="text-lg font-bold">7-Day Forecast</h3>
+          <h3 className="text-xl font-bold text-foreground">7-Day Forecast</h3>
           {historyHours ? (
-            <p className="text-xs text-gray-500">Based on: {historyHours}h of sensor data</p>
+            <p className="text-xs text-foreground-muted">Based on: {historyHours}h of sensor data</p>
           ) : null}
         </div>
         {anomaly && (
           <div className="flex flex-col items-end gap-1">
-            <div className={`px-3 py-1 rounded text-sm font-medium ${statusTone}`}>
-              Current Status: {statusLabel}
+            <div className={`px-3 py-1 rounded-full text-xs font-bold ${statusTone}`}>
+              Status: {statusLabel}
             </div>
             {lastUpdatedLabel ? (
-              <div className="text-xs text-gray-500">Last updated: {lastUpdatedLabel}</div>
+              <div className="text-xs text-foreground-muted">Last updated: {lastUpdatedLabel}</div>
             ) : null}
           </div>
         )}
       </div>
 
-      <div className="h-96">
+      <div className="h-96 w-full">
         {data.length ? (
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
               <XAxis
                 dataKey="timestamp"
                 type="number"
                 scale="time"
                 domain={chartDomain}
                 tickFormatter={(value) => formatWIBShort(value)}
+                stroke="#94a3b8"
+                fontSize={12}
+                tickLine={false}
               />
               <YAxis
                 yAxisId="left"
-                label={{ value: "pH", angle: -90, position: "insideLeft" }}
+                label={{ value: "pH", angle: -90, position: "insideLeft", fill: "#94a3b8" }}
                 domain={[0, 14]}
+                stroke="#94a3b8"
+                fontSize={12}
+                tickLine={false}
               />
               <YAxis
                 yAxisId="right"
                 orientation="right"
-                label={{ value: "Confidence", angle: 90, position: "insideRight" }}
+                label={{ value: "Confidence", angle: 90, position: "insideRight", fill: "#94a3b8" }}
                 domain={[0, 1]}
+                stroke="#94a3b8"
+                fontSize={12}
+                tickLine={false}
               />
               <Tooltip
+                contentStyle={{
+                  backgroundColor: "#0B1121",
+                  borderColor: "#1e293b",
+                  borderRadius: "12px",
+                  color: "#f1f5f9",
+                  boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.5)",
+                }}
+                itemStyle={{ color: "#f1f5f9" }}
                 labelFormatter={(value) => formatWIB(value as number)}
                 formatter={(value, name) => {
                   if (value === null || value === undefined) {
@@ -201,34 +218,35 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
                   return [safeValue, name ?? "Value"];
                 }}
               />
-              <Legend />
+              <Legend wrapperStyle={{ color: "#94a3b8" }} />
               <Area
                 yAxisId="right"
                 type="monotone"
                 dataKey="confidence"
                 name="Confidence"
-                fill="#82ca9d"
-                stroke="#82ca9d"
-                fillOpacity={0.3}
+                fill="#06b6d4"
+                stroke="#06b6d4"
+                fillOpacity={0.1}
               />
               <Line
                 yAxisId="left"
                 type="monotone"
                 dataKey="ph_pred"
                 name="Predicted pH"
-                stroke="#2563eb"
-                activeDot={{ r: 6 }}
-                strokeWidth={2}
+                stroke="#22d3ee"
+                activeDot={{ r: 6, fill: "#22d3ee", stroke: "#fff" }}
+                strokeWidth={3}
+                dot={false}
               />
               <ReferenceLine
                 x={nowTimestamp}
-                stroke="#111827"
+                stroke="#f1f5f9"
                 strokeDasharray="4 4"
                 label={{
-                  value: `NOW (${formatWIBShort(nowTimestamp)})`,
+                  value: `NOW`,
                   position: "top",
-                  fill: "#111827",
-                  fontSize: 12,
+                  fill: "#f1f5f9",
+                  fontSize: 10,
                 }}
               />
               {lastReadingTimestamp !== null && latestReading?.ph != null ? (
@@ -236,40 +254,45 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
                   x={lastReadingTimestamp}
                   y={latestReading.ph}
                   r={5}
-                  fill="#2563eb"
+                  fill="#22d3ee"
                   stroke="none"
                   label={{
-                    value: `Last Reading (${formatWIBShort(lastReadingTimestamp)})`,
+                    value: `Last Reading`,
                     position: "top",
-                    fill: "#2563eb",
-                    fontSize: 12,
+                    fill: "#22d3ee",
+                    fontSize: 10,
                   }}
                 />
               ) : null}
             </ComposedChart>
           </ResponsiveContainer>
         ) : (
-          <div className="h-full flex items-center justify-center text-sm text-gray-500">
+          <div className="h-full flex items-center justify-center text-sm text-foreground-muted bg-background/50 rounded-xl border border-white/5 border-dashed">
             {warning ?? "No forecast available"}
           </div>
         )}
       </div>
 
-      <div className="mt-4 space-y-1 text-sm text-gray-600">
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-foreground-muted">
         {latestReading ? (
-          <div>
-            Last Reading: pH {latestReading.ph?.toFixed(2) ?? "--"} at{" "}
-            {formatWIB(latestReading.timestamp)}
+          <div className="p-3 bg-background/50 rounded-xl border border-white/5">
+            <span className="block text-xs font-bold uppercase tracking-wider mb-1 text-primary">Last Reading</span>
+             pH {latestReading.ph?.toFixed(2) ?? "--"} at {formatWIB(latestReading.timestamp)}
           </div>
         ) : (
-          <div>Last Reading: No data</div>
+          <div className="p-3 bg-background/50 rounded-xl border border-white/5">Last Reading: No data</div>
         )}
-        {forecastStart ? <div>Forecast start: {forecastStart}</div> : null}
+        {forecastStart ? (
+           <div className="p-3 bg-background/50 rounded-xl border border-white/5">
+              <span className="block text-xs font-bold uppercase tracking-wider mb-1 text-primary">Forecast Start</span>
+              {forecastStart}
+           </div>
+        ) : null}
       </div>
 
       {anomaly && anomaly.reason ? (
-        <div className="mt-2 text-sm text-gray-600">
-          <strong>Analysis:</strong> {anomaly.reason}
+        <div className="mt-4 p-4 bg-primary/5 border border-primary/10 rounded-xl text-sm text-foreground">
+          <strong className="text-primary block mb-1">Analysis Report:</strong> {anomaly.reason}
         </div>
       ) : null}
     </div>

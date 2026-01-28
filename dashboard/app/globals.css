@@ -1,27 +1,67 @@
-
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap');
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-
 :root {
   --font-plus-jakarta-sans: 'Plus Jakarta Sans', Arial, Helvetica, sans-serif;
-  --background: #fff;
-  --foreground: #222;
+  --background: #0B1121;
+  --surface: #151E32;
+  --highlight: #1E293B;
+  
+  --primary: #06B6D4;
+  --primary-glow: #22D3EE;
+  
+  --foreground: #F1F5F9;
+  --foreground-muted: #94A3B8;
+  
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger: #EF4444;
 }
-
-
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-highlight: var(--highlight);
+  
+  --color-primary: var(--primary);
+  --color-primary-glow: var(--primary-glow);
+  
   --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
   --font-sans: var(--font-plus-jakarta-sans);
+  
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
 }
 
-
-
 body {
-  background: #fff;
-  color: #222;
-  font-family: var(--font-plus-jakarta-sans), 'Plus Jakarta Sans', Arial, Helvetica, sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-plus-jakarta-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background); 
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface); 
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--highlight); 
 }
