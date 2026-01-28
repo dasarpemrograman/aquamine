@@ -27,7 +27,7 @@ AquaMine AI is an early warning system for Acid Mine Drainage (AMD) that combine
 ```bash
 cd ai
 # Install dependencies (using uv/poetry)
-uv pip install -e .[dev]
+pip install -e .[dev]
 
 # Run tests
 pytest
