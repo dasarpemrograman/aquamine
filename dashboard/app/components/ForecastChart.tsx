@@ -23,6 +23,13 @@ interface ForecastPoint {
   confidence: number;
 }
 
+interface HistoricalReading {
+  timestamp: string;
+  ph?: number | null;
+  turbidity?: number | null;
+  temperature?: number | null;
+}
+
 interface AnomalyData {
   score: number;
   severity: string;
@@ -47,8 +54,10 @@ interface ForecastResponse {
 
 interface ChartPoint {
   timestamp: number;
-  ph_pred: number;
-  confidence: number;
+  ph_actual?: number | null;
+  ph_pred?: number | null;
+  confidence?: number | null;
+  type: 'actual' | 'forecast';
 }
 
 type ForecastTooltipPayload = {
@@ -100,25 +109,41 @@ function ForecastTooltip({ active, payload, label }: ForecastTooltipProps) {
     return null;
   }
 
-  const phItem = payload.find((item) => item.dataKey === "ph_pred");
+  const phActualItem = payload.find((item) => item.dataKey === "ph_actual");
+  const phPredItem = payload.find((item) => item.dataKey === "ph_pred");
   const confidenceItem = payload.find((item) => item.dataKey === "confidence");
+
+  // Determine if this is actual or forecast data
+  const isForecast = phPredItem !== undefined;
+  const isActual = phActualItem !== undefined;
 
   return (
     <div className="rounded-xl border border-white/70 bg-white/90 px-3 py-2 shadow-lg backdrop-blur-md">
       <div className="text-xs font-semibold text-slate-600">{formatTooltipLabel(label)}</div>
       <div className="mt-1 space-y-1 text-xs text-slate-600">
-        {phItem && (
+        {isActual && phActualItem && (
           <div className="flex items-center justify-between gap-4">
-            <span className="text-slate-500">Predicted pH</span>
-            <span className="font-semibold text-slate-800">{formatTooltipNumber(phItem.value)}</span>
+            <span className="text-slate-500">Actual pH</span>
+            <span className="font-semibold text-slate-800">{formatTooltipNumber(phActualItem.value)}</span>
           </div>
         )}
-        {confidenceItem && (
+        {isForecast && phPredItem && (
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-slate-500">Predicted pH</span>
+            <span className="font-semibold text-slate-800">{formatTooltipNumber(phPredItem.value)}</span>
+          </div>
+        )}
+        {isForecast && confidenceItem && (
           <div className="flex items-center justify-between gap-4">
             <span className="text-slate-500">Confidence</span>
             <span className="font-semibold text-slate-800">{formatTooltipConfidence(confidenceItem.value)}</span>
           </div>
         )}
+        <div className="pt-1 border-t border-slate-200">
+          <span className={`text-xs font-medium ${isActual ? 'text-blue-600' : 'text-amber-600'}`}>
+            {isActual ? '📊 Actual Reading' : '🔮 Forecast'}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -135,7 +160,8 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
   useEffect(() => {
     async function fetchData() {
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/forecast`, {
+        // Fetch forecast data
+        const forecastRes = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/forecast`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -143,32 +169,61 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
           body: JSON.stringify({ sensor_id: parseInt(sensorId) }),
         });
 
-        if (!res.ok) {
-          throw new Error(`Error: ${res.status}`);
+        if (!forecastRes.ok) {
+          throw new Error(`Error fetching forecast: ${forecastRes.status}`);
         }
 
-        const json: ForecastResponse = await res.json();
+        const forecastJson: ForecastResponse = await forecastRes.json();
 
-        setWarning(json.warning ?? null);
-        setLatestReading(json.latest_reading ?? null);
-        setHistoryHours(json.history_hours ?? null);
+        setWarning(forecastJson.warning ?? null);
+        setLatestReading(forecastJson.latest_reading ?? null);
+        setHistoryHours(forecastJson.history_hours ?? null);
 
-        if (json && json.forecast) {
-          const chartData = json.forecast.map((p) => ({
-            timestamp: new Date(p.timestamp).getTime(),
-            ph_pred: p.ph_pred,
-            confidence: p.confidence,
-          }));
-          setData(chartData);
-        } else {
-          setData([]);
+        // Fetch historical data (last 7 days)
+        const historicalRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sensors/${sensorId}/readings?hours=168`
+        );
+
+        let historicalData: HistoricalReading[] = [];
+        if (historicalRes.ok) {
+          historicalData = await historicalRes.json();
         }
 
-        if (json && json.anomaly) {
-          setAnomaly(json.anomaly);
+        // Combine historical and forecast data
+        const combinedData: ChartPoint[] = [];
+
+        // Add historical data (actual readings)
+        historicalData.forEach((reading) => {
+          if (reading.ph !== null && reading.ph !== undefined) {
+            combinedData.push({
+              timestamp: new Date(reading.timestamp).getTime(),
+              ph_actual: reading.ph,
+              type: 'actual',
+            });
+          }
+        });
+
+        // Add forecast data
+        if (forecastJson && forecastJson.forecast) {
+          forecastJson.forecast.forEach((p) => {
+            combinedData.push({
+              timestamp: new Date(p.timestamp).getTime(),
+              ph_pred: p.ph_pred,
+              confidence: p.confidence,
+              type: 'forecast',
+            });
+          });
+        }
+
+        // Sort by timestamp
+        combinedData.sort((a, b) => a.timestamp - b.timestamp);
+        setData(combinedData);
+
+        if (forecastJson && forecastJson.anomaly) {
+          setAnomaly(forecastJson.anomaly);
         }
       } catch (e) {
-        console.error("Failed to fetch forecast", e);
+        console.error("Failed to fetch data", e);
       } finally {
         setLoading(false);
       }
@@ -208,10 +263,24 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
     <GlassCard className="w-full">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-white/40">
         <div>
-          <h3 className="text-lg font-bold text-slate-800">7-Day Forecast</h3>
+          <h3 className="text-lg font-bold text-slate-800">7-Day Forecast with Historical Data</h3>
           {historyHours ? (
             <p className="text-xs text-slate-500">Based on: {historyHours}h of sensor data</p>
           ) : null}
+          <div className="flex flex-wrap gap-4 mt-2">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+              <span className="text-xs text-slate-600">Actual pH (past 7 days)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+              <span className="text-xs text-slate-600">Predicted pH (next 7 days)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-0.5 bg-amber-300"></div>
+              <span className="text-xs text-slate-600">Forecast confidence</span>
+            </div>
+          </div>
         </div>
         {anomaly && (
           <div className="flex flex-col items-start sm:items-end gap-1">
@@ -236,13 +305,17 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data}>
               <defs>
+                <linearGradient id="actual-ph-line" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#3b82f6" />
+                  <stop offset="100%" stopColor="#1d4ed8" />
+                </linearGradient>
                 <linearGradient id="forecast-ph-line" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#0ea5e9" />
-                  <stop offset="100%" stopColor="#14b8a6" />
+                  <stop offset="0%" stopColor="#f59e0b" />
+                  <stop offset="100%" stopColor="#d97706" />
                 </linearGradient>
                 <linearGradient id="forecast-confidence-area" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="rgba(14, 165, 233, 0.25)" />
-                  <stop offset="100%" stopColor="rgba(14, 165, 233, 0.02)" />
+                  <stop offset="0%" stopColor="rgba(245, 158, 11, 0.25)" />
+                  <stop offset="100%" stopColor="rgba(245, 158, 11, 0.02)" />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 6" vertical={false} />
@@ -281,9 +354,20 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
                 dataKey="confidence"
                 name="Confidence"
                 fill="url(#forecast-confidence-area)"
-                stroke="#38bdf8"
+                stroke="#f59e0b"
                 strokeWidth={1.5}
                 fillOpacity={1}
+              />
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="ph_actual"
+                name="Actual pH"
+                stroke="url(#actual-ph-line)"
+                strokeWidth={2.5}
+                dot={{ r: 2, fill: "#3b82f6" }}
+                activeDot={{ r: 5, stroke: "#1d4ed8", strokeWidth: 2, fill: "#ffffff" }}
+                connectNulls={true}
               />
               <Line
                 yAxisId="left"
@@ -292,8 +376,10 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
                 name="Predicted pH"
                 stroke="url(#forecast-ph-line)"
                 strokeWidth={2.5}
+                strokeDasharray="5 5"
                 dot={false}
-                activeDot={{ r: 5, stroke: "#0ea5e9", strokeWidth: 2, fill: "#ffffff" }}
+                activeDot={{ r: 5, stroke: "#d97706", strokeWidth: 2, fill: "#ffffff" }}
+                connectNulls={true}
               />
               <ReferenceLine
                 x={nowTimestamp}
