@@ -13,7 +13,8 @@ export default clerkMiddleware(async (auth, req) => {
   const { userId } = await auth();
   const client = userId ? await clerkClient() : null;
   const user = userId ? await client!.users.getUser(userId) : null;
-  const allowlisted = user?.publicMetadata.allowlisted === true;
+  const currentRole = user?.publicMetadata.role;
+  let allowlisted = user?.publicMetadata.allowlisted === true;
   const superadminEmail = process.env.SUPERADMIN_EMAIL?.toLowerCase();
   const primaryEmail = user?.emailAddresses.find(
     (email) => email.id === user.primaryEmailAddressId,
@@ -34,6 +35,18 @@ export default clerkMiddleware(async (auth, req) => {
 
   if (!allowlisted && superadminEmail && primaryEmail === superadminEmail) {
     try {
+      if (currentRole === "superadmin" && !allowlisted) {
+        await client!.users.updateUserMetadata(userId, {
+          publicMetadata: {
+            ...user!.publicMetadata,
+            allowlisted: true,
+          },
+        });
+
+        allowlisted = true;
+        return NextResponse.redirect(new URL("/", req.url));
+      }
+
       const limit = 100;
       let offset = 0;
       let superadminExists = false;
@@ -55,13 +68,21 @@ export default clerkMiddleware(async (auth, req) => {
       }
 
       if (!superadminExists) {
-        await client!.users.updateUserMetadata(userId, {
-          publicMetadata: {
-            ...user!.publicMetadata,
-            role: "superadmin",
-            allowlisted: true,
-          },
-        });
+        const refreshedUser = await client!.users.getUser(userId);
+        const refreshedRole = refreshedUser.publicMetadata.role;
+        const refreshedAllowlisted = refreshedUser.publicMetadata.allowlisted === true;
+
+        if (refreshedRole !== "superadmin" || !refreshedAllowlisted) {
+          await client!.users.updateUserMetadata(userId, {
+            publicMetadata: {
+              ...refreshedUser.publicMetadata,
+              role: "superadmin",
+              allowlisted: true,
+            },
+          });
+        }
+
+        allowlisted = true;
 
         return NextResponse.redirect(new URL("/", req.url));
       }
