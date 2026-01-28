@@ -25,13 +25,9 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   const claims = sessionClaims as unknown as {
-    publicMetadata?: { allowlisted?: boolean };
-    public_metadata?: { allowlisted?: boolean };
     metadata?: { allowlisted?: boolean };
   };
-  let allowlisted = claims?.publicMetadata?.allowlisted === true
-    || claims?.public_metadata?.allowlisted === true
-    || claims?.metadata?.allowlisted === true;
+  let allowlisted = claims?.metadata?.allowlisted === true;
 
   if (!allowlisted) {
     const client = await clerkClient();
