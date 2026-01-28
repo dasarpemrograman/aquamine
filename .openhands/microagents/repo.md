@@ -75,7 +75,7 @@ docker compose up -d
 - **Dashboard**: Real-time visualization with charts and maps
 
 ## Technology Stack
-- **Backend**: Python 3.11, FastAPI, SQLAlchemy 2.0, Pydantic v2
+- **Backend**: Python 3.13, FastAPI, SQLAlchemy 2.0, Pydantic v2
 - **Database**: PostgreSQL + PostGIS (TimescaleDB optional)
 - **ML/AI**: TimeGPT, XGBoost, Isolation Forest, YOLOv8
 - **Frontend**: Next.js 16, React 19, TypeScript, Tailwind CSS
