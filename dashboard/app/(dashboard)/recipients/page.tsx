@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Edit2, Trash2, X, AlertTriangle, AlertOctagon, Check, Users } from "lucide-react";
+import { Plus, Edit2, Trash2, X, AlertTriangle, AlertOctagon, Check, Users, Phone, Mail } from "lucide-react";
 
 import { GlassPanel } from "@/app/components/ui/GlassPanel";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
@@ -252,9 +252,19 @@ export default function RecipientsPage() {
                             {recipient.name}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-600 border-y border-white/50">
-                            <div className="flex flex-col gap-1">
-                              {recipient.phone && <span>📞 {recipient.phone}</span>}
-                              {recipient.email && <span>✉️ {recipient.email}</span>}
+                            <div className="flex flex-col gap-2">
+                              {recipient.phone && (
+                                <div className="flex items-center gap-2">
+                                  <Phone size={14} className="text-slate-400" />
+                                  <span>{recipient.phone}</span>
+                                </div>
+                              )}
+                              {recipient.email && (
+                                <div className="flex items-center gap-2">
+                                  <Mail size={14} className="text-slate-400" />
+                                  <span>{recipient.email}</span>
+                                </div>
+                              )}
                               {!recipient.phone && !recipient.email && <span className="text-gray-400">-</span>}
                             </div>
                           </td>

@@ -120,22 +120,22 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
   const getSeverityIcon = (severity: string) => {
     switch (severity.toLowerCase()) {
       case 'critical':
-        return <AlertOctagon className="w-4 h-4 text-red-500" />;
+        return <AlertOctagon className="w-4 h-4 text-red-600" />;
       case 'warning':
-        return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+        return <AlertTriangle className="w-4 h-4 text-amber-600" />;
       default:
-        return <Info className="w-4 h-4 text-blue-500" />;
+        return <Info className="w-4 h-4 text-blue-600" />;
     }
   };
 
-  const getSeverityClass = (severity: string) => {
+  const getSeverityBadgeClass = (severity: string) => {
     switch (severity.toLowerCase()) {
       case 'critical':
-        return 'border-l-red-500 bg-red-50/30';
+        return 'bg-red-100 text-red-700 border-red-200';
       case 'warning':
-        return 'border-l-yellow-500 bg-yellow-50/30';
+        return 'bg-amber-100 text-amber-700 border-amber-200';
       default:
-        return 'border-l-blue-500 bg-blue-50/30';
+        return 'bg-blue-100 text-blue-700 border-blue-200';
     }
   };
 
@@ -172,72 +172,78 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-96 max-w-[calc(100vw-2rem)] glass rounded-2xl shadow-xl border border-white/40 z-50 overflow-hidden">
-          <div className="flex items-center justify-between p-4 border-b border-white/20">
-            <h3 className="font-semibold text-slate-800">Notifications</h3>
+        <div className="absolute right-0 top-full mt-2 w-96 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+            <h3 className="font-semibold text-slate-900">Notifications</h3>
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
                 <button
                   onClick={handleMarkAllRead}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700 px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
                 >
                   Mark all read
                 </button>
               )}
               <button
                 onClick={() => setIsOpen(false)}
-                className="p-1 hover:bg-white/50 rounded-lg transition-colors"
+                className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
               >
-                <X size={16} className="text-slate-500" />
+                <X size={16} className="text-slate-400" />
               </button>
             </div>
           </div>
 
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto bg-slate-50/50">
             {loading ? (
               <div className="flex justify-center items-center h-32">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
             ) : filteredAlerts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 text-slate-500">
-                <Bell className="w-8 h-8 mb-2 opacity-50" />
+              <div className="flex flex-col items-center justify-center h-32 text-slate-400">
+                <Bell className="w-10 h-10 mb-3 opacity-30" />
                 <p className="text-sm">No notifications</p>
               </div>
             ) : (
-              <div className="divide-y divide-white/20">
-                {filteredAlerts.slice(0, 10).map((alert) => (
+              <div>
+                {filteredAlerts.slice(0, 10).map((alert, index) => (
                   <div
                     key={alert.id}
-                    className={`p-4 hover:bg-white/40 transition-colors border-l-4 ${getSeverityClass(alert.severity)} ${
-                      !alert.acknowledged_at ? 'bg-white/30' : ''
+                    className={`px-4 py-3 border-b border-slate-100 last:border-b-0 transition-colors ${
+                      !alert.acknowledged_at 
+                        ? 'bg-white hover:bg-slate-50' 
+                        : 'bg-slate-50/50 hover:bg-slate-100/50'
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      {getSeverityIcon(alert.severity)}
+                      <div className={`mt-0.5 p-1.5 rounded-lg ${
+                        alert.severity.toLowerCase() === 'critical' ? 'bg-red-100' :
+                        alert.severity.toLowerCase() === 'warning' ? 'bg-amber-100' :
+                        'bg-blue-100'
+                      }`}>
+                        {getSeverityIcon(alert.severity)}
+                      </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs font-medium uppercase ${
-                            alert.severity.toLowerCase() === 'critical' ? 'text-red-600' :
-                            alert.severity.toLowerCase() === 'warning' ? 'text-yellow-600' :
-                            'text-blue-600'
-                          }`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border ${getSeverityBadgeClass(alert.severity)}`}>
                             {alert.severity}
                           </span>
                           {!alert.acknowledged_at && (
-                            <span className="w-2 h-2 rounded-full bg-blue-500" />
+                            <span className="w-2 h-2 rounded-full bg-blue-500" title="Unread" />
                           )}
                         </div>
-                        <p className="text-sm text-slate-700 mt-1 line-clamp-2">
+                        <p className={`text-sm mt-1 line-clamp-2 ${
+                          !alert.acknowledged_at ? 'text-slate-900 font-medium' : 'text-slate-600'
+                        }`}>
                           {alert.message || `Alert for sensor ${alert.sensor_id}`}
                         </p>
-                        <p className="text-xs text-slate-500 mt-1">
+                        <p className="text-xs text-slate-400 mt-1.5">
                           {new Date(alert.created_at).toLocaleString()}
                         </p>
                       </div>
                       {!alert.acknowledged_at && (
                         <button
                           onClick={() => handleMarkRead(alert.id)}
-                          className="p-1.5 hover:bg-white/60 rounded-lg transition-colors text-slate-400 hover:text-slate-600"
+                          className="mt-0.5 p-1.5 hover:bg-slate-200 rounded-lg transition-colors text-slate-400 hover:text-slate-600"
                           title="Mark as read"
                         >
                           <Check size={16} />
@@ -250,11 +256,11 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
             )}
           </div>
 
-          <div className="p-3 border-t border-white/20 bg-white/30">
+          <div className="px-4 py-3 border-t border-slate-100 bg-white">
             <Link
               href="/alerts"
               onClick={() => setIsOpen(false)}
-              className="flex items-center justify-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium py-2 hover:bg-white/40 rounded-xl transition-colors"
+              className="flex items-center justify-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 py-2 hover:bg-slate-100 rounded-lg transition-colors"
             >
               View all alerts
               <ExternalLink size={14} />
