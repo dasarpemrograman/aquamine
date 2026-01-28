@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import ImageUploader from "../components/ImageUploader";
-import LiveCameraView from "../components/LiveCameraView";
-import VideoFileView from "../components/VideoFileView";
+import ImageUploader from "@/app/components/ImageUploader";
+import LiveCameraView from "@/app/components/LiveCameraView";
+import VideoFileView from "@/app/components/VideoFileView";
 import { GlassPanel } from "@/app/components/ui/GlassPanel";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { Camera, Video, Image as ImageIcon, Sparkles } from "lucide-react";

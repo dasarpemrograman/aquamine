@@ -10,6 +10,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.36.10",
     "@influxdata/influxdb3-client": "^2.0.0",
     "@tailwindcss/typography": "^0.5.19",
     "dotenv": "^17.2.3",
@@ -22,7 +23,7 @@
     "typescript": "^5"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

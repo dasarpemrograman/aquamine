@@ -88,3 +88,17 @@ body {
   background-clip: text;
   color: transparent;
 }
+
+.cl-footer,
+.cl-footerAction,
+.cl-footerActionText,
+.cl-footerActionLink,
+.cl-signUp,
+.cl-signUpLink,
+.cl-footerAction button,
+.cl-footerAction a,
+[class*="cl-footerAction"],
+[class*="cl-signUp"],
+.cl-card a[href*="sign-up"] {
+  display: none !important;
+}

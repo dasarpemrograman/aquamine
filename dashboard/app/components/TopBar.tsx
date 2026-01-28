@@ -1,7 +1,9 @@
 "use client";
 
-import { Search, Bell, Settings, HelpCircle } from "lucide-react";
+import { Search, Bell, Settings, HelpCircle, LogIn } from "lucide-react";
 import { StatusChip } from "./ui/StatusChip";
+import { UserButton, SignedIn, SignedOut } from "@clerk/nextjs";
+import Link from "next/link";
 
 export default function TopBar() {
   return (
@@ -36,6 +38,28 @@ export default function TopBar() {
         <button className="p-2.5 rounded-xl text-slate-500 hover:bg-white/60 hover:text-cyan-600 hover:shadow-sm transition-all duration-200">
           <Settings size={20} />
         </button>
+
+        <div className="pl-2 border-l border-slate-200 ml-2 flex items-center">
+          <SignedIn>
+            <UserButton 
+              afterSignOutUrl="/"
+              appearance={{
+                elements: {
+                  avatarBox: "h-9 w-9 ring-2 ring-white shadow-sm"
+                }
+              }}
+            />
+          </SignedIn>
+          <SignedOut>
+            <Link 
+              href="/login" 
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-all shadow-sm hover:shadow-md active:scale-95"
+            >
+              <LogIn size={16} />
+              <span>Sign In</span>
+            </Link>
+          </SignedOut>
+        </div>
       </div>
     </header>
   );

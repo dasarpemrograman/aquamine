@@ -20,6 +20,32 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Authentication & Roles
+
+This project uses Clerk for authentication.
+
+### Superadmin Bootstrap
+
+To set up the initial superadmin account:
+
+1. Set `SUPERADMIN_EMAIL` in your `.env` file to your email address.
+2. Log in to the dashboard with that email.
+3. The system will automatically assign the `superadmin` role to your account.
+4. **Lock:** Once the first superadmin is assigned, the bootstrap process is locked. No other users can claim superadmin status via this method, even if the environment variable is changed.
+
+### Recovery
+
+If you lose superadmin access or need to assign a new superadmin manually:
+
+1. Access the Clerk Dashboard.
+2. Find the user you want to promote.
+3. Edit their "Public Metadata" to include:
+   ```json
+   {
+     "role": "superadmin"
+   }
+   ```
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
