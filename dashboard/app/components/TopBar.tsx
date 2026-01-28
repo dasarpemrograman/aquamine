@@ -1,40 +1,41 @@
 "use client";
 
-import { Search, Bell, User } from "lucide-react";
+import { Search, Bell, Settings, HelpCircle } from "lucide-react";
+import { StatusChip } from "./ui/StatusChip";
 
-export function TopBar() {
+export default function TopBar() {
   return (
-    <header className="sticky top-0 z-30 flex h-20 items-center justify-between px-6 lg:px-10 bg-background/80 backdrop-blur-md border-b border-white/5 transition-all">
-      <div className="hidden md:flex items-center flex-1 max-w-xl">
-        <div className="relative w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground-muted" />
-          <input 
-            type="text" 
-            placeholder="Search analytics, sensors, or alerts..." 
-            className="w-full bg-surface border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-foreground-muted focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+    <header className="sticky top-0 z-30 flex h-20 items-center justify-between px-8 backdrop-blur-md bg-white/40 border-b border-white/50 transition-all duration-300">
+      <div className="flex items-center gap-4 flex-1">
+        <div className="relative group w-full max-w-md">
+          <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400 group-focus-within:text-cyan-600 transition-colors">
+            <Search size={18} />
+          </div>
+          <input
+            type="text"
+            className="block w-full rounded-xl border border-white/60 bg-white/50 py-2.5 pl-10 pr-4 text-sm text-slate-700 placeholder-slate-400 shadow-sm backdrop-blur-sm focus:border-cyan-400 focus:outline-none focus:ring-4 focus:ring-cyan-400/10 transition-all duration-200 hover:bg-white/70"
+            placeholder="Search dashboard..."
           />
         </div>
       </div>
 
-      <div className="md:hidden">
-        <span className="font-bold text-lg text-foreground">Dashboard</span>
-      </div>
+      <div className="flex items-center gap-3">
+        <div className="mr-2 hidden md:block">
+            <StatusChip status="info" label="System Active" size="sm" />
+        </div>
 
-      <div className="flex items-center space-x-4">
-        <button className="relative p-2.5 rounded-xl text-foreground-muted hover:bg-surface hover:text-primary transition-all group">
-          <Bell className="w-6 h-6" />
-          <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-danger rounded-full ring-2 ring-background animate-pulse"></span>
+        <button className="relative p-2.5 rounded-xl text-slate-500 hover:bg-white/60 hover:text-cyan-600 hover:shadow-sm transition-all duration-200 group">
+          <Bell size={20} />
+          <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white scale-0 group-hover:scale-100 transition-transform duration-200" />
         </button>
         
-        <div className="flex items-center pl-4 border-l border-white/10">
-          <div className="flex flex-col items-end mr-3 hidden sm:flex">
-            <span className="text-sm font-bold text-foreground">Admin User</span>
-            <span className="text-xs text-foreground-muted">System Operator</span>
-          </div>
-          <button className="w-10 h-10 rounded-full bg-surface border border-white/10 flex items-center justify-center text-primary overflow-hidden hover:ring-2 hover:ring-primary/50 transition-all">
-            <User className="w-6 h-6" />
-          </button>
-        </div>
+        <button className="p-2.5 rounded-xl text-slate-500 hover:bg-white/60 hover:text-cyan-600 hover:shadow-sm transition-all duration-200">
+          <HelpCircle size={20} />
+        </button>
+
+        <button className="p-2.5 rounded-xl text-slate-500 hover:bg-white/60 hover:text-cyan-600 hover:shadow-sm transition-all duration-200">
+          <Settings size={20} />
+        </button>
       </div>
     </header>
   );

@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import ImageUploader from "../components/ImageUploader";
 import LiveCameraView from "../components/LiveCameraView";
 import VideoFileView from "../components/VideoFileView";
-import { Camera, Film, Image as ImageIcon, CheckCircle2 } from "lucide-react";
+import { GlassPanel } from "@/app/components/ui/GlassPanel";
+import { SectionHeader } from "@/app/components/ui/SectionHeader";
+import { Camera, Video, Image as ImageIcon, Sparkles } from "lucide-react";
 
 type Mode = "live" | "video" | "image";
 
@@ -29,89 +31,119 @@ export default function CVAnalysisPage() {
   }, [mode]);
 
   return (
-    <div className="space-y-8 pb-20">
-      <div className="relative py-12 px-6 rounded-3xl overflow-hidden bg-surface border border-white/5 shadow-2xl">
-        <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-transparent opacity-50" />
-        <div className="absolute right-0 top-0 w-96 h-96 bg-primary/20 rounded-full blur-3xl -mr-32 -mt-32" />
-        
-        <div className="relative z-10 max-w-4xl mx-auto text-center space-y-6">
-          <div className="inline-flex items-center justify-center px-4 py-1.5 rounded-full border border-primary/20 bg-primary/10 text-primary text-sm font-bold mb-4 shadow-lg shadow-primary/20">
-            <span className="relative flex h-2 w-2 mr-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-            </span>
-            Computer Vision System v1.0
-          </div>
-          
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground">
-            Visual Analysis
-          </h1>
-          
-          <p className="text-lg text-foreground-muted max-w-2xl mx-auto leading-relaxed">
-            Upload site imagery to detect <span className="text-primary font-bold">Yellow Boy</span> precipitates. 
-            Our model analyzes color signatures and texture patterns to assess contamination severity in real-time.
-          </p>
-        </div>
-      </div>
+    <div className="min-h-screen px-6 py-8 md:px-8 md:py-10 selection:bg-teal-500/30">
+      <div className="mx-auto w-full max-w-6xl space-y-8">
+        <SectionHeader
+          title="Visual Analysis"
+          subtitle="Advanced detection of Yellow Boy precipitates using texture analysis and color signature profiling"
+          icon={Camera}
+          actions={
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-teal-200/50 bg-white/40 backdrop-blur-md shadow-sm text-teal-800 text-xs font-semibold">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
+              </span>
+              Computer Vision System v1.0
+            </div>
+          }
+        />
 
-      <div className="max-w-5xl mx-auto px-4">
-        <div className="mb-8 flex justify-center">
-          <div className="inline-flex p-1 bg-surface border border-white/5 rounded-xl shadow-lg">
+        <div className="flex justify-start">
+          <div className="inline-flex p-1.5 bg-white/40 backdrop-blur-xl border border-white/50 rounded-2xl shadow-lg ring-1 ring-black/5">
             <button
               onClick={() => setMode("live")}
-              className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
+              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-300 ${
                 mode === "live"
-                  ? "bg-primary text-background shadow-md shadow-primary/20"
-                  : "text-foreground-muted hover:text-foreground hover:bg-white/5"
+                  ? "bg-gradient-to-tr from-teal-500 to-cyan-500 text-white shadow-md"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
               }`}
             >
-              <Camera size={18} /> Live Camera
+              <Camera className="w-4 h-4" />
+              Live Camera
             </button>
             <button
               onClick={() => setMode("video")}
-              className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
+              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-300 ${
                 mode === "video"
-                   ? "bg-primary text-background shadow-md shadow-primary/20"
-                  : "text-foreground-muted hover:text-foreground hover:bg-white/5"
+                  ? "bg-gradient-to-tr from-teal-500 to-cyan-500 text-white shadow-md"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
               }`}
             >
-              <Film size={18} /> Video File
+              <Video className="w-4 h-4" />
+              Video File
             </button>
             <button
               onClick={() => setMode("image")}
-              className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
+              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-300 ${
                 mode === "image"
-                   ? "bg-primary text-background shadow-md shadow-primary/20"
-                  : "text-foreground-muted hover:text-foreground hover:bg-white/5"
+                  ? "bg-gradient-to-tr from-teal-500 to-cyan-500 text-white shadow-md"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
               }`}
             >
-              <ImageIcon size={18} /> Image Upload
+              <ImageIcon className="w-4 h-4" />
+              Image Upload
             </button>
           </div>
         </div>
 
-        <div className="bg-surface border border-white/5 rounded-2xl shadow-xl overflow-hidden min-h-[500px] flex flex-col p-1">
-           {mode === "live" && (
-             <LiveCameraView onStreamReady={(s) => (liveStreamRef.current = s)} />
-           )}
-           {mode === "video" && (
-             <VideoFileView
-               onVideoUrlChange={(url) => {
-                 videoObjectUrlRef.current = url;
-               }}
-             />
-           )}
-           {mode === "image" && <ImageUploader />}
+        <div className="relative min-h-[600px] transition-all duration-500 ease-in-out">
+          <GlassPanel className="min-h-[600px] bg-white/40 backdrop-blur-xl border-white/60 shadow-xl shadow-teal-900/5">
+            <div className="h-full">
+              {mode === "live" && (
+                <div className="animate-in fade-in zoom-in-95 duration-500">
+                  <div className="flex items-center gap-3 mb-6 px-2">
+                    <div className="p-2 bg-teal-100/50 rounded-lg text-teal-700">
+                      <Camera className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-800">Real-time Inference</h3>
+                      <p className="text-sm text-slate-500">Connect a camera to detect contaminants in real-time</p>
+                    </div>
+                  </div>
+                  <LiveCameraView onStreamReady={(s) => (liveStreamRef.current = s)} />
+                </div>
+              )}
+              
+              {mode === "video" && (
+                <div className="animate-in fade-in zoom-in-95 duration-500">
+                  <div className="flex items-center gap-3 mb-6 px-2">
+                    <div className="p-2 bg-teal-100/50 rounded-lg text-teal-700">
+                      <Video className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-800">Video Analysis</h3>
+                      <p className="text-sm text-slate-500">Process recorded footage for detailed inspection</p>
+                    </div>
+                  </div>
+                  <VideoFileView
+                    onVideoUrlChange={(url) => {
+                      videoObjectUrlRef.current = url;
+                    }}
+                  />
+                </div>
+              )}
+              
+              {mode === "image" && (
+                <div className="animate-in fade-in zoom-in-95 duration-500">
+                  <div className="flex items-center gap-3 mb-6 px-2">
+                    <div className="p-2 bg-teal-100/50 rounded-lg text-teal-700">
+                      <ImageIcon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-800">Static Analysis</h3>
+                      <p className="text-sm text-slate-500">High-resolution analysis of single capture frames</p>
+                    </div>
+                  </div>
+                  <ImageUploader />
+                </div>
+              )}
+            </div>
+          </GlassPanel>
         </div>
         
-        <div className="mt-12 pt-8 border-t border-white/5 flex flex-col items-center justify-center gap-2 text-foreground-muted">
-          <p className="text-xs font-bold uppercase tracking-widest text-primary/50">
-            Powered by YOLOv8
-          </p>
-          <div className="flex items-center gap-6 text-sm">
-            <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-success" /> Inference Time &lt;100ms</span>
-            <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-success" /> Accuracy 94%</span>
-          </div>
+        <div className="mt-2 text-center flex items-center justify-center gap-2 text-xs font-medium text-slate-400 uppercase tracking-widest opacity-60">
+          <Sparkles className="w-3 h-3" />
+          Powered by YOLOv8 • Inference Time &lt;100ms • Accuracy 94%
         </div>
       </div>
     </div>

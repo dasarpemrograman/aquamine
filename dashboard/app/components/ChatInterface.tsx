@@ -2,8 +2,9 @@
 
 import { useMemo, useState, FormEvent, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
-import { Mic, Volume2, VolumeX } from "lucide-react";
+import { Mic, Volume2, VolumeX, Send } from "lucide-react";
 import { sendChatMessage } from "@/lib/api";
+import { GlassPanel } from "@/app/components/ui/GlassPanel";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -23,7 +24,11 @@ type SpeechRecognitionLike = {
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
-export default function ChatInterface() {
+interface ChatInterfaceProps {
+  header?: React.ReactNode;
+}
+
+export default function ChatInterface({ header }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [input, setInput] = useState("");
@@ -157,15 +162,62 @@ export default function ChatInterface() {
   }, [messages, isTTSEnabled, isTTSSupported]);
 
   return (
-    <div className="relative flex h-full flex-col rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-      <div className="absolute right-4 top-4 z-10">
+    <GlassPanel 
+      className="h-full relative" 
+      header={header}
+      footer={
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-3"
+        >
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Message
+          </label>
+          <div className="flex gap-3">
+            <div className="relative flex-1 group">
+              <input
+                type="text"
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder="Type a question about AquaMine data..."
+                className="w-full rounded-2xl border border-white/20 bg-white/10 px-5 py-3 pr-12 text-sm text-slate-800 placeholder-slate-500 shadow-inner outline-none transition focus:border-cyan-400 focus:bg-white/20 focus:ring-2 focus:ring-cyan-100/30"
+                disabled={isLoading}
+              />
+              <button
+                type="button"
+                onClick={handleMicClick}
+                disabled={!isSpeechRecognitionSupported || isLoading}
+                aria-pressed={isListening}
+                aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                title={isListening ? "Stop voice input" : "Start voice input"}
+                className={`absolute right-2 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-lg p-2 transition ${
+                  isListening
+                    ? "text-red-500 animate-pulse bg-red-50/50"
+                    : "text-slate-400 hover:text-cyan-600 hover:bg-white/20"
+                } ${!isSpeechRecognitionSupported || isLoading ? "cursor-not-allowed opacity-50" : ""}`}
+              >
+                <Mic className="h-4 w-4" />
+              </button>
+            </div>
+            <button
+              type="submit"
+              disabled={isLoading || input.trim().length === 0}
+              className="flex items-center justify-center rounded-xl bg-gradient-to-r from-teal-400 to-cyan-400 px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isLoading ? "..." : <Send className="h-5 w-5" />}
+            </button>
+          </div>
+        </form>
+      }
+    >
+      <div className="absolute right-6 top-6 z-10">
         <button
           type="button"
           onClick={() => setIsTTSEnabled((prev) => !prev)}
-          className={`flex h-10 w-10 items-center justify-center rounded-full border text-sm shadow-sm transition ${
+          className={`flex h-10 w-10 items-center justify-center rounded-full border shadow-sm transition backdrop-blur-sm ${
             isTTSEnabled
-              ? "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-              : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:text-zinc-200"
+              ? "border-cyan-200 bg-cyan-50 text-cyan-600"
+              : "border-white/40 bg-white/30 text-slate-400 hover:bg-white/50 hover:text-slate-600"
           } ${!isTTSSupported ? "cursor-not-allowed opacity-50" : ""}`}
           disabled={!isTTSSupported}
           aria-pressed={isTTSEnabled}
@@ -175,9 +227,10 @@ export default function ChatInterface() {
           {isTTSEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
         </button>
       </div>
-      <div className="flex-1 space-y-4 overflow-y-auto px-6 pb-6 pt-14">
+
+      <div className="flex-1 h-full overflow-y-auto space-y-4 pt-8 pr-2">
         {messages.length === 0 && !isLoading && (
-          <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-400">
+          <div className="mx-auto mt-10 max-w-sm rounded-2xl border border-dashed border-slate-300 bg-white/20 p-8 text-center text-sm text-slate-500 backdrop-blur-sm">
             Ask about sensor anomalies, AMD insights, or remediation steps.
           </div>
         )}
@@ -187,16 +240,16 @@ export default function ChatInterface() {
           return (
             <div
               key={`${message.role}-${index}`}
-              className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
+              className={`max-w-[80%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-sm backdrop-blur-md ${
                 isUser
-                  ? "ml-auto bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
-                  : "mr-auto border border-zinc-200 bg-white text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100"
+                  ? "ml-auto bg-cyan-500 text-white rounded-tr-sm"
+                  : "mr-auto bg-white/60 border border-white/50 text-slate-800 rounded-tl-sm"
               }`}
             >
               {isUser ? (
                 <p className="whitespace-pre-wrap">{message.content}</p>
               ) : (
-                <div className="prose prose-sm dark:prose-invert max-w-none">
+                <div className="prose prose-sm prose-slate max-w-none">
                   <ReactMarkdown>{message.content}</ReactMarkdown>
                 </div>
               )}
@@ -205,54 +258,15 @@ export default function ChatInterface() {
         })}
 
         {isLoading && (
-          <div className="mr-auto max-w-[75%] rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400">
-            Thinking...
+          <div className="mr-auto max-w-[75%] rounded-2xl rounded-tl-sm border border-white/50 bg-white/60 px-5 py-4 text-sm text-slate-500 shadow-sm backdrop-blur-md">
+            <div className="flex space-x-2">
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
           </div>
         )}
       </div>
-
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-col gap-3 border-t border-zinc-200 bg-zinc-50 px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900/50"
-      >
-        <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-          Message
-        </label>
-        <div className="flex gap-3">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="Type a question about AquaMine data..."
-              className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 pr-12 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-600 dark:focus:ring-zinc-800"
-              disabled={isLoading}
-            />
-            <button
-              type="button"
-              onClick={handleMicClick}
-              disabled={!isSpeechRecognitionSupported || isLoading}
-              aria-pressed={isListening}
-              aria-label={isListening ? "Stop voice input" : "Start voice input"}
-              title={isListening ? "Stop voice input" : "Start voice input"}
-              className={`absolute right-2 top-1/2 flex -translate-y-1/2 items-center justify-center rounded-lg border px-2.5 py-2 text-zinc-500 shadow-sm transition ${
-                isListening
-                  ? "border-red-500/70 bg-red-50 text-red-600 shadow-red-200/60 animate-pulse dark:border-red-500/60 dark:bg-red-500/10 dark:text-red-400 dark:shadow-red-900/40"
-                  : "border-zinc-200 bg-white hover:border-zinc-300 hover:text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:text-zinc-200"
-              } ${!isSpeechRecognitionSupported || isLoading ? "cursor-not-allowed opacity-50" : ""}`}
-            >
-              <Mic className="h-4 w-4" />
-            </button>
-          </div>
-          <button
-            type="submit"
-            disabled={isLoading || input.trim().length === 0}
-            className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white dark:disabled:bg-zinc-700 dark:disabled:text-zinc-300"
-          >
-            {isLoading ? "Sending" : "Send"}
-          </button>
-        </div>
-      </form>
-    </div>
+    </GlassPanel>
   );
 }

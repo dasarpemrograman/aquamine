@@ -9,7 +9,7 @@ import React, {
 } from "react";
 import { analyzeImage, type AnalysisResponse } from "@/lib/api";
 import CVDetectionOverlay from "./CVDetectionOverlay";
-import { UploadCloud, Play, StopCircle, AlertTriangle } from "lucide-react";
+import { Upload, FileVideo, Play, Square, AlertCircle, Activity, X } from "lucide-react";
 
 export type VideoFileViewHandle = {
   clearVideo: () => void;
@@ -217,120 +217,90 @@ const VideoFileView = React.forwardRef<VideoFileViewHandle, VideoFileViewProps>(
   const containerHeight = videoRef.current?.clientHeight || 600;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4 flex-wrap bg-surface p-3 rounded-xl border border-white/5">
-        <label
-          htmlFor="video-upload"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-background hover:bg-white/5 border border-white/10 rounded-lg cursor-pointer transition-colors"
-        >
-          <UploadCloud size={18} className="text-primary" />
-          <span className="text-sm font-medium text-foreground">
-            Choose video
-          </span>
-          <span className="text-xs text-foreground-muted truncate max-w-[12rem] border-l border-white/10 pl-2 ml-1">
-            {videoName || "mp4/webm/mov"}
-          </span>
-        </label>
-
-        <input
-          id="video-upload"
-          type="file"
-          accept="video/mp4,video/webm,video/mov,video/quicktime,.mp4,.webm,.mov"
-          onChange={handleFileChange}
-          className="sr-only"
-        />
-
-        <div className="h-8 w-px bg-white/10" />
-
-        {!isInferenceActive ? (
-          <button
-            onClick={startInference}
-            disabled={!videoUrl}
-            className="flex items-center gap-2 px-4 py-2 bg-success hover:bg-success/90 disabled:bg-foreground-muted disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+    <div className="space-y-6 p-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap bg-white/40 backdrop-blur-md p-4 rounded-2xl border border-white/60 shadow-sm">
+        <div className="flex items-center gap-3 flex-1">
+          <label
+            htmlFor="video-upload"
+            className="inline-flex items-center gap-3 px-4 py-2.5 bg-white/50 hover:bg-white/80 border border-slate-200 hover:border-teal-300 rounded-xl cursor-pointer transition-all shadow-sm group"
           >
-            <Play size={18} />
-            Start Inference
-          </button>
-        ) : (
-          <button
-            onClick={stopInference}
-            className="flex items-center gap-2 px-4 py-2 bg-warning hover:bg-warning/90 text-background font-medium rounded-lg transition-colors"
-          >
-            <StopCircle size={18} />
-            Stop Inference
-          </button>
-        )}
+            <div className="p-1.5 bg-slate-100 rounded-lg group-hover:bg-teal-50 group-hover:text-teal-600 transition-colors">
+              <Upload className="w-4 h-4 text-slate-500 group-hover:text-teal-600" />
+            </div>
+            <div className="flex flex-col items-start">
+              <span className="text-sm font-medium text-slate-700 group-hover:text-teal-800 transition-colors">
+                {videoName ? "Change video" : "Choose video"}
+              </span>
+              {videoName && (
+                <span className="text-[10px] text-slate-400 truncate max-w-[12rem]">
+                  {videoName}
+                </span>
+              )}
+            </div>
+          </label>
+
+          <input
+            id="video-upload"
+            type="file"
+            accept="video/mp4,video/webm,video/mov,video/quicktime,.mp4,.webm,.mov"
+            onChange={handleFileChange}
+            className="sr-only"
+          />
+
+          <div className="h-8 w-px bg-slate-200/60 mx-1" />
+
+          {!isInferenceActive ? (
+            <button
+              onClick={startInference}
+              disabled={!videoUrl}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all shadow-md"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              Start Inference
+            </button>
+          ) : (
+            <button
+              onClick={stopInference}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-orange-50 hover:bg-orange-100 text-orange-600 font-semibold rounded-xl transition-colors border border-orange-200 shadow-sm"
+            >
+              <Square className="w-4 h-4 fill-current" />
+              Stop Inference
+            </button>
+          )}
+        </div>
 
         {isInferenceActive && isAnalyzing && (
-          <div className="flex items-center gap-2 text-sm text-foreground-muted">
-            <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
-            Analyzing...
-          </div>
-        )}
-
-        {lastAnalyzedAt && (
-          <div className="text-xs text-foreground-muted ml-auto">
-            Last: {lastAnalyzedAt.toLocaleTimeString()}
+          <div className="flex items-center gap-2 text-sm text-slate-600 bg-white/50 px-3 py-1.5 rounded-full border border-white/60">
+            <div className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </div>
+            <span className="font-medium">Analyzing Frame...</span>
           </div>
         )}
       </div>
 
       {error && (
-        <div className="bg-danger/10 border border-danger/20 rounded-xl p-4 flex items-start gap-3">
-          <AlertTriangle className="text-danger w-5 h-5 flex-shrink-0" />
+        <div className="bg-rose-50/80 backdrop-blur-sm border border-rose-200 rounded-2xl p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-rose-600 mt-0.5" />
           <div>
-            <div className="text-danger text-sm font-bold mb-1">
-              Error
-            </div>
-            <p className="text-sm text-foreground-muted">{error}</p>
+            <div className="text-rose-700 text-sm font-semibold">Error</div>
+            <p className="text-sm text-rose-600 mt-1">{error}</p>
           </div>
         </div>
       )}
 
       {inferenceError && (
-        <div className="bg-warning/10 border border-warning/20 rounded-xl p-4 flex items-start gap-3">
-          <AlertTriangle className="text-warning w-5 h-5 flex-shrink-0" />
+        <div className="bg-orange-50/80 backdrop-blur-sm border border-orange-200 rounded-2xl p-4 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-orange-600" />
           <div>
-            <div className="text-warning text-sm font-bold mb-1">
-              Inference Error
-            </div>
-            <p className="text-sm text-foreground-muted">{inferenceError}</p>
+            <div className="text-orange-700 text-sm font-semibold">Inference Error</div>
+            <p className="text-sm text-orange-600">{inferenceError}</p>
           </div>
         </div>
       )}
 
-      {analysisResult && (
-        <div className="bg-surface border border-primary/20 rounded-xl p-4 animate-in slide-in-from-top-2">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-primary text-sm font-bold">
-              Detection Result
-            </div>
-            <div className="text-xs text-foreground-muted">
-              Latency: {analysisResult.latency_ms}ms
-            </div>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-            <div className="bg-background/50 p-2 rounded-lg">
-              <span className="text-foreground-muted block mb-1">Detected</span>
-              <span className="font-bold text-foreground text-sm">{analysisResult.detected ? "Yes" : "No"}</span>
-            </div>
-            <div className="bg-background/50 p-2 rounded-lg">
-              <span className="text-foreground-muted block mb-1">Severity</span>
-              <span className="font-bold text-foreground text-sm capitalize">{analysisResult.severity}</span>
-            </div>
-            <div className="bg-background/50 p-2 rounded-lg">
-              <span className="text-foreground-muted block mb-1">Bboxes</span>
-              <span className="font-bold text-foreground text-sm">{analysisResult.bboxes.length}</span>
-            </div>
-            <div className="bg-background/50 p-2 rounded-lg">
-              <span className="text-foreground-muted block mb-1">Confidence</span>
-              <span className="font-bold text-foreground text-sm">{(analysisResult.confidence * 100).toFixed(1)}%</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="relative bg-black rounded-2xl overflow-hidden aspect-video w-full shadow-2xl border border-white/5">
+      <div className="relative bg-slate-900 rounded-3xl overflow-hidden shadow-2xl ring-1 ring-white/10 aspect-video group">
         <video
           ref={videoRef}
           src={videoUrl ?? undefined}
@@ -341,10 +311,46 @@ const VideoFileView = React.forwardRef<VideoFileViewHandle, VideoFileViewProps>(
         />
 
         {!videoUrl && (
-          <div className="absolute inset-0 flex items-center justify-center text-foreground-muted">
-            <div className="text-center">
-              <div className="text-6xl mb-4 opacity-20">🎥</div>
-              <p className="text-sm font-medium">Choose a video to begin</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 bg-slate-50/50 backdrop-blur-sm">
+            <div className="p-6 bg-white/50 rounded-full mb-4 shadow-sm ring-1 ring-slate-200/50">
+              <FileVideo className="w-12 h-12 text-slate-300" />
+            </div>
+            <p className="text-lg font-medium text-slate-600">No Video Selected</p>
+            <p className="text-sm text-slate-400">Upload a video file to begin analysis</p>
+          </div>
+        )}
+
+        {videoUrl && analysisResult && (
+          <div className="absolute top-4 right-4 w-64 bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-4 text-white shadow-xl transition-opacity hover:bg-black/50 z-10 pointer-events-none">
+            <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-teal-400" />
+                <span className="text-sm font-semibold">Frame Analysis</span>
+              </div>
+              <span className="text-[10px] font-mono text-slate-300 bg-white/10 px-1.5 py-0.5 rounded">
+                {analysisResult.latency_ms}ms
+              </span>
+            </div>
+            
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-300">Detected</span>
+                <span className={`font-semibold ${analysisResult.detected ? "text-amber-400" : "text-emerald-400"}`}>
+                  {analysisResult.detected ? "Yes" : "No"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-300">Severity</span>
+                <span className="capitalize font-medium">{analysisResult.severity}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-300">Objects</span>
+                <span className="font-mono">{analysisResult.bboxes.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-300">Confidence</span>
+                <span className="font-mono">{(analysisResult.confidence * 100).toFixed(1)}%</span>
+              </div>
             </div>
           </div>
         )}

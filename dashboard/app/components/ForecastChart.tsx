@@ -7,13 +7,14 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   Area,
   ComposedChart,
   ReferenceLine,
   ReferenceDot,
 } from "recharts";
+import { GlassCard } from "@/app/components/ui/GlassCard";
+import { StatusChip } from "@/app/components/ui/StatusChip";
 import { formatWIB, formatWIBShort } from "@/lib/dateUtils";
 
 interface ForecastPoint {
@@ -48,6 +49,79 @@ interface ChartPoint {
   timestamp: number;
   ph_pred: number;
   confidence: number;
+}
+
+type ForecastTooltipPayload = {
+  dataKey?: string;
+  value?: number | string;
+};
+
+type ForecastTooltipProps = {
+  active?: boolean;
+  payload?: ForecastTooltipPayload[];
+  label?: number | string;
+};
+
+const formatTooltipNumber = (value: number | string | null | undefined) => {
+  if (value === null || value === undefined) {
+    return "--";
+  }
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (Number.isNaN(numeric)) {
+    return String(value);
+  }
+  return numeric.toFixed(2);
+};
+
+const formatTooltipConfidence = (value: number | string | null | undefined) => {
+  if (value === null || value === undefined) {
+    return "--";
+  }
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (Number.isNaN(numeric)) {
+    return String(value);
+  }
+  return `${Math.round(numeric * 100)}%`;
+};
+
+const formatTooltipLabel = (label: number | string | undefined) => {
+  if (label === undefined) {
+    return "--";
+  }
+  const numeric = typeof label === "number" ? label : Number(label);
+  if (Number.isNaN(numeric)) {
+    return String(label);
+  }
+  return formatWIB(numeric);
+};
+
+function ForecastTooltip({ active, payload, label }: ForecastTooltipProps) {
+  if (!active || !payload || payload.length === 0) {
+    return null;
+  }
+
+  const phItem = payload.find((item) => item.dataKey === "ph_pred");
+  const confidenceItem = payload.find((item) => item.dataKey === "confidence");
+
+  return (
+    <div className="rounded-xl border border-white/70 bg-white/90 px-3 py-2 shadow-lg backdrop-blur-md">
+      <div className="text-xs font-semibold text-slate-600">{formatTooltipLabel(label)}</div>
+      <div className="mt-1 space-y-1 text-xs text-slate-600">
+        {phItem && (
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-slate-500">Predicted pH</span>
+            <span className="font-semibold text-slate-800">{formatTooltipNumber(phItem.value)}</span>
+          </div>
+        )}
+        {confidenceItem && (
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-slate-500">Confidence</span>
+            <span className="font-semibold text-slate-800">{formatTooltipConfidence(confidenceItem.value)}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function ForecastChart({ sensorId }: { sensorId: string }) {
@@ -124,38 +198,34 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
     return [min, max] as [number, number];
   }, [data, lastReadingTimestamp, nowTimestamp]);
 
-  if (loading) return <div className="text-foreground-muted animate-pulse">Loading forecast...</div>;
-
-  const statusTone = anomaly
-    ? anomaly.severity === "critical"
-      ? "bg-danger/10 text-danger border border-danger/20"
-      : anomaly.severity === "warning"
-      ? "bg-warning/10 text-warning border border-warning/20"
-      : anomaly.severity === "normal"
-      ? "bg-success/10 text-success border border-success/20"
-      : "bg-surface text-foreground-muted border border-white/10"
-    : "bg-surface text-foreground-muted border border-white/10";
+  if (loading) return <div className="text-sm text-slate-500">Loading forecast...</div>;
 
   const statusLabel = anomaly ? anomaly.severity.toUpperCase() : "UNKNOWN";
   const lastUpdatedLabel = anomaly?.last_updated ? formatWIB(anomaly.last_updated) : null;
   const forecastStart = data.length ? formatWIB(data[0].timestamp) : null;
 
   return (
-    <div className="w-full bg-surface border border-white/5 p-6 rounded-2xl shadow-lg">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-6">
+    <GlassCard className="w-full">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-white/40">
         <div>
-          <h3 className="text-xl font-bold text-foreground">7-Day Forecast</h3>
+          <h3 className="text-lg font-bold text-slate-800">7-Day Forecast</h3>
           {historyHours ? (
-            <p className="text-xs text-foreground-muted">Based on: {historyHours}h of sensor data</p>
+            <p className="text-xs text-slate-500">Based on: {historyHours}h of sensor data</p>
           ) : null}
         </div>
         {anomaly && (
-          <div className="flex flex-col items-end gap-1">
-            <div className={`px-3 py-1 rounded-full text-xs font-bold ${statusTone}`}>
-              Status: {statusLabel}
-            </div>
+          <div className="flex flex-col items-start sm:items-end gap-1">
+            <StatusChip
+              status={
+                anomaly.severity === "critical" ? "critical" :
+                anomaly.severity === "warning" ? "warning" :
+                anomaly.severity === "normal" ? "active" : "info"
+              }
+              label={statusLabel}
+              size="sm"
+            />
             {lastUpdatedLabel ? (
-              <div className="text-xs text-foreground-muted">Last updated: {lastUpdatedLabel}</div>
+              <div className="text-xs text-slate-500">Last updated: {lastUpdatedLabel}</div>
             ) : null}
           </div>
         )}
@@ -165,115 +235,103 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
         {data.length ? (
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <defs>
+                <linearGradient id="forecast-ph-line" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#0ea5e9" />
+                  <stop offset="100%" stopColor="#14b8a6" />
+                </linearGradient>
+                <linearGradient id="forecast-confidence-area" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="rgba(14, 165, 233, 0.25)" />
+                  <stop offset="100%" stopColor="rgba(14, 165, 233, 0.02)" />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 6" vertical={false} />
               <XAxis
                 dataKey="timestamp"
                 type="number"
                 scale="time"
                 domain={chartDomain}
                 tickFormatter={(value) => formatWIBShort(value)}
-                stroke="#94a3b8"
-                fontSize={12}
+                tick={{ fill: "#64748b", fontSize: 12 }}
+                axisLine={{ stroke: "#e2e8f0" }}
                 tickLine={false}
               />
               <YAxis
                 yAxisId="left"
-                label={{ value: "pH", angle: -90, position: "insideLeft", fill: "#94a3b8" }}
+                label={{ value: "pH", angle: -90, position: "insideLeft", fill: "#94a3b8", fontSize: 12 }}
                 domain={[0, 14]}
-                stroke="#94a3b8"
-                fontSize={12}
+                tick={{ fill: "#64748b", fontSize: 12 }}
+                axisLine={false}
                 tickLine={false}
               />
               <YAxis
                 yAxisId="right"
                 orientation="right"
-                label={{ value: "Confidence", angle: 90, position: "insideRight", fill: "#94a3b8" }}
+                label={{ value: "Confidence", angle: 90, position: "insideRight", fill: "#94a3b8", fontSize: 12 }}
                 domain={[0, 1]}
-                stroke="#94a3b8"
-                fontSize={12}
+                tickFormatter={(value) => `${Math.round(value * 100)}%`}
+                tick={{ fill: "#64748b", fontSize: 12 }}
+                axisLine={false}
                 tickLine={false}
               />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#0B1121",
-                  borderColor: "#1e293b",
-                  borderRadius: "12px",
-                  color: "#f1f5f9",
-                  boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.5)",
-                }}
-                itemStyle={{ color: "#f1f5f9" }}
-                labelFormatter={(value) => formatWIB(value as number)}
-                formatter={(value, name) => {
-                  if (value === null || value === undefined) {
-                    return ["--", name ?? "Value"];
-                  }
-                  const numeric = typeof value === "number" ? value : Number(value);
-                  const safeValue = Number.isNaN(numeric) ? value : numeric.toFixed(2);
-                  if (name === "ph_pred") {
-                    return [safeValue, "Predicted pH"];
-                  }
-                  if (name === "confidence") {
-                    return [safeValue, "Confidence"];
-                  }
-                  return [safeValue, name ?? "Value"];
-                }}
-              />
-              <Legend wrapperStyle={{ color: "#94a3b8" }} />
+              <Tooltip content={<ForecastTooltip />} cursor={{ stroke: "#bae6fd", strokeDasharray: "4 4" }} />
               <Area
                 yAxisId="right"
                 type="monotone"
                 dataKey="confidence"
                 name="Confidence"
-                fill="#06b6d4"
-                stroke="#06b6d4"
-                fillOpacity={0.1}
+                fill="url(#forecast-confidence-area)"
+                stroke="#38bdf8"
+                strokeWidth={1.5}
+                fillOpacity={1}
               />
               <Line
                 yAxisId="left"
                 type="monotone"
                 dataKey="ph_pred"
                 name="Predicted pH"
-                stroke="#22d3ee"
-                activeDot={{ r: 6, fill: "#22d3ee", stroke: "#fff" }}
-                strokeWidth={3}
+                stroke="url(#forecast-ph-line)"
+                strokeWidth={2.5}
                 dot={false}
+                activeDot={{ r: 5, stroke: "#0ea5e9", strokeWidth: 2, fill: "#ffffff" }}
               />
               <ReferenceLine
                 x={nowTimestamp}
-                stroke="#f1f5f9"
+                stroke="#38bdf8"
                 strokeDasharray="4 4"
                 label={{
-                  value: `NOW`,
+                  value: `Now (${formatWIBShort(nowTimestamp)})`,
                   position: "top",
-                  fill: "#f1f5f9",
-                  fontSize: 10,
+                  fill: "#38bdf8",
+                  fontSize: 11,
                 }}
               />
               {lastReadingTimestamp !== null && latestReading?.ph != null ? (
                 <ReferenceDot
                   x={lastReadingTimestamp}
                   y={latestReading.ph}
-                  r={5}
-                  fill="#22d3ee"
-                  stroke="none"
+                  r={4}
+                  fill="#ffffff"
+                  stroke="#0ea5e9"
+                  strokeWidth={2}
                   label={{
                     value: `Last Reading`,
                     position: "top",
-                    fill: "#22d3ee",
-                    fontSize: 10,
+                    fill: "#0ea5e9",
+                    fontSize: 11,
                   }}
                 />
               ) : null}
             </ComposedChart>
           </ResponsiveContainer>
         ) : (
-          <div className="h-full flex items-center justify-center text-sm text-foreground-muted bg-background/50 rounded-xl border border-white/5 border-dashed">
+          <div className="h-full flex items-center justify-center text-sm text-slate-500">
             {warning ?? "No forecast available"}
           </div>
         )}
       </div>
 
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-foreground-muted">
+      <div className="mt-4 space-y-1 text-sm text-slate-600">
         {latestReading ? (
           <div className="p-3 bg-background/50 rounded-xl border border-white/5">
             <span className="block text-xs font-bold uppercase tracking-wider mb-1 text-primary">Last Reading</span>
@@ -291,10 +349,10 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
       </div>
 
       {anomaly && anomaly.reason ? (
-        <div className="mt-4 p-4 bg-primary/5 border border-primary/10 rounded-xl text-sm text-foreground">
-          <strong className="text-primary block mb-1">Analysis Report:</strong> {anomaly.reason}
+        <div className="mt-2 text-sm text-slate-600">
+          <strong>Analysis:</strong> {anomaly.reason}
         </div>
       ) : null}
-    </div>
+    </GlassCard>
   );
 }
