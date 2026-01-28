@@ -21,16 +21,32 @@ export async function listUsers() {
   return JSON.parse(JSON.stringify(users))
 }
 
-export async function setRole(userId: string, role: Role) {
+type PublicMetadata = Record<string, unknown>
+
+const getPublicMetadata = async (userId: string) => {
+  const client = await clerkClient()
+  const user = await client.users.getUser(userId)
+  return (user.publicMetadata ?? {}) as PublicMetadata
+}
+
+export async function setRole(userId: string, role: Role | null) {
   if (!await checkRole('superadmin')) {
     throw new Error('Unauthorized')
   }
 
   const client = await clerkClient()
+  const currentMetadata = await getPublicMetadata(userId)
+  const nextMetadata = {
+    ...currentMetadata,
+    role: role ?? undefined,
+  } as PublicMetadata
+
+  if (role === null) {
+    delete (nextMetadata as { role?: unknown }).role
+  }
+
   await client.users.updateUserMetadata(userId, {
-    publicMetadata: {
-      role,
-    },
+    publicMetadata: nextMetadata,
   })
   
   revalidatePath('/admin/users')
@@ -43,10 +59,14 @@ export async function setAllowlisted(userId: string, allowlisted: boolean) {
   }
 
   const client = await clerkClient()
+  const currentMetadata = await getPublicMetadata(userId)
+  const nextMetadata = {
+    ...currentMetadata,
+    allowlisted,
+  } as PublicMetadata
+
   await client.users.updateUserMetadata(userId, {
-    publicMetadata: {
-      allowlisted,
-    },
+    publicMetadata: nextMetadata,
   })
   
   revalidatePath('/admin/users')

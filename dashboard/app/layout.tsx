@@ -22,7 +22,16 @@ export default async function RootLayout({
   }
 
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      appearance={{
+        elements: {
+          footer: "hidden",
+          footerAction: "hidden",
+          footerActionText: "hidden",
+          footerActionLink: "hidden",
+        },
+      }}
+    >
       <html lang="en">
         <body
           className={`${plusJakartaSans.variable} antialiased text-slate-900 bg-slate-50`}

@@ -15,9 +15,11 @@ interface ClerkUser {
   lastName: string | null;
   imageUrl: string;
   emailAddresses: { emailAddress: string }[];
-  publicMetadata: { role?: Role; allowlisted?: boolean };
+  publicMetadata: { role?: Role | null; allowlisted?: boolean };
   lastSignInAt: number | null;
 }
+
+type RoleOption = Role | 'user';
 
 export default function AdminClientPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'pending'>('all');
@@ -49,15 +51,16 @@ export default function AdminClientPage() {
     }
   };
 
-  const handleRoleChange = async (userId: string, newRole: Role) => {
+  const handleRoleChange = async (userId: string, newRole: RoleOption) => {
+    const nextRole = newRole === 'user' ? null : newRole;
     try {
         setUsers(users.map(u => 
             u.id === userId 
-                ? { ...u, publicMetadata: { ...u.publicMetadata, role: newRole } }
+                ? { ...u, publicMetadata: { ...u.publicMetadata, role: nextRole } }
                 : u
         ));
         
-        await setRole(userId, newRole);
+        await setRole(userId, nextRole);
         setToast({ message: "Role updated successfully", type: "success" });
     } catch (err) {
         console.error(err);
@@ -180,7 +183,7 @@ export default function AdminClientPage() {
                                     <td className="px-6 py-4 border-y border-white/50">
                                         <select
                                             value={user.publicMetadata.role || 'user'}
-                                            onChange={(e) => handleRoleChange(user.id, e.target.value as Role)}
+                                            onChange={(e) => handleRoleChange(user.id, e.target.value as RoleOption)}
                                             className="bg-white/50 border border-white/60 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 cursor-pointer"
                                         >
                                             <option value="user">User</option>

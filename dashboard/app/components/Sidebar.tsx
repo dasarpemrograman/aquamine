@@ -106,7 +106,7 @@ export default function Sidebar() {
             </div>
             </div>
         ) : (
-            <Link href="/sign-in" className="flex items-center gap-3 group/login cursor-pointer hover:opacity-80 transition-opacity">
+            <Link href="/login" className="flex items-center gap-3 group/login cursor-pointer hover:opacity-80 transition-opacity">
                 <div className="w-10 h-10 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-slate-400 group-hover/login:bg-slate-200 group-hover/login:text-slate-600 transition-colors">
                     <Users size={20} />
                 </div>

@@ -16,16 +16,43 @@ export async function bootstrapSuperadmin() {
 
   if (!emailMatches) return;
 
-  // Check if user already has the role
   const currentRole = user.publicMetadata.role as Role | undefined;
-  if (currentRole === 'superadmin') return;
+  const isAllowlisted = user.publicMetadata.allowlisted === true;
 
-  // Check if ANY superadmin exists (Lock mechanism)
+  if (currentRole === 'superadmin' && isAllowlisted) return;
+
+  if (currentRole === 'superadmin' && !isAllowlisted) {
+    const client = await clerkClient();
+    await client.users.updateUserMetadata(user.id, {
+      publicMetadata: {
+        ...user.publicMetadata,
+        allowlisted: true,
+      },
+    });
+    return;
+  }
+
   const client = await clerkClient();
-  const response = await client.users.getUserList({ limit: 100 });
-  const users = response.data;
-  
-  const superadminExists = users.some((u) => u.publicMetadata.role === 'superadmin');
+
+  const superadminExists = await (async () => {
+    const limit = 100;
+    let offset = 0;
+
+    while (true) {
+      const response = await client.users.getUserList({ limit, offset });
+      const users = Array.isArray(response) ? response : response.data;
+
+      if (users.some((u) => u.publicMetadata.role === 'superadmin')) {
+        return true;
+      }
+
+      if (Array.isArray(response) || users.length < limit) {
+        return false;
+      }
+
+      offset += limit;
+    }
+  })();
 
   if (superadminExists) {
     console.log('Bootstrap locked: Superadmin already exists.');
@@ -34,6 +61,7 @@ export async function bootstrapSuperadmin() {
 
   await client.users.updateUserMetadata(user.id, {
     publicMetadata: {
+      ...user.publicMetadata,
       role: 'superadmin' satisfies Role,
       allowlisted: true,
     },
