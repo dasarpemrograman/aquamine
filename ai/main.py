@@ -926,10 +926,7 @@ async def update_user_settings(
         if refresh_interval is None:
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "refresh_interval_seconds must be between "
-                    f"{REFRESH_INTERVAL_MIN_SECONDS} and {REFRESH_INTERVAL_MAX_SECONDS} seconds"
-                ),
+                detail="refresh_interval_seconds cannot be null",
             )
         if not (REFRESH_INTERVAL_MIN_SECONDS <= refresh_interval <= REFRESH_INTERVAL_MAX_SECONDS):
             raise HTTPException(
