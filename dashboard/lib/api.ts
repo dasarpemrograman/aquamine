@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8181";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8181";
 
 export interface BoundingBox {
   x: number;
@@ -28,6 +28,50 @@ export interface ErrorResponse {
 
 export interface ChatResponse {
   response: string;
+}
+
+export interface UserSettings {
+  user_id: string;
+  notifications_enabled: boolean;
+  notify_critical: boolean;
+  notify_warning: boolean;
+  notify_info: boolean;
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+  timezone: string;
+  refresh_interval_seconds: number;
+  last_notification_seen_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserSettingsUpdate {
+  notifications_enabled?: boolean;
+  notify_critical?: boolean;
+  notify_warning?: boolean;
+  notify_info?: boolean;
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
+  timezone?: string;
+  refresh_interval_seconds?: number;
+  last_notification_seen_at?: string | null;
+}
+
+export interface Alert {
+  id: number;
+  sensor_id: number;
+  severity: string;
+  previous_state: string | null;
+  message: string | null;
+  created_at: string;
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
+}
+
+export interface Sensor {
+  id: number;
+  sensor_id: string;
+  is_active: boolean;
 }
 
 export async function analyzeImage(file: File): Promise<AnalysisResponse> {
@@ -68,6 +112,97 @@ export async function sendChatMessage(
       detail: `Server returned ${response.status} ${response.statusText}`
     }));
     throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function fetchSettings(userId: string): Promise<UserSettings> {
+  const response = await fetch(`${API_BASE}/api/v1/settings/${userId}`);
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function updateSettings(
+  userId: string,
+  payload: UserSettingsUpdate
+): Promise<UserSettings> {
+  const response = await fetch(`${API_BASE}/api/v1/settings/${userId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function fetchAlerts(): Promise<Alert[]> {
+  const response = await fetch(`${API_BASE}/api/v1/alerts`);
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function fetchSensors(): Promise<Sensor[]> {
+  const response = await fetch(`${API_BASE}/api/v1/sensors`);
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function acknowledgeAlert(alertId: number): Promise<Alert> {
+  const response = await fetch(`${API_BASE}/api/v1/alerts/${alertId}/acknowledge`, {
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function fetchHealth(): Promise<{ status: string }> {
+  const response = await fetch(`${API_BASE}/health`);
+
+  if (!response.ok) {
+    throw new Error(`Health check failed: ${response.status} ${response.statusText}`);
   }
 
   return response.json();

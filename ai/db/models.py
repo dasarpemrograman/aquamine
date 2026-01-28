@@ -1,7 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Any
 from sqlalchemy import (
-    Column,
     Integer,
     String,
     Float,
@@ -15,7 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 from sqlalchemy.sql import func
-from .connection import Base, engine
+from .connection import Base
 
 
 class Sensor(Base):
@@ -114,6 +113,27 @@ class NotificationRecipient(Base):
     notify_critical: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+
+    user_id: Mapped[str] = mapped_column(String(100), primary_key=True, unique=True, nullable=False)
+    notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_critical: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_warning: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_info: Mapped[bool] = mapped_column(Boolean, default=False)
+    quiet_hours_start: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    quiet_hours_end: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    timezone: Mapped[str] = mapped_column(String(50), nullable=False)
+    refresh_interval_seconds: Mapped[int] = mapped_column(Integer, default=10)
+    last_notification_seen_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class SensorAlertState(Base):
     __tablename__ = "sensor_alert_state"
 
@@ -127,7 +147,7 @@ class SensorAlertState(Base):
 
 # Event listener to convert readings table to hypertable after creation
 @event.listens_for(Reading.__table__, "after_create")
-def create_hypertable_listener(target, connection, **kw):
+def create_hypertable_listener(_target, connection, **_kw):
     # Only try to create hypertable if TimescaleDB extension is available
     # We use execute with text() for DDL
     try:

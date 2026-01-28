@@ -16,6 +16,18 @@ from db.models import (
     Anomaly,
     Alert,
     NotificationRecipient,
+    UserSettings,
+    SensorAlertState,
+)
+
+_ = (
+    Sensor,
+    Reading,
+    Prediction,
+    Anomaly,
+    Alert,
+    NotificationRecipient,
+    UserSettings,
     SensorAlertState,
 )
 

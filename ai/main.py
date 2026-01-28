@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Optional
 
@@ -16,7 +17,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError
 import io
+import logging
 import os
+import re
 import time
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +41,7 @@ from .db.models import (
     Anomaly,
     NotificationRecipient,
     SensorAlertState,
+    UserSettings,
 )
 from .schemas.sensor import SensorResponse, ReadingResponse, SensorDataIngest
 from .schemas.forecast import PredictionResponse
@@ -49,6 +53,8 @@ from .schemas.alert import (
     RecipientCreate,
     RecipientResponse,
 )
+from .schemas.settings import UserSettingsResponse, UserSettingsUpdate
+from .schemas.help import FaqItem, FaqResponse
 from .schemas.base import BaseSchema
 from .iot.mqtt_bridge import process_mqtt_message
 from .forecasting.timegpt_client import TimeGPTClient
@@ -57,7 +63,33 @@ from .alerts.state_machine import AlertStateMachine
 from .alerts.notifications import NotificationService
 from .realtime.websocket import manager as ws_manager
 
-app = FastAPI(title="AquaMine AI API")
+logger = logging.getLogger(__name__)
+
+REFRESH_INTERVAL_MIN_SECONDS = 5
+REFRESH_INTERVAL_MAX_SECONDS = 60
+QUIET_HOURS_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(ws_manager.start_redis_listener())
+    app.state.redis_listener_task = task
+
+    def task_done_callback(t):
+        if t.exception():
+            logger.error(f"Redis listener task crashed: {t.exception()}")
+
+    task.add_done_callback(task_done_callback)
+
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+app = FastAPI(title="AquaMine AI API", lifespan=lifespan)
 
 # Setup services
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
@@ -185,6 +217,43 @@ def _format_anomaly_summary(anomaly: Optional[Anomaly]) -> dict[str, object]:
     return {"score": score, "severity": severity, "reason": reason}
 
 
+def _validate_quiet_hours(value: Optional[str], label: str) -> None:
+    if value is None:
+        return
+    if not QUIET_HOURS_PATTERN.match(value):
+        raise HTTPException(status_code=400, detail=f"{label} must be in HH:MM 24-hour format")
+
+
+def _validate_timezone(value: Optional[str]) -> None:
+    if value is None:
+        return
+    if not value.strip():
+        raise HTTPException(status_code=400, detail="timezone must be a non-empty string")
+
+
+def _ensure_settings_timestamps(settings: UserSettings) -> None:
+    if settings.created_at is None:
+        settings.created_at = datetime.now(timezone.utc)
+    if settings.updated_at is None:
+        settings.updated_at = datetime.now(timezone.utc)
+
+
+async def _get_or_create_settings(
+    db: AsyncSession, user_id: str, timezone_value: str = "UTC"
+) -> UserSettings:
+    result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+    settings = result.scalar_one_or_none()
+    if settings:
+        return settings
+
+    settings = UserSettings(user_id=user_id, timezone=timezone_value)
+    db.add(settings)
+    await db.commit()
+    await db.refresh(settings)
+    _ensure_settings_timestamps(settings)
+    return settings
+
+
 async def _get_latest_reading(db: AsyncSession, sensor_id: int) -> Optional[Reading]:
     query = (
         select(Reading)
@@ -299,9 +368,72 @@ class TimelineForecastResponse(BaseSchema):
     warning: Optional[str] = None
 
 
+FAQ_ITEMS: List[FaqItem] = [
+    FaqItem(
+        title="What is AquaMine AI?",
+        body=(
+            "AquaMine AI is an early warning system for Acid Mine Drainage (AMD). "
+            "It combines IoT telemetry, anomaly detection, forecasting, computer vision, "
+            "and a realtime dashboard to monitor water quality."
+        ),
+    ),
+    FaqItem(
+        title="How do alerts work?",
+        body=(
+            "Sensor readings are checked against thresholds and anomaly rules. "
+            "When a warning or critical condition is detected, the alert state machine "
+            "creates an alert and can notify active recipients. Recovery clears the alert."
+        ),
+    ),
+    FaqItem(
+        title="Which sensors and readings are expected?",
+        body=(
+            "The system expects a sensor_id, timestamp, and readings such as pH, turbidity, "
+            "and temperature. Missing values are allowed, but richer data improves detection "
+            "and forecasting confidence."
+        ),
+    ),
+    FaqItem(
+        title="How is forecasting generated?",
+        body=(
+            "Forecasts are generated with TimeGPT as the primary model and XGBoost as a "
+            "fallback. The API needs recent sensor data (ideally 24 hours) to return "
+            "forecast points with confidence scores."
+        ),
+    ),
+    FaqItem(
+        title="How do I use the dashboard locally?",
+        body=(
+            "Copy .env from .env.example, run docker compose up -d, and open "
+            "http://localhost:3000. Verify the API at http://localhost:8000/health."
+        ),
+    ),
+    FaqItem(
+        title="Why does the dashboard show 'failed to fetch'?",
+        body=(
+            "Check that NEXT_PUBLIC_API_BASE_URL and related variables point to your VPS "
+            "IP or domain, not localhost. Rebuild the dashboard container so the values are "
+            "baked into the frontend bundle."
+        ),
+    ),
+    FaqItem(
+        title="Why is the WebSocket not connecting?",
+        body=(
+            "Confirm NEXT_PUBLIC_WS_BASE_URL uses ws:// for HTTP or wss:// for HTTPS and that "
+            "Nginx proxies /ws/ to the API. Mixed content errors are a common cause."
+        ),
+    ),
+]
+
+
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/v1/help/faq", response_model=FaqResponse)
+def get_faq() -> FaqResponse:
+    return FaqResponse(items=FAQ_ITEMS)
 
 
 @app.post("/api/v1/chat")
@@ -674,7 +806,7 @@ async def get_forecast_compatibility(
 
 @app.post("/api/v1/forecast/generate")
 async def generate_forecast_endpoint(
-    sensor_id: int, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
+    sensor_id: int, _background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
 ):
     """Generate forecast for a sensor."""
     # 1. Fetch historical data (7 days)
@@ -774,6 +906,66 @@ async def list_alerts(
 
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@app.get("/api/v1/settings/{user_id}", response_model=UserSettingsResponse)
+async def get_user_settings(user_id: str, db: AsyncSession = Depends(get_db)):
+    settings = await _get_or_create_settings(db, user_id, timezone_value="UTC")
+    _ensure_settings_timestamps(settings)
+    return UserSettingsResponse.model_validate(settings)
+
+
+@app.patch("/api/v1/settings/{user_id}", response_model=UserSettingsResponse)
+async def update_user_settings(
+    user_id: str, updates: UserSettingsUpdate, db: AsyncSession = Depends(get_db)
+):
+    update_data = updates.model_dump(exclude_unset=True)
+
+    if "refresh_interval_seconds" in update_data:
+        refresh_interval = update_data["refresh_interval_seconds"]
+        if refresh_interval is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "refresh_interval_seconds must be between "
+                    f"{REFRESH_INTERVAL_MIN_SECONDS} and {REFRESH_INTERVAL_MAX_SECONDS} seconds"
+                ),
+            )
+        if not (REFRESH_INTERVAL_MIN_SECONDS <= refresh_interval <= REFRESH_INTERVAL_MAX_SECONDS):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "refresh_interval_seconds must be between "
+                    f"{REFRESH_INTERVAL_MIN_SECONDS} and {REFRESH_INTERVAL_MAX_SECONDS} seconds"
+                ),
+            )
+
+    if "timezone" in update_data:
+        if update_data["timezone"] is None:
+            raise HTTPException(status_code=400, detail="timezone must be a non-empty string")
+        _validate_timezone(update_data["timezone"])
+
+    result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
+    settings = result.scalar_one_or_none()
+    if not settings:
+        settings = UserSettings(
+            user_id=user_id,
+            timezone=update_data.get("timezone") or "UTC",
+        )
+
+    quiet_start = update_data.get("quiet_hours_start", settings.quiet_hours_start)
+    quiet_end = update_data.get("quiet_hours_end", settings.quiet_hours_end)
+    _validate_quiet_hours(quiet_start, "quiet_hours_start")
+    _validate_quiet_hours(quiet_end, "quiet_hours_end")
+
+    for key, value in update_data.items():
+        setattr(settings, key, value)
+
+    db.add(settings)
+    await db.commit()
+    await db.refresh(settings)
+    _ensure_settings_timestamps(settings)
+    return UserSettingsResponse.model_validate(settings)
 
 
 @app.post("/api/v1/recipients", response_model=RecipientResponse)
@@ -876,16 +1068,3 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket)
-
-
-# Startup event to launch Redis listener
-@app.on_event("startup")
-async def startup_event():
-    task = asyncio.create_task(ws_manager.start_redis_listener())
-    app.state.redis_listener_task = task
-
-    def task_done_callback(t):
-        if t.exception():
-            logger.error(f"Redis listener task crashed: {t.exception()}")
-
-    task.add_done_callback(task_done_callback)
