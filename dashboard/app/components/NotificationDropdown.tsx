@@ -21,8 +21,11 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = alerts.filter(a => !a.acknowledged_at).length;
-  const newCount = settings?.last_notification_seen_at 
-    ? alerts.filter(a => new Date(a.created_at) > new Date(settings.last_notification_seen_at!)).length
+  const lastSeenMs = settings?.last_notification_seen_at
+    ? Date.parse(settings.last_notification_seen_at)
+    : NaN;
+  const newCount = Number.isFinite(lastSeenMs)
+    ? alerts.filter(a => Date.parse(a.created_at) > lastSeenMs).length
     : alerts.length;
 
   const isQuietHours = () => {
@@ -45,15 +48,17 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
     onCountChange?.({ unread: unreadCount, new: newCount });
   }, [unreadCount, newCount, onCountChange]);
 
+  const refreshMs = (settings?.refresh_interval_seconds ?? 10) * 1000;
+
   useEffect(() => {
     loadData();
-    
+
     const interval = setInterval(() => {
       loadData();
-    }, (settings?.refresh_interval_seconds || 10) * 1000);
-    
+    }, refreshMs);
+
     return () => clearInterval(interval);
-  }, [userId, settings?.refresh_interval_seconds]);
+  }, [userId, refreshMs]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
