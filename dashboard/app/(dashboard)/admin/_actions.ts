@@ -32,9 +32,10 @@ export async function setRole(userId: string, role: Role | null) {
   }
 
   const client = await clerkClient()
-  
+  const user = await client.users.getUser(userId)
+
   await client.users.updateUserMetadata(userId, {
-    publicMetadata: { role },
+    publicMetadata: { ...user.publicMetadata, role: role ?? undefined },
   })
   
   revalidatePath('/admin/users')
@@ -48,8 +49,10 @@ export async function setAllowlisted(userId: string, allowlisted: boolean) {
 
   const client = await clerkClient()
 
+  const user = await client.users.getUser(userId)
+
   await client.users.updateUserMetadata(userId, {
-    publicMetadata: { allowlisted },
+    publicMetadata: { ...user.publicMetadata, allowlisted },
   })
   
   revalidatePath('/admin/users')
