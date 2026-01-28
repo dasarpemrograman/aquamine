@@ -202,15 +202,6 @@ export default function Home() {
            <div className="absolute right-0 bottom-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl -mr-8 -mb-8" />
         </div>
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 h-full">
-          <SensorStatus />
-        </div>
-        <div className="lg:col-span-1 h-full">
-          <AlertList />
-        </div>
-      </div>
     </div>
   );
 }

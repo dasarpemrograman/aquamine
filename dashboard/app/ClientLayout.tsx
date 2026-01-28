@@ -1,7 +1,7 @@
 "use client";
 
-import { Sidebar } from "./components/Sidebar";
-import { TopBar } from "./components/TopBar";
+import Sidebar from "./components/Sidebar";
+import TopBar from "./components/TopBar";
 import { useState } from "react";
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {

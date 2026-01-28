@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import { StatusChip } from "@/app/components/ui/StatusChip";
-import { Activity, Battery, Signal } from "lucide-react";
+import { Activity, Battery, Signal, WifiOff } from "lucide-react";
 
 export default function SensorStatus() {
   const [sensors, setSensors] = useState([]);
