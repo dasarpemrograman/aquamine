@@ -52,7 +52,7 @@ export default function TopBar() {
           </SignedIn>
           <SignedOut>
             <Link 
-              href="/sign-in" 
+              href="/login" 
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-all shadow-sm hover:shadow-md active:scale-95"
             >
               <LogIn size={16} />

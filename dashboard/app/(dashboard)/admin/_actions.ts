@@ -10,14 +10,23 @@ export async function listUsers() {
   }
 
   const client = await clerkClient()
-  const response = await client.users.getUserList({
-    limit: 100,
-  })
+  const limit = 100
+  let offset = 0
+  const users = [] as unknown[]
 
-  // Handle both array and paginated response formats just in case
-  const users = Array.isArray(response) ? response : response.data
+  while (true) {
+    const response = await client.users.getUserList({ limit, offset })
+    const page = Array.isArray(response) ? response : response.data
 
-  // Return serializable data
+    users.push(...page)
+
+    if (Array.isArray(response) || page.length < limit) {
+      break
+    }
+
+    offset += limit
+  }
+
   return JSON.parse(JSON.stringify(users))
 }
 
