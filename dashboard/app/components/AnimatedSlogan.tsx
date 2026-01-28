@@ -45,6 +45,6 @@ export default function AnimatedSlogan() {
   }, [phase, charIdx, index, isDefault]);
 
   return (
-    <span className="text-blue-600 dark:text-blue-400 min-w-[3ch] inline-block text-left align-middle">{display}</span>
+    <span className="text-cyan-600 min-w-[3ch] inline-block text-left align-middle">{display}</span>
   );
 }

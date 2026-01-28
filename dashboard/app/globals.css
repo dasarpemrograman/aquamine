@@ -1,27 +1,87 @@
-
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-
 :root {
-  --font-plus-jakarta-sans: 'Plus Jakarta Sans', Arial, Helvetica, sans-serif;
-  --background: #fff;
-  --foreground: #222;
+  --font-plus-jakarta-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+
+  --color-bg-base: #f5f7fb;
+  --color-bg-secondary: #eef2f7;
+
+  --color-accent-aqua: #22d3ee;
+  --color-accent-teal: #14b8a6;
+  --color-accent-coral: #fb7185;
+
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94a3b8;
+
+  --glass-surface: rgba(255, 255, 255, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+  --glass-blur: 16px;
+  --glass-saturation: 140%;
 }
 
-
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--color-bg-base);
+  --color-foreground: var(--color-text-primary);
+
+  --color-primary: var(--color-accent-aqua);
+  --color-secondary: var(--color-accent-teal);
+  --color-accent: var(--color-accent-coral);
+
+  --color-aqua: var(--color-accent-aqua);
+  --color-teal: var(--color-accent-teal);
+  --color-coral: var(--color-accent-coral);
+  --color-muted: var(--color-text-muted);
+
   --font-sans: var(--font-plus-jakarta-sans);
 }
 
-
-
 body {
-  background: #fff;
-  color: #222;
-  font-family: var(--font-plus-jakarta-sans), 'Plus Jakarta Sans', Arial, Helvetica, sans-serif;
+  background-color: var(--color-bg-base);
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(34, 211, 238, 0.12) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(20, 184, 166, 0.12) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(251, 113, 133, 0.08) 0px, transparent 50%);
+  background-attachment: fixed;
+  color: var(--color-text-primary);
+  font-family: var(--font-plus-jakarta-sans);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+.glass {
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-panel {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.4));
+  backdrop-filter: blur(24px) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(24px) saturate(var(--glass-saturation));
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.6), 0 20px 40px -10px rgba(15, 23, 42, 0.1);
+}
+
+.glass-border {
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.5);
+}
+
+.gradient-bg {
+  background: radial-gradient(circle at top left, rgba(34, 211, 238, 0.15), transparent 40%),
+              radial-gradient(circle at bottom right, rgba(20, 184, 166, 0.15), transparent 40%);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #0ea5e9, #14b8a6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
 }

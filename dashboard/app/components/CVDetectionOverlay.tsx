@@ -46,7 +46,7 @@ export default function CVDetectionOverlay({
           text: "text-emerald-500",
           border: "border-emerald-500",
           badge:
-            "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
+            "bg-emerald-50 text-emerald-700 border-emerald-200",
         };
       case "mild":
         return {
@@ -54,7 +54,7 @@ export default function CVDetectionOverlay({
           text: "text-yellow-500",
           border: "border-yellow-500",
           badge:
-            "bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800",
+            "bg-yellow-50 text-yellow-700 border-yellow-200",
         };
       case "moderate":
         return {
@@ -62,7 +62,7 @@ export default function CVDetectionOverlay({
           text: "text-orange-500",
           border: "border-orange-500",
           badge:
-            "bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800",
+            "bg-orange-50 text-orange-700 border-orange-200",
         };
       case "severe":
         return {
@@ -70,15 +70,15 @@ export default function CVDetectionOverlay({
           text: "text-rose-500",
           border: "border-rose-500",
           badge:
-            "bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800",
+            "bg-rose-50 text-rose-700 border-rose-200",
         };
       default:
         return {
-          bg: "bg-zinc-500",
-          text: "text-zinc-500",
-          border: "border-zinc-500",
+          bg: "bg-slate-500",
+          text: "text-slate-500",
+          border: "border-slate-500",
           badge:
-            "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700",
+            "bg-slate-100 text-slate-700 border-slate-200",
         };
     }
   };
