@@ -9,7 +9,8 @@ import {
   Bell, 
   Users, 
   Camera, 
-  MessageSquare 
+  MessageSquare,
+  Shield
 } from "lucide-react";
 
 const navItems = [
@@ -25,6 +26,11 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { user, isLoaded, isSignedIn } = useUser();
 
+  const finalNavItems = [...navItems];
+  if (user?.publicMetadata?.role === 'superadmin') {
+    finalNavItems.push({ href: '/admin/users', label: 'Admin', icon: Shield });
+  }
+
   return (
     <aside className="fixed left-0 top-0 h-full w-72 z-40 hidden md:flex flex-col border-r border-white/75 bg-white/60 backdrop-blur-xl shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300">
       <div className="h-20 flex items-center px-8 border-b border-white/50">
@@ -39,7 +45,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 py-8 px-4 space-y-2 overflow-y-auto">
-        {navItems.map((item) => {
+        {finalNavItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
 

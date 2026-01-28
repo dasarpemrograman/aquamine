@@ -13,8 +13,8 @@ import {
   ArrowRight
 } from "lucide-react";
 
-import SensorStatus from "./components/SensorStatus";
-import AlertList from "./components/AlertList";
+import SensorStatus from "@/app/components/SensorStatus";
+import AlertList from "@/app/components/AlertList";
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { StatusChip } from "@/app/components/ui/StatusChip";

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Edit2, Trash2, X, AlertTriangle, AlertOctagon, Check, Users } from "lucide-react";
 
-import { GlassPanel } from "../components/ui/GlassPanel";
+import { GlassPanel } from "@/app/components/ui/GlassPanel";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 
 interface Recipient {

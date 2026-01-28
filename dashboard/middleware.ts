@@ -3,52 +3,38 @@ import { NextResponse } from "next/server";
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
-  "/sign-up(.*)",
+  "/login(.*)",
   "/not-authorized(.*)",
 ]);
 
-const isNotAuthorizedRoute = createRouteMatcher(["/not-authorized(.*)"]);
-
-const isAllowlistedEmail = async (
-  client: Awaited<ReturnType<typeof clerkClient>>,
-  email: string,
-) => {
-  const allowlist =
-    await client.allowlistIdentifiers.getAllowlistIdentifierList();
-  const normalizedEmail = email.toLowerCase();
-
-  return allowlist.data.some(
-    (entry) =>
-      entry.identifierType === "email_address" &&
-      entry.identifier.toLowerCase() === normalizedEmail,
-  );
-};
+const isAccessPendingRoute = createRouteMatcher(["/access-pending(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
+  const { userId } = await auth();
+
+  if (userId && req.nextUrl.pathname.startsWith('/login')) {
+    return NextResponse.redirect(new URL("/", req.url));
+  }
+
   if (!isPublicRoute(req)) {
     await auth.protect();
   }
 
-  const { userId } = await auth();
-
-  if (!userId || isNotAuthorizedRoute(req)) {
+  if (!userId) {
     return;
   }
 
   const client = await clerkClient();
   const user = await client.users.getUser(userId);
-  const primaryEmail = user.emailAddresses.find(
-    (email) => email.id === user.primaryEmailAddressId,
-  )?.emailAddress;
+  
+  const allowlisted = user.publicMetadata.allowlisted === true;
 
-  if (!primaryEmail) {
-    return NextResponse.redirect(new URL("/not-authorized", req.url));
+  if (!allowlisted && !isAccessPendingRoute(req)) {
+    return NextResponse.redirect(new URL("/access-pending", req.url));
   }
 
-  const allowlisted = await isAllowlistedEmail(client, primaryEmail);
-
-  if (!allowlisted) {
-    return NextResponse.redirect(new URL("/not-authorized", req.url));
+  if (allowlisted && isAccessPendingRoute(req)) {
+    return NextResponse.redirect(new URL("/", req.url));
   }
 });
 

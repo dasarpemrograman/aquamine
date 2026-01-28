@@ -1,4 +1,4 @@
-import ChatInterface from "../components/ChatInterface";
+import ChatInterface from "@/app/components/ChatInterface";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { MessageSquare } from "lucide-react";
 
