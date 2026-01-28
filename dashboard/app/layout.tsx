@@ -1,3 +1,4 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { plusJakartaSans } from "./fonts/plus-jakarta-sans";
 import Sidebar from "./components/Sidebar";
@@ -15,22 +16,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${plusJakartaSans.variable} antialiased text-slate-900 bg-slate-50`}
-      >
-        <div className="flex min-h-screen">
-          <Sidebar />
-          
-          <div className="flex-1 flex flex-col md:ml-72 transition-all duration-300 relative">
-            <TopBar />
+    <ClerkProvider>
+      <html lang="en">
+        <body
+          className={`${plusJakartaSans.variable} antialiased text-slate-900 bg-slate-50`}
+        >
+          <div className="flex min-h-screen">
+            <Sidebar />
             
-            <main className="flex-1 w-full">
-              {children}
-            </main>
+            <div className="flex-1 flex flex-col md:ml-72 transition-all duration-300 relative">
+              <TopBar />
+              
+              <main className="flex-1 w-full">
+                {children}
+              </main>
+            </div>
           </div>
-        </div>
-      </body>
-    </html>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

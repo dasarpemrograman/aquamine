@@ -10,6 +10,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.36.10",
     "@influxdata/influxdb3-client": "^2.0.0",
     "@tailwindcss/typography": "^0.5.19",
     "dotenv": "^17.2.3",

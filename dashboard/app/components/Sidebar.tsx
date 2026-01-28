@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 import { 
   LayoutDashboard, 
   LineChart, 
@@ -22,6 +23,7 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { user, isLoaded, isSignedIn } = useUser();
 
   return (
     <aside className="fixed left-0 top-0 h-full w-72 z-40 hidden md:flex flex-col border-r border-white/75 bg-white/60 backdrop-blur-xl shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300">
@@ -71,19 +73,43 @@ export default function Sidebar() {
       </nav>
 
       <div className="p-4 m-4 rounded-2xl bg-white/40 border border-white/60 shadow-sm backdrop-blur-xl">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-slate-200 border-2 border-white shadow-sm overflow-hidden">
-            <img 
-              src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" 
-              alt="User"
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold text-slate-800">Admin User</span>
-            <span className="text-xs text-slate-500">View Profile</span>
-          </div>
-        </div>
+        {!isLoaded ? (
+            <div className="flex items-center gap-3 animate-pulse">
+                <div className="w-10 h-10 rounded-full bg-slate-200" />
+                <div className="flex flex-col gap-2 flex-1">
+                    <div className="w-20 h-3 rounded bg-slate-200" />
+                    <div className="w-16 h-2 rounded bg-slate-200" />
+                </div>
+            </div>
+        ) : isSignedIn && user ? (
+            <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-slate-200 border-2 border-white shadow-sm overflow-hidden">
+                <img 
+                src={user.imageUrl} 
+                alt={user.fullName || "User"}
+                className="w-full h-full object-cover"
+                />
+            </div>
+            <div className="flex flex-col overflow-hidden">
+                <span className="text-sm font-semibold text-slate-800 truncate block max-w-[140px]">
+                    {user.fullName || user.username || "User"}
+                </span>
+                <span className="text-xs text-slate-500 truncate block max-w-[140px]">
+                    {user.primaryEmailAddress?.emailAddress}
+                </span>
+            </div>
+            </div>
+        ) : (
+            <Link href="/sign-in" className="flex items-center gap-3 group/login cursor-pointer hover:opacity-80 transition-opacity">
+                <div className="w-10 h-10 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-slate-400 group-hover/login:bg-slate-200 group-hover/login:text-slate-600 transition-colors">
+                    <Users size={20} />
+                </div>
+                <div className="flex flex-col">
+                    <span className="text-sm font-semibold text-slate-800">Guest User</span>
+                    <span className="text-xs text-cyan-600 font-medium">Sign in to access</span>
+                </div>
+            </Link>
+        )}
       </div>
     </aside>
   );
