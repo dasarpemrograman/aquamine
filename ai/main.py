@@ -5,6 +5,7 @@ from typing import List, Literal, Optional
 
 from fastapi import (
     FastAPI,
+    Header,
     UploadFile,
     File,
     Depends,
@@ -68,6 +69,25 @@ logger = logging.getLogger(__name__)
 REFRESH_INTERVAL_MIN_SECONDS = 5
 REFRESH_INTERVAL_MAX_SECONDS = 60
 QUIET_HOURS_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+def verify_user_id(user_id: str, x_user_id: Optional[str] = Header(None, alias="X-User-Id")) -> str:
+    """Verify the path user_id matches the authenticated user from the X-User-Id header.
+
+    The frontend must send the authenticated user's ID in the X-User-Id header.
+    This prevents users from accessing other users' settings by manipulating the URL.
+    """
+    if not x_user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing X-User-Id header - authentication required",
+        )
+    if x_user_id != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied - cannot access another user's settings",
+        )
+    return user_id
 
 
 @asynccontextmanager
@@ -909,7 +929,9 @@ async def list_alerts(
 
 
 @app.get("/api/v1/settings/{user_id}", response_model=UserSettingsResponse)
-async def get_user_settings(user_id: str, db: AsyncSession = Depends(get_db)):
+async def get_user_settings(
+    user_id: str = Depends(verify_user_id), db: AsyncSession = Depends(get_db)
+):
     settings = await _get_or_create_settings(db, user_id, timezone_value="UTC")
     _ensure_settings_timestamps(settings)
     return UserSettingsResponse.model_validate(settings)
@@ -917,7 +939,9 @@ async def get_user_settings(user_id: str, db: AsyncSession = Depends(get_db)):
 
 @app.patch("/api/v1/settings/{user_id}", response_model=UserSettingsResponse)
 async def update_user_settings(
-    user_id: str, updates: UserSettingsUpdate, db: AsyncSession = Depends(get_db)
+    updates: UserSettingsUpdate,
+    user_id: str = Depends(verify_user_id),
+    db: AsyncSession = Depends(get_db),
 ):
     update_data = updates.model_dump(exclude_unset=True)
 
@@ -944,14 +968,17 @@ async def update_user_settings(
 
     result = await db.execute(select(UserSettings).where(UserSettings.user_id == user_id))
     settings = result.scalar_one_or_none()
-    if not settings:
+    is_new = settings is None
+    if is_new:
         settings = UserSettings(
             user_id=user_id,
             timezone=update_data.get("timezone") or "UTC",
         )
 
-    quiet_start = update_data.get("quiet_hours_start", settings.quiet_hours_start)
-    quiet_end = update_data.get("quiet_hours_end", settings.quiet_hours_end)
+    existing_quiet_start = None if is_new else settings.quiet_hours_start
+    existing_quiet_end = None if is_new else settings.quiet_hours_end
+    quiet_start = update_data.get("quiet_hours_start", existing_quiet_start)
+    quiet_end = update_data.get("quiet_hours_end", existing_quiet_end)
     _validate_quiet_hours(quiet_start, "quiet_hours_start")
     _validate_quiet_hours(quiet_end, "quiet_hours_end")
 

@@ -118,7 +118,11 @@ export async function sendChatMessage(
 }
 
 export async function fetchSettings(userId: string): Promise<UserSettings> {
-  const response = await fetch(`${API_BASE}/api/v1/settings/${userId}`);
+  const response = await fetch(`${API_BASE}/api/v1/settings/${userId}`, {
+    headers: {
+      "X-User-Id": userId,
+    },
+  });
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({
@@ -138,7 +142,8 @@ export async function updateSettings(
   const response = await fetch(`${API_BASE}/api/v1/settings/${userId}`, {
     method: "PATCH",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "X-User-Id": userId,
     },
     body: JSON.stringify(payload)
   });

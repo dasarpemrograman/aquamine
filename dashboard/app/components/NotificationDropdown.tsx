@@ -21,11 +21,19 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = alerts.filter(a => !a.acknowledged_at).length;
-  const lastSeenMs = settings?.last_notification_seen_at
-    ? Date.parse(settings.last_notification_seen_at)
-    : NaN;
+  
+  const parseDate = (dateStr: string | undefined | null): number => {
+    if (!dateStr) return NaN;
+    const parsed = Date.parse(dateStr);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  };
+  
+  const lastSeenMs = parseDate(settings?.last_notification_seen_at);
   const newCount = Number.isFinite(lastSeenMs)
-    ? alerts.filter(a => Date.parse(a.created_at) > lastSeenMs).length
+    ? alerts.filter(a => {
+        const alertMs = parseDate(a.created_at);
+        return Number.isFinite(alertMs) && alertMs > lastSeenMs;
+      }).length
     : alerts.length;
 
   const isQuietHours = () => {
