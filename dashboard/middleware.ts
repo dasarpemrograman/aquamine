@@ -24,6 +24,8 @@ export default clerkMiddleware(async (auth, req) => {
     return;
   }
 
+  // Clerk can expose publicMetadata in different claim paths depending on version/config.
+  // Canonical path is publicMetadata, but we check alternatives for compatibility.
   const claims = sessionClaims as unknown as {
     metadata?: { allowlisted?: boolean };
     publicMetadata?: { allowlisted?: boolean };
