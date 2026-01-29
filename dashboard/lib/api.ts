@@ -143,7 +143,7 @@ export async function updateSettings(
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
-      "X-User-Id": userId,
+      "x-user-id": userId,
     },
     body: JSON.stringify(payload)
   });
