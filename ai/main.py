@@ -975,10 +975,12 @@ async def update_user_settings(
             timezone=update_data.get("timezone") or "UTC",
         )
 
-    existing_quiet_start = None if is_new else settings.quiet_hours_start
-    existing_quiet_end = None if is_new else settings.quiet_hours_end
-    quiet_start = update_data.get("quiet_hours_start", existing_quiet_start)
-    quiet_end = update_data.get("quiet_hours_end", existing_quiet_end)
+    if is_new:
+        quiet_start = update_data.get("quiet_hours_start")
+        quiet_end = update_data.get("quiet_hours_end")
+    else:
+        quiet_start = update_data.get("quiet_hours_start", settings.quiet_hours_start)
+        quiet_end = update_data.get("quiet_hours_end", settings.quiet_hours_end)
     _validate_quiet_hours(quiet_start, "quiet_hours_start")
     _validate_quiet_hours(quiet_end, "quiet_hours_end")
 
