@@ -20,10 +20,6 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  // Use ref for polling interval to prevent infinite restart loops.
-  // The interval only restarts when userId changes, not when settings refresh.
-  // New refresh rate takes effect on the next poll cycle after settings update.
-  const refreshMsRef = useRef(10000);
 
   const unreadCount = alerts.filter(a => !a.acknowledged_at).length;
   
@@ -61,20 +57,17 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
     onCountChange?.({ unread: unreadCount, new: newCount });
   }, [unreadCount, newCount, onCountChange]);
 
-  useEffect(() => {
-    const newRefreshMs = (settings?.refresh_interval_seconds ?? 10) * 1000;
-    refreshMsRef.current = newRefreshMs;
-  }, [settings?.refresh_interval_seconds]);
+  const refreshMs = (settings?.refresh_interval_seconds ?? 10) * 1000;
 
   useEffect(() => {
     loadData();
 
     const interval = setInterval(() => {
       loadData();
-    }, refreshMsRef.current);
+    }, refreshMs);
 
     return () => clearInterval(interval);
-  }, [userId]);
+  }, [userId, refreshMs]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
