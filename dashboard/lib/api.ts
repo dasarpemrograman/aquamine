@@ -119,9 +119,9 @@ export async function sendChatMessage(
 
 export async function fetchSettings(userId: string): Promise<UserSettings> {
   const response = await fetch(`${API_BASE}/api/v1/settings/${userId}`, {
-    headers: {
-      "X-User-Id": userId,
-    },
+      headers: {
+        "x-user-id": userId,
+      },
   });
 
   if (!response.ok) {

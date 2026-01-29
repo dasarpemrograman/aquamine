@@ -20,6 +20,9 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  // Use ref for polling interval to prevent infinite restart loops.
+  // The interval only restarts when userId changes, not when settings refresh.
+  // New refresh rate takes effect on the next poll cycle after settings update.
   const refreshMsRef = useRef(10000);
 
   const unreadCount = alerts.filter(a => !a.acknowledged_at).length;

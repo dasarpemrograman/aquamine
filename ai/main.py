@@ -71,7 +71,7 @@ REFRESH_INTERVAL_MAX_SECONDS = 60
 QUIET_HOURS_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 
-def verify_user_id(user_id: str, x_user_id: Optional[str] = Header(None, alias="X-User-Id")) -> str:
+def verify_user_id(user_id: str, x_user_id: Optional[str] = Header(None, alias="x-user-id")) -> str:
     """Verify the path user_id matches the authenticated user from the X-User-Id header.
 
     The frontend must send the authenticated user's ID in the X-User-Id header.

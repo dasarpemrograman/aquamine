@@ -62,7 +62,7 @@ def test_get_settings_creates_defaults(client):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    response = client.get("/api/v1/settings/test-user", headers={"X-User-Id": "test-user"})
+    response = client.get("/api/v1/settings/test-user", headers={"x-user-id": "test-user"})
     assert response.status_code == 200
     data = response.json()
 
@@ -85,7 +85,7 @@ def test_get_settings_rejects_missing_auth_header(client):
 
 
 def test_get_settings_rejects_mismatched_user_id(client):
-    response = client.get("/api/v1/settings/test-user", headers={"X-User-Id": "different-user"})
+    response = client.get("/api/v1/settings/test-user", headers={"x-user-id": "different-user"})
     assert response.status_code == 403
 
 
@@ -107,7 +107,7 @@ def test_patch_settings_updates_fields(client):
     }
 
     response = client.patch(
-        "/api/v1/settings/test-user", json=payload, headers={"X-User-Id": "test-user"}
+        "/api/v1/settings/test-user", json=payload, headers={"x-user-id": "test-user"}
     )
     assert response.status_code == 200
     data = response.json()
@@ -130,7 +130,7 @@ def test_patch_settings_rejects_mismatched_user_id(client):
     response = client.patch(
         "/api/v1/settings/test-user",
         json={"refresh_interval_seconds": 15},
-        headers={"X-User-Id": "different-user"},
+        headers={"x-user-id": "different-user"},
     )
     assert response.status_code == 403
 
@@ -146,7 +146,7 @@ def test_patch_settings_rejects_refresh_interval_out_of_bounds(client):
     response = client.patch(
         "/api/v1/settings/test-user",
         json={"refresh_interval_seconds": 3},
-        headers={"X-User-Id": "test-user"},
+        headers={"x-user-id": "test-user"},
     )
     assert response.status_code == 400
 
@@ -164,7 +164,7 @@ def test_patch_settings_rejects_invalid_quiet_hours_format(client):
     response = client.patch(
         "/api/v1/settings/test-user",
         json={"quiet_hours_start": "25:00"},
-        headers={"X-User-Id": "test-user"},
+        headers={"x-user-id": "test-user"},
     )
     assert response.status_code == 400
 
