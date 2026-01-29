@@ -19,46 +19,24 @@ export async function bootstrapSuperadmin() {
   const currentRole = user.publicMetadata.role as Role | undefined;
   const isAllowlisted = user.publicMetadata.allowlisted === true;
 
+  // If already fully configured, do nothing
   if (currentRole === 'superadmin' && isAllowlisted) return;
 
-  if (currentRole === 'superadmin' && !isAllowlisted) {
-    const client = await clerkClient();
+  const client = await clerkClient();
+
+  // If already superadmin but not allowlisted, just set allowlisted
+  if (currentRole === 'superadmin') {
     await client.users.updateUserMetadata(user.id, {
       publicMetadata: {
         ...user.publicMetadata,
         allowlisted: true,
       },
     });
+    console.log(`Updated superadmin allowlist: ${SUPERADMIN_EMAIL}`);
     return;
   }
 
-  const client = await clerkClient();
-
-  const superadminExists = await (async () => {
-    const limit = 100;
-    let offset = 0;
-
-    while (true) {
-      const response = await client.users.getUserList({ limit, offset });
-      const users = Array.isArray(response) ? response : response.data;
-
-      if (users.some((u) => u.publicMetadata.role === 'superadmin')) {
-        return true;
-      }
-
-      if (Array.isArray(response) || users.length < limit) {
-        return false;
-      }
-
-      offset += limit;
-    }
-  })();
-
-  if (superadminExists) {
-    console.log('Bootstrap locked: Superadmin already exists.');
-    return;
-  }
-
+  // If match and not superadmin, assign superadmin + allowlisted
   await client.users.updateUserMetadata(user.id, {
     publicMetadata: {
       ...user.publicMetadata,

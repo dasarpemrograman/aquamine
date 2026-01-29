@@ -26,10 +26,13 @@ export default function AdminClientPage() {
   const [users, setUsers] = useState<ClerkUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const limit = 20;
 
   useEffect(() => {
     loadData();
-  }, [activeTab]);
+  }, [activeTab, page]);
 
   useEffect(() => {
     if (toast) {
@@ -41,8 +44,10 @@ export default function AdminClientPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const data = await listUsers();
-      setUsers(data);
+      const offset = (page - 1) * limit;
+      const { users: fetchedUsers, totalCount: count } = await listUsers({ limit, offset });
+      setUsers(fetchedUsers as unknown as ClerkUser[]);
+      setTotalCount(count);
     } catch (err) {
       console.error(err);
       setToast({ message: "Failed to load data", type: "error" });
@@ -218,6 +223,28 @@ export default function AdminClientPage() {
                             )}
                         </tbody>
                     </table>
+                </div>
+            )}
+            
+            {!loading && totalCount > limit && (
+                <div className="flex justify-center items-center gap-4 py-4 border-t border-white/20">
+                    <button
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className="px-4 py-2 text-sm font-medium text-slate-600 bg-white/40 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white/60 transition-colors"
+                    >
+                        Previous
+                    </button>
+                    <span className="text-sm text-slate-600 font-medium">
+                        Page {page} of {Math.ceil(totalCount / limit)}
+                    </span>
+                    <button
+                        onClick={() => setPage(p => Math.min(Math.ceil(totalCount / limit), p + 1))}
+                        disabled={page >= Math.ceil(totalCount / limit)}
+                        className="px-4 py-2 text-sm font-medium text-slate-600 bg-white/40 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white/60 transition-colors"
+                    >
+                        Next
+                    </button>
                 </div>
             )}
         </GlassPanel>

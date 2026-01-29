@@ -14,7 +14,7 @@ def force_mock_mode(monkeypatch):
 def client():
     """FastAPI test client."""
     # Import here to ensure env var is set first
-    from main import app
+    from ai.main import app
 
     return TestClient(app)
 

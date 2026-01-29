@@ -6,11 +6,18 @@ from typing import Any
 
 import numpy as np
 
-faiss: Any = importlib.import_module("faiss")
-SentenceTransformer: Any = getattr(
-    importlib.import_module("sentence_transformers"),
-    "SentenceTransformer",
-)
+try:
+    faiss: Any = importlib.import_module("faiss")
+except ModuleNotFoundError:
+    faiss = None
+
+try:
+    SentenceTransformer: Any = getattr(
+        importlib.import_module("sentence_transformers"),
+        "SentenceTransformer",
+    )
+except ModuleNotFoundError:
+    SentenceTransformer = None
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +29,6 @@ class KnowledgeBase:
     model_name: str
     chunk_size: int
     chunk_overlap: int
-    _model: Any
-    index: Any
-    chunks: list[str]
 
     def __init__(
         self,
@@ -41,9 +45,13 @@ class KnowledgeBase:
         self.model_name = model_name
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        self._model: Any = None
-        self.index: Any = None
-        self.chunks: list[str] = []
+        self._model = None
+        self.index = None
+        self.chunks = []
+        self._available = faiss is not None and SentenceTransformer is not None
+        if not self._available:
+            logger.warning("Knowledge base dependencies not installed; search disabled.")
+            return
         _ = self.load_index()
 
     def load_documents(self, dir_path: str | Path) -> None:
@@ -65,6 +73,9 @@ class KnowledgeBase:
         self.chunks = [chunk for chunk in chunks if chunk.strip()]
 
     def build_index(self) -> None:
+        if not self._available:
+            logger.warning("Knowledge base dependencies missing; cannot build index.")
+            return
         if not self.chunks:
             logger.warning("No document chunks loaded to index.")
             return
@@ -82,6 +93,8 @@ class KnowledgeBase:
         self._save_index()
 
     def search(self, query: str, k: int = 3) -> list[str]:
+        if not self._available:
+            return []
         if not self.index or not self.chunks:
             _ = self.load_index()
         if not self.index or not self.chunks:
@@ -103,6 +116,8 @@ class KnowledgeBase:
         return results
 
     def load_index(self) -> bool:
+        if not self._available:
+            return False
         if not self.index_file.exists() or not self.chunks_file.exists():
             return False
         try:
@@ -116,6 +131,8 @@ class KnowledgeBase:
         return True
 
     def _save_index(self) -> None:
+        if not self._available:
+            return
         if not self.index:
             return
         self.index_dir.mkdir(parents=True, exist_ok=True)
@@ -126,6 +143,8 @@ class KnowledgeBase:
         )
 
     def _get_model(self) -> Any:
+        if not self._available:
+            raise RuntimeError("Sentence transformer model is unavailable.")
         if self._model is None:
             self._model = SentenceTransformer(self.model_name)
         return self._model

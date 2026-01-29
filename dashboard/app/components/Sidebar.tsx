@@ -22,7 +22,12 @@ const navItems = [
   { href: '/chat', label: 'AI Assistant', icon: MessageSquare },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  collapsed?: boolean;
+  onToggle?: () => void;
+}
+
+export default function Sidebar({ collapsed, onToggle }: SidebarProps = {}) {
   const pathname = usePathname();
   const { user, isLoaded, isSignedIn } = useUser();
 

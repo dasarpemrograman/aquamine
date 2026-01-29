@@ -10,7 +10,7 @@ const isPublicRoute = createRouteMatcher([
 const isAccessPendingRoute = createRouteMatcher(["/access-pending(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
 
   if (userId && req.nextUrl.pathname.startsWith('/login')) {
     return NextResponse.redirect(new URL("/", req.url));
@@ -24,10 +24,24 @@ export default clerkMiddleware(async (auth, req) => {
     return;
   }
 
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  
-  const allowlisted = user.publicMetadata.allowlisted === true;
+  // Clerk can expose publicMetadata in different claim paths depending on version/config.
+  // Canonical path is publicMetadata, but we check alternatives for compatibility.
+  const claims = sessionClaims as unknown as {
+    metadata?: { allowlisted?: boolean };
+    publicMetadata?: { allowlisted?: boolean };
+    public_metadata?: { allowlisted?: boolean };
+  };
+  let allowlisted =
+    claims?.metadata?.allowlisted === true ||
+    claims?.publicMetadata?.allowlisted === true ||
+    claims?.public_metadata?.allowlisted === true;
+
+  if (!allowlisted) {
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
+    allowlisted = user.publicMetadata?.allowlisted === true;
+  }
+
 
   if (!allowlisted && !isAccessPendingRoute(req)) {
     return NextResponse.redirect(new URL("/access-pending", req.url));
