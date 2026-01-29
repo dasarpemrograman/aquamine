@@ -13,6 +13,7 @@ COPY ./ai ./ai
 COPY ./scripts/entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh
+RUN pip install --upgrade pip
 
 RUN pip install --upgrade pip
 
