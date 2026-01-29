@@ -62,7 +62,7 @@ def test_get_settings_creates_defaults(client):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    response = client.get("/api/v1/settings/test-user")
+    response = client.get("/api/v1/settings/test-user", headers={"X-User-Id": "test-user"})
     assert response.status_code == 200
     data = response.json()
 
@@ -77,6 +77,16 @@ def test_get_settings_creates_defaults(client):
     assert data["updated_at"]
 
     app.dependency_overrides.pop(get_db, None)
+
+
+def test_get_settings_rejects_missing_auth_header(client):
+    response = client.get("/api/v1/settings/test-user")
+    assert response.status_code == 401
+
+
+def test_get_settings_rejects_mismatched_user_id(client):
+    response = client.get("/api/v1/settings/test-user", headers={"X-User-Id": "different-user"})
+    assert response.status_code == 403
 
 
 def test_patch_settings_updates_fields(client):
@@ -96,7 +106,9 @@ def test_patch_settings_updates_fields(client):
         "last_notification_seen_at": now.isoformat(),
     }
 
-    response = client.patch("/api/v1/settings/test-user", json=payload)
+    response = client.patch(
+        "/api/v1/settings/test-user", json=payload, headers={"X-User-Id": "test-user"}
+    )
     assert response.status_code == 200
     data = response.json()
 
@@ -109,6 +121,20 @@ def test_patch_settings_updates_fields(client):
     app.dependency_overrides.pop(get_db, None)
 
 
+def test_patch_settings_rejects_missing_auth_header(client):
+    response = client.patch("/api/v1/settings/test-user", json={"refresh_interval_seconds": 15})
+    assert response.status_code == 401
+
+
+def test_patch_settings_rejects_mismatched_user_id(client):
+    response = client.patch(
+        "/api/v1/settings/test-user",
+        json={"refresh_interval_seconds": 15},
+        headers={"X-User-Id": "different-user"},
+    )
+    assert response.status_code == 403
+
+
 def test_patch_settings_rejects_refresh_interval_out_of_bounds(client):
     session = DummySession(UserSettings(user_id="test-user", timezone="UTC"))
 
@@ -117,7 +143,11 @@ def test_patch_settings_rejects_refresh_interval_out_of_bounds(client):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    response = client.patch("/api/v1/settings/test-user", json={"refresh_interval_seconds": 3})
+    response = client.patch(
+        "/api/v1/settings/test-user",
+        json={"refresh_interval_seconds": 3},
+        headers={"X-User-Id": "test-user"},
+    )
     assert response.status_code == 400
 
     app.dependency_overrides.pop(get_db, None)
@@ -131,7 +161,11 @@ def test_patch_settings_rejects_invalid_quiet_hours_format(client):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    response = client.patch("/api/v1/settings/test-user", json={"quiet_hours_start": "25:00"})
+    response = client.patch(
+        "/api/v1/settings/test-user",
+        json={"quiet_hours_start": "25:00"},
+        headers={"X-User-Id": "test-user"},
+    )
     assert response.status_code == 400
 
     app.dependency_overrides.pop(get_db, None)

@@ -18,7 +18,9 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const refreshMsRef = useRef(10000);
 
   const unreadCount = alerts.filter(a => !a.acknowledged_at).length;
   
@@ -56,17 +58,20 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
     onCountChange?.({ unread: unreadCount, new: newCount });
   }, [unreadCount, newCount, onCountChange]);
 
-  const refreshMs = (settings?.refresh_interval_seconds ?? 10) * 1000;
+  useEffect(() => {
+    const newRefreshMs = (settings?.refresh_interval_seconds ?? 10) * 1000;
+    refreshMsRef.current = newRefreshMs;
+  }, [settings?.refresh_interval_seconds]);
 
   useEffect(() => {
     loadData();
 
     const interval = setInterval(() => {
       loadData();
-    }, refreshMs);
+    }, refreshMsRef.current);
 
     return () => clearInterval(interval);
-  }, [userId, refreshMs]);
+  }, [userId]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -87,14 +92,17 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
       ]);
       setAlerts(alertsData);
       setSettings(settingsData);
+      setError(null);
     } catch (err) {
-      console.error("Error loading notifications:", err);
+      const message = err instanceof Error ? err.message : "Failed to load notifications";
+      setError(message);
     }
   };
 
   const handleOpen = async () => {
     setIsOpen(true);
     setLoading(true);
+    setError(null);
     
     try {
       await updateSettings(userId, {
@@ -104,7 +112,8 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
       const updatedSettings = await fetchSettings(userId);
       setSettings(updatedSettings);
     } catch (err) {
-      console.error("Error updating last seen:", err);
+      const message = err instanceof Error ? err.message : "Failed to update settings";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -207,7 +216,12 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
           </div>
 
           <div className="max-h-80 overflow-y-auto bg-slate-50/50">
-            {loading ? (
+            {error ? (
+              <div className="flex flex-col items-center justify-center h-32 text-red-500 px-4">
+                <AlertTriangle className="w-8 h-8 mb-2" />
+                <p className="text-sm text-center">{error}</p>
+              </div>
+            ) : loading ? (
               <div className="flex justify-center items-center h-32">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
