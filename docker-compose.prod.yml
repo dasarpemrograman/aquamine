@@ -9,7 +9,7 @@ services:
       - db-data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "aquamine", "-d", "aquamine_db"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-aquamine} -d $${POSTGRES_DB:-aquamine_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
