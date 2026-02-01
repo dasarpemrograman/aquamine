@@ -5,7 +5,6 @@ import asyncio
 import sys
 import os
 
-# Add parent directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.connection import engine, Base
@@ -37,27 +36,23 @@ async def init_db():
     print("Creating database tables...")
 
     async with engine.begin() as conn:
-        # Create all tables
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(Base.metadata.create_all, checkfirst=True)
 
     print("✓ Tables created successfully")
 
-    # Seed notification recipients
     print("Seeding notification recipients...")
     from sqlalchemy.ext.asyncio import AsyncSession
     from sqlalchemy import select
 
     async with AsyncSession(engine) as session:
-        # Check if recipients already exist
         result = await session.execute(select(NotificationRecipient))
         existing = result.scalars().first()
 
         if not existing:
-            # Add default recipient (you can customize this)
             recipient = NotificationRecipient(
                 name="Admin",
-                phone="6281234567890",  # Replace with your WhatsApp number
-                email="admin@aquamine.local",  # Replace with your email
+                phone="6281234567890",
+                email="admin@aquamine.local",
                 is_active=True,
                 notify_warning=True,
                 notify_critical=True,
