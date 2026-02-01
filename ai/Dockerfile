@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     curl \
     wget \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 ENV UV_COMPILE_BYTECODE=1
@@ -16,7 +17,7 @@ ENV UV_SYSTEM_PYTHON=1
 
 COPY ai/uv.lock ai/pyproject.toml ./ai/
 COPY scripts/entrypoint.sh /entrypoint.sh
-RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
+RUN dos2unix /entrypoint.sh && chmod +x /entrypoint.sh
 
 WORKDIR /app/ai
 RUN uv export \
