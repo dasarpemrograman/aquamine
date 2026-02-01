@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from 'next/image';
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { 
@@ -39,13 +40,15 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps = {}) {
   return (
     <aside className="fixed left-0 top-0 h-full w-72 z-40 hidden md:flex flex-col border-r border-white/75 bg-white/60 backdrop-blur-xl shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300">
       <div className="h-20 flex items-center px-8 border-b border-white/50">
-        <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/20 flex items-center justify-center text-white font-bold text-lg">
-            A
-          </div>
-          <span className="font-bold text-xl tracking-tight text-slate-800 group-hover:text-blue-600 transition-colors">
-            AquaMine
-          </span>
+        <Link href="/" className="flex items-center group">
+            <Image 
+              src="/aquamine.svg"
+              alt="AquaMine Logo"
+              width={952} 
+              height={360}  
+              className="h-auto w-[90px] object-contain transition-transform group-hover:scale-105"
+              priority
+            />
         </Link>
       </div>
 
@@ -61,20 +64,20 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps = {}) {
               className={`
                 relative flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-300 group
                 ${isActive 
-                  ? 'bg-cyan-50 text-cyan-900 font-medium shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]' 
+                  ? 'bg-[#5A81FA]/10 text-[#5A81FA] font-medium shadow-[inset_0_1px_0_0_rgba(255,255,255,0.4)]' 
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
                 }
               `}
             >
               {isActive && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 h-8 w-1 bg-cyan-500 rounded-r-full shadow-[0_0_8px_rgba(6,182,212,0.4)]" />
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 h-8 w-1 bg-[#5A81FA] rounded-r-full shadow-[0_0_8px_rgba(90,129,250,0.4)]" />
               )}
               
               <Icon 
                 size={22} 
                 className={`
                   transition-colors duration-300
-                  ${isActive ? 'text-cyan-600' : 'text-slate-400 group-hover:text-slate-600'}
+                  ${isActive ? 'text-[#5A81FA]' : 'text-slate-400 group-hover:text-slate-600'}
                 `} 
               />
               <span className="text-[15px] tracking-wide">{item.label}</span>

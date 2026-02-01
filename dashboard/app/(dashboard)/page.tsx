@@ -76,7 +76,6 @@ export default function Home() {
         <SectionHeader
           title="System Overview"
           subtitle="Real-time AMD monitoring and environmental analysis"
-          icon={LayoutDashboard}
           actions={<span className="text-xs text-slate-400 font-medium px-2">v2.4.0</span>}
         />
 
@@ -88,16 +87,16 @@ export default function Home() {
               <div className="space-y-2">
                   <p className="text-sm font-medium text-slate-500">System Health</p>
                   <div className="flex items-end gap-2">
-                      <span className="text-4xl font-bold bg-gradient-to-r from-cyan-500 to-teal-500 bg-clip-text text-transparent">
+                      <span className="text-4xl font-bold bg-gradient-to-r from-aqua to-teal bg-clip-text text-transparent">
                           {stats.healthScore}%
                       </span>
-                      <span className={`text-sm font-medium mb-1 ${stats.healthScore > 90 ? 'text-teal-600' : 'text-amber-600'}`}>
+                      <span className={`text-sm font-medium mb-1 ${stats.healthScore > 90 ? 'text-teal' : 'text-amber-600'}`}>
                           {stats.healthScore > 90 ? 'Excellent' : stats.healthScore > 70 ? 'Good' : 'Attention'}
                       </span>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-2">
                       <div 
-                          className="h-full bg-gradient-to-r from-cyan-400 to-teal-500 transition-all duration-1000" 
+                          className="h-full bg-gradient-to-r from-aqua to-teal transition-all duration-1000" 
                           style={{ width: `${stats.healthScore}%` }} 
                       />
                   </div>

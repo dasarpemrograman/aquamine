@@ -1,5 +1,16 @@
 import { clerkClient, clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+
+// dashboard/middleware.ts
+
+export async function middleware(request: NextRequest) {
+  // 1. ADD THIS AT THE TOP OF THE FUNCTION:
+  if (process.env.NODE_ENV === 'development') {
+    return NextResponse.next();
+  }
+
+  // ... (existing authentication logic below)
+}
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
