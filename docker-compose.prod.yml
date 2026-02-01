@@ -1,6 +1,6 @@
 services:
   db:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:2.17.2-pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -9,7 +9,7 @@ services:
       - db-data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "aquamine", "-d", "aquamine_db"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-aquamine} -d $${POSTGRES_DB:-aquamine_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -18,7 +18,12 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7
+    image: redis:7.4.2-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     networks:
       - aquamine-internal
     restart: unless-stopped
@@ -36,13 +41,14 @@ services:
       CEREBRAS_API_KEY: ${CEREBRAS_API_KEY}
       FONNTE_API_TOKEN: ${FONNTE_API_TOKEN}
       RESEND_API_KEY: ${RESEND_API_KEY}
+      PYTHONPATH: /app
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8181/health', timeout=2).raise_for_status()"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8181/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -76,7 +82,8 @@ services:
       NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL}
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
       interval: 10s
@@ -101,15 +108,18 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /app
     depends_on:
       db:
+        condition: service_healthy
+      api:
         condition: service_healthy
     networks:
       - aquamine-internal
     restart: unless-stopped
 
   nginx:
-    image: nginx:alpine
+    image: nginx:1.27.3-alpine
     container_name: aquamine-nginx
     volumes:
       - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
@@ -122,6 +132,11 @@ services:
         condition: service_healthy
       dashboard:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       - aquamine-internal
     restart: unless-stopped
