@@ -19,12 +19,19 @@ COPY scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 WORKDIR /app/ai
-RUN uv pip install --system --no-cache-dir -r pyproject.toml
+RUN uv export \
+    --frozen \
+    --no-dev \
+    --no-emit-project \
+    --format requirements.txt \
+    --output-file /tmp/requirements.txt
+
+RUN uv pip sync --system --require-hashes /tmp/requirements.txt
 
 WORKDIR /app
 COPY ai/ ./ai/
 
-ENV PYTHONPATH="/app:$PYTHONPATH"
+ENV PYTHONPATH=/app
 
 EXPOSE 8181
 
