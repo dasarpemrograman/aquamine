@@ -16,7 +16,7 @@ ENV UV_SYSTEM_PYTHON=1
 
 COPY ai/uv.lock ai/pyproject.toml ./ai/
 COPY scripts/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 WORKDIR /app/ai
 RUN uv export \
