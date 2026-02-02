@@ -15,6 +15,9 @@ DEFAULT_RESERVED_OUTPUT = min(2048, math.ceil(0.15 * CONTEXT_WINDOW_TOKENS))
 if RESERVED_OUTPUT_TOKENS <= 0:
     RESERVED_OUTPUT_TOKENS = DEFAULT_RESERVED_OUTPUT
 
+# Estimated overhead for system prompt + tool definitions
+SYSTEM_PROMPT_OVERHEAD = 1000
+
 
 def estimate_tokens(text: str) -> int:
     """
@@ -71,6 +74,9 @@ def calculate_context_stats(
 
     if pending_user_message:
         total_tokens += estimate_message_tokens({"role": "user", "content": pending_user_message})
+
+    # Add system overhead
+    total_tokens += SYSTEM_PROMPT_OVERHEAD
 
     usage_ratio = total_tokens / CONTEXT_WINDOW_TOKENS
     remaining_tokens = CONTEXT_WINDOW_TOKENS - total_tokens

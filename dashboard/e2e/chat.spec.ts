@@ -88,9 +88,17 @@ test.describe('Chat Threads', () => {
     await expect(page.locator(selectors.message).filter({ hasText: firstMessage })).toBeVisible();
 
     // Sidebar should refresh and show auto-generated title.
-    // Backend uses first 30 chars + ellipsis when len > 30.
-    const titleLocator = page.locator(selectors.threadTitle).filter({ hasText: expectedTitle });
-    await expect(titleLocator.first()).toBeVisible({ timeout: 15_000 });
+    // Backend uses LLM or heuristic. Wait for title to change from "New chat".
+    // We search for a thread item that is NOT "New chat" and matches the current active thread logic if possible,
+    // but simpler is to wait for the first item's title to update.
+    const firstThreadTitle = page.locator(selectors.threadItem).first().locator(selectors.threadTitle);
+    
+    // Wait for title to NOT be "New chat"
+    await expect(firstThreadTitle).not.toHaveText('New chat', { timeout: 30_000 });
+    
+    // Verify it has some text
+    const titleText = await firstThreadTitle.textContent();
+    expect(titleText?.length).toBeGreaterThan(0);
   });
 
   test('rename thread via edit button', async ({ page }) => {

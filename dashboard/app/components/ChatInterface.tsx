@@ -23,6 +23,7 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [input, setInput] = useState("");
+  const [isCompactionRequired, setIsCompactionRequired] = useState(false);
   const [isTTSEnabled, setIsTTSEnabled] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastSpokenIndexRef = useRef<number>(-1);
@@ -61,13 +62,66 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const handleCompaction = async () => {
+    if (!threadId) return;
+    setIsLoading(true);
+    try {
+      const token = await getToken();
+      
+      // 1. Preview
+      const previewRes = await fetch(`${API_BASE}/api/v1/chat/threads/${threadId}/compaction/preview`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}` 
+        },
+        body: JSON.stringify({ pending_message: input })
+      });
+      
+      if (!previewRes.ok) throw new Error("Preview failed");
+      const previewData = await previewRes.json();
+
+      // 2. Commit (using draft from preview)
+      const commitRes = await fetch(`${API_BASE}/api/v1/chat/threads/${threadId}/compaction/commit`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}` 
+        },
+        body: JSON.stringify({ summary: previewData.summary_draft })
+      });
+
+      if (!commitRes.ok) throw new Error("Commit failed");
+
+      // 3. Clear messages and reload
+      setMessages([]);
+      setIsCompactionRequired(false);
+      
+      // 4. Retry sending the pending message if exists
+      if (input.trim()) {
+        const fakeEvent = { preventDefault: () => {} } as FormEvent;
+        handleSubmit(fakeEvent);
+      } else {
+        // Just refresh messages
+        onThreadActivity?.();
+      }
+      
+    } catch (error) {
+      console.error("Compaction failed:", error);
+      alert("Failed to compact chat. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
 
+    // Optimistic update
     setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
-    setInput("");
+    setInput(""); // Clear input immediately
     setIsLoading(true);
 
     try {
@@ -85,14 +139,16 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
         const data = await response.json();
         
         if (data.compaction_required) {
-          // Show compaction modal - simplified for now
+          setIsCompactionRequired(true);
           setMessages((prev) => [
             ...prev,
             { 
               role: "assistant", 
-              content: "Percakapan sudah cukup panjang. Silakan lakukan compaction untuk melanjutkan." 
+              content: "⚠️ Memory penuh. Klik tombol di bawah untuk meringkas percakapan dan melanjutkan." 
             },
           ]);
+          // Restore input so user can send it after compaction
+          setInput(trimmed);
         } else if (data.response) {
           setMessages((prev) => [
             ...prev,
@@ -100,8 +156,6 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
           ]);
         }
 
-        // Backend may update thread metadata (e.g., auto-title) after the first message.
-        // Refreshing the thread list keeps the sidebar in sync.
         onThreadActivity?.();
       }
     } catch (error) {
@@ -112,6 +166,7 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
           content: "Maaf, terjadi kesalahan. Silakan coba lagi." 
         },
       ]);
+      setInput(trimmed); // Restore input on error
     } finally {
       setIsLoading(false);
     }
@@ -157,6 +212,19 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
             </div>
           </div>
         )}
+        
+        {isCompactionRequired && (
+          <div className="flex justify-center py-4">
+            <button
+              onClick={handleCompaction}
+              disabled={isLoading}
+              className="px-6 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-full font-medium shadow-lg transition-all transform hover:scale-105 flex items-center gap-2"
+            >
+              <span>⚡ Ringkas Percakapan (Memory Penuh)</span>
+            </button>
+          </div>
+        )}
+        
         <div ref={messagesEndRef} />
       </div>
 
