@@ -34,6 +34,7 @@ from .schemas.cv import BoundingBox, ImageAnalysisResponse
 from .cv.detector import YellowBoyDetector, ImageDecodeError
 from .utils.responses import error_response
 from .chatbot.orchestrator import ChatOrchestrator, SYSTEM_PROMPT
+from .chatbot.summarizer import generate_thread_title
 
 # Import IoT/ML modules
 from .db.connection import get_db
@@ -1797,16 +1798,24 @@ async def send_message(
     # Build conversation history
     conversation = [{"role": "system", "content": SYSTEM_PROMPT}]
     for msg in existing_messages:
-        conversation.append({"role": msg.role, "content": msg.content})
-    conversation.append({"role": "user", "content": request.content})
+        conversation.append(
+            {"role": msg.role, "content": msg.content, "token_estimate": msg.token_estimate}
+        )
+    conversation.append(
+        {"role": "user", "content": request.content, "token_estimate": user_message.token_estimate}
+    )
 
     # Call orchestrator
     response_content = await chat_orchestrator.process_user_message(
-        request.content, f"thread-{thread_id}-{active_segment.id}"
+        request.content, f"thread-{thread_id}-{active_segment.id}", history=conversation
     )
 
     # Check if compaction was triggered during processing
     if isinstance(response_content, dict) and response_content.get("type") == "compaction_required":
+        # Rollback: delete the user message we just saved to avoid duplication on retry
+        await db.delete(user_message)
+        await db.commit()
+
         return SendMessageResponse(
             message=MessageResponse(
                 id=user_message.id,
@@ -1836,11 +1845,35 @@ async def send_message(
     db.add(assistant_message)
 
     # Generate title if this is the first exchange and title is still default
+    # Re-fetch thread with row-level lock to prevent race condition when multiple
+    # requests try to generate title simultaneously
     if thread.title_source == "auto" and (thread.title == "New chat" or not thread.title):
-        # Simple heuristic: use first 30 chars of first user message
-        new_title = request.content[:30] + ("..." if len(request.content) > 30 else "")
-        thread.title = new_title
-        # TODO: In Task 5, replace with LLM-generated title
+        fresh_thread_stmt = (
+            select(ChatThread).where(ChatThread.id == thread_id).with_for_update(skip_locked=True)
+        )
+        fresh_result = await db.execute(fresh_thread_stmt)
+        fresh_thread = fresh_result.scalar_one_or_none()
+
+        # Only generate if thread still needs title (another request may have set it)
+        if (
+            fresh_thread
+            and fresh_thread.title_source == "auto"
+            and (fresh_thread.title == "New chat" or not fresh_thread.title)
+        ):
+            try:
+                llm_title = await generate_thread_title(
+                    request.content,
+                    str(response_content),
+                )
+                fresh_thread.title = llm_title
+                db.add(fresh_thread)
+            except Exception as e:
+                logger.warning(f"Failed to generate LLM title: {e}")
+                # Fallback: use first 30 chars of user message
+                fresh_thread.title = request.content[:30] + (
+                    "..." if len(request.content) > 30 else ""
+                )
+                db.add(fresh_thread)
 
     await db.commit()
     await db.refresh(assistant_message)

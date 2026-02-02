@@ -81,4 +81,4 @@ class CerebrasClient:
             )
         except Exception as exc:
             logger.exception("Cerebras chat completion failed: %s", exc)
-            return None
+            return {"error": str(exc)}

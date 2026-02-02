@@ -17,6 +17,9 @@ from db.models import (
     NotificationRecipient,
     UserSettings,
     SensorAlertState,
+    ChatThread,
+    ChatSessionSegment,
+    ChatMessage,
 )
 
 _ = (
@@ -28,6 +31,9 @@ _ = (
     NotificationRecipient,
     UserSettings,
     SensorAlertState,
+    ChatThread,
+    ChatSessionSegment,
+    ChatMessage,
 )
 
 

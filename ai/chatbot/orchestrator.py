@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from ai.chatbot.cerebras_client import CerebrasClient
+from ai.chatbot.token_budget import should_compact, estimate_message_tokens
 from ai.chatbot.tools import (
     TOOLS_SCHEMA,
     get_recent_alerts,
@@ -52,17 +53,56 @@ class ChatOrchestrator:
             "get_recent_alerts": get_recent_alerts,
         }
 
-    async def process_user_message(self, user_message: str, session_id: str) -> str:
-        messages = self.sessions.setdefault(session_id, [])
+    async def process_user_message(
+        self, user_message: str, session_id: str, history: list[dict[str, Any]] | None = None
+    ) -> str | dict[str, Any]:
+        # Use provided history or fallback to internal session state (deprecated)
+        if history is not None:
+            messages = history
+        else:
+            messages = self.sessions.setdefault(session_id, [])
+            # Prepend system prompt if new session (legacy path)
+            if not messages:
+                sys_msg = {"role": "system", "content": SYSTEM_PROMPT}
+                sys_msg["token_estimate"] = estimate_message_tokens(sys_msg)
+                messages.append(sys_msg)
 
-        # Prepend system prompt if new session
-        if not messages:
-            messages.append({"role": "system", "content": SYSTEM_PROMPT})
+            user_msg = {"role": "user", "content": user_message}
+            user_msg["token_estimate"] = estimate_message_tokens(user_msg)
+            messages.append(user_msg)
 
-        messages.append({"role": "user", "content": user_message})
+        # Check compaction only if using internal state (legacy)
+        # If history is provided, we assume the caller (main.py) already performed the check/budgeting correctly.
+        if history is None:
+            needs_compaction, stats = should_compact(messages)
+            if needs_compaction:
+                return {
+                    "type": "compaction_required",
+                    "message": "Context limit approaching. Compaction recommended.",
+                    "stats": stats,
+                }
+
+        # If we are using legacy internal state, we already appended the user message.
+        # If we are using 'history' passed from main.py, it SHOULD include the user message.
+        # Let's verify assumption: main.py appends user message to 'conversation' before calling.
 
         for _ in range(10):
             response = await self.cerebras_client.chat_completion(messages, tools=TOOLS_SCHEMA)
+
+            if isinstance(response, dict) and "error" in response and "choices" not in response:
+                error_msg = str(response["error"])
+                if (
+                    "context" in error_msg.lower()
+                    or "token" in error_msg.lower()
+                    or "length" in error_msg.lower()
+                ):
+                    return {
+                        "type": "compaction_required",
+                        "message": "Provider context limit exceeded. Compaction required.",
+                        "error": error_msg,
+                    }
+                return "Chat service unavailable."
+
             message = self._extract_message(response)
             if message is None:
                 return "Chat service unavailable."
@@ -72,12 +112,16 @@ class ChatOrchestrator:
             assistant_message: dict[str, Any] = {"role": "assistant", "content": content}
             if tool_calls:
                 assistant_message["tool_calls"] = tool_calls
+
+            assistant_message["token_estimate"] = estimate_message_tokens(assistant_message)
             messages.append(assistant_message)
 
             if not tool_calls:
                 return content or ""
 
             tool_responses = await self._execute_tool_calls(tool_calls)
+            for tr in tool_responses:
+                tr["token_estimate"] = estimate_message_tokens(tr)
             messages.extend(tool_responses)
 
         return "I couldn't complete that request right now."
