@@ -1105,70 +1105,42 @@ async def get_forecast_compatibility(
                     _forecast_regeneration_inflight.add(regen_key)
                     refresh_allowed = True
 
-            if refresh_allowed:
-                generation_result = await _generate_and_store_forecast_for_sensor(
-                    payload.sensor_id, db
-                )
-
-                if generation_result.get("status") == "success":
+            if refresh_allowed or min_interval_exceeded:
+                # Allow regeneration if refresh is allowed OR minimum interval has passed
+                if min_interval_exceeded and not refresh_allowed:
                     async with _forecast_regeneration_lock:
-                        _last_forecast_regeneration[regen_key] = now_utc
-                        _forecast_regeneration_inflight.discard(regen_key)
-                        # Cleanup old entries to prevent memory leak
-                        _cleanup_forecast_regeneration_cache()
+                        _forecast_regeneration_inflight.add(regen_key)
+                    refresh_allowed = True
 
-                    refreshed_result = await db.execute(prediction_query)
-                    prediction = refreshed_result.scalar_one_or_none()
-                    refreshed_staleness = check_forecast_staleness(
-                        prediction, latest_reading, window_end, now_utc
+                if refresh_allowed:
+                    generation_result = await _generate_and_store_forecast_for_sensor(
+                        payload.sensor_id, db
                     )
-                    staleness = refreshed_staleness
-                    if refreshed_staleness.get("is_stale"):
-                        refreshed_reason = refreshed_staleness.get("stale_reason")
-                        warning = f"pH forecast may be stale ({refreshed_reason})"
+
+                    if generation_result.get("status") == "success":
+                        async with _forecast_regeneration_lock:
+                            _last_forecast_regeneration[regen_key] = now_utc
+                            _forecast_regeneration_inflight.discard(regen_key)
+                            # Cleanup old entries to prevent memory leak
+                            _cleanup_forecast_regeneration_cache()
+
+                        refreshed_result = await db.execute(prediction_query)
+                        prediction = refreshed_result.scalar_one_or_none()
+                        refreshed_staleness = check_forecast_staleness(
+                            prediction, latest_reading, window_end, now_utc
+                        )
+                        staleness = refreshed_staleness
+                        if refreshed_staleness.get("is_stale"):
+                            refreshed_reason = refreshed_staleness.get("stale_reason")
+                            warning = f"pH forecast may be stale ({refreshed_reason})"
+                        else:
+                            warning = None
                     else:
-                        warning = None
-                else:
-                    async with _forecast_regeneration_lock:
-                        _forecast_regeneration_inflight.discard(regen_key)
+                        async with _forecast_regeneration_lock:
+                            _forecast_regeneration_inflight.discard(regen_key)
 
-                    error_message = generation_result.get("message") or "Unknown error"
-                    warning = f"pH forecast may be stale ({stale_reason}); refresh failed: {error_message}"
-            elif min_interval_exceeded:
-                # Allow regeneration if minimum interval has passed (for dynamic updates)
-                async with _forecast_regeneration_lock:
-                    _forecast_regeneration_inflight.add(regen_key)
-                refresh_allowed = True
-
-            if refresh_allowed:
-                generation_result = await _generate_and_store_forecast_for_sensor(
-                    payload.sensor_id, db
-                )
-
-                if generation_result.get("status") == "success":
-                    async with _forecast_regeneration_lock:
-                        _last_forecast_regeneration[regen_key] = now_utc
-                        _forecast_regeneration_inflight.discard(regen_key)
-                        # Cleanup old entries to prevent memory leak
-                        _cleanup_forecast_regeneration_cache()
-
-                    refreshed_result = await db.execute(prediction_query)
-                    prediction = refreshed_result.scalar_one_or_none()
-                    refreshed_staleness = check_forecast_staleness(
-                        prediction, latest_reading, window_end, now_utc
-                    )
-                    staleness = refreshed_staleness
-                    if refreshed_staleness.get("is_stale"):
-                        refreshed_reason = refreshed_staleness.get("stale_reason")
-                        warning = f"pH forecast may be stale ({refreshed_reason})"
-                    else:
-                        warning = None
-                else:
-                    async with _forecast_regeneration_lock:
-                        _forecast_regeneration_inflight.discard(regen_key)
-
-                    error_message = generation_result.get("message") or "Unknown error"
-                    warning = f"pH forecast may be stale ({stale_reason}); refresh failed: {error_message}"
+                        error_message = generation_result.get("message") or "Unknown error"
+                        warning = f"pH forecast may be stale ({stale_reason}); refresh failed: {error_message}"
             else:
                 if already_refreshed_today:
                     warning = f"pH forecast may be stale ({stale_reason}); refresh skipped (already refreshed today)"

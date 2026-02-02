@@ -194,7 +194,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
       fetchData();
     }
 
-    const intervalId = setInterval(() => {
+    let intervalId = setInterval(() => {
       if (sensorId) {
         fetchData();
       }
@@ -202,7 +202,14 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && sensorId) {
+        // Reset interval to prevent duplicate fetches near the 10-minute boundary
+        clearInterval(intervalId);
         fetchData();
+        intervalId = setInterval(() => {
+          if (sensorId) {
+            fetchData();
+          }
+        }, 10 * 60 * 1000);
       }
     };
 

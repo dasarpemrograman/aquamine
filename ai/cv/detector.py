@@ -190,8 +190,11 @@ class TemporalValidator:
         """
         Validasi deteksi berdasarkan temporal consistency.
 
+        Object harus muncul di N frame berturut-turut (consecutive),
+        bukan total match di seluruh history.
+
         Returns:
-            List deteksi yang valid (muncul di minimal N frame)
+            List deteksi yang valid (muncul di minimal N frame berturut-turut)
         """
         self.history.append(current_detections)
 
@@ -203,9 +206,14 @@ class TemporalValidator:
         for det in current_detections:
             consecutive_count = 1
 
-            for past_frame in list(self.history)[:-1]:
-                if self._find_match(det, past_frame):
+            history_list = list(self.history)
+            current_idx = len(history_list) - 1
+
+            for i in range(current_idx - 1, -1, -1):
+                if self._find_match(det, history_list[i]):
                     consecutive_count += 1
+                else:
+                    break
 
             if consecutive_count >= self.min_consecutive_frames:
                 validated.append(det)
