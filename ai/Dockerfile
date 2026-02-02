@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 
 WORKDIR /app
 
@@ -7,38 +7,32 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     build-essential \
     python3-dev \
+    curl \
+    wget \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./ai ./ai
-COPY ./scripts/entrypoint.sh /entrypoint.sh
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_SYSTEM_PYTHON=1
 
-RUN chmod +x /entrypoint.sh
-RUN pip install --upgrade pip
+COPY ai/uv.lock ai/pyproject.toml ./ai/
+COPY scripts/entrypoint.sh /entrypoint.sh
+RUN dos2unix /entrypoint.sh && chmod +x /entrypoint.sh
 
-RUN pip install --upgrade pip
+WORKDIR /app/ai
+RUN uv export \
+    --frozen \
+    --no-dev \
+    --no-emit-project \
+    --format requirements.txt \
+    --output-file /tmp/requirements.txt
 
-RUN pip install --no-cache-dir \
-    'fastapi>=0.115.0' \
-    'uvicorn[standard]>=0.30.6' \
-    'pydantic>=2.9.0' \
-    'sqlalchemy>=2.0.32' \
-    'psycopg[binary]>=3.2.1' \
-    'redis>=5.0.8' \
-    'resend>=2.0.0' \
-    'python-multipart>=0.0.9'
+RUN uv pip sync --system --require-hashes /tmp/requirements.txt
 
-RUN pip install --no-cache-dir \
-    'pandas>=2.0.0' \
-    'numpy>=1.24.0' \
-    'pillow>=10.0.0' \
-    'nixtla>=0.6.0'
+WORKDIR /app
+COPY ai/ ./ai/
 
-RUN pip install --no-cache-dir \
-    'torch' \
-    'sentence-transformers>=2.2.2' \
-    'faiss-cpu>=1.7.4' \
-    'ultralytics>=8.4.7' \
-    'cerebras_cloud_sdk>=1.0.0'
+ENV PYTHONPATH=/app
 
 EXPOSE 8181
 

@@ -10,11 +10,22 @@ services:
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-aquamine} -d $${POSTGRES_DB:-aquamine_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   redis:
-    image: redis:7
+    image: redis:7.4.2-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   api:
     build:
@@ -30,21 +41,30 @@ services:
       CEREBRAS_API_KEY: ${CEREBRAS_API_KEY}
       FONNTE_API_TOKEN: ${FONNTE_API_TOKEN}
       RESEND_API_KEY: ${RESEND_API_KEY}
+      PYTHONPATH: /app
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8181:8181"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   dashboard:
     build:
       context: ./dashboard
       target: development
-    # DEV ONLY: Hot-reload with volume mounts. Use docker-compose.prod.yml for production.
     volumes:
       - ./dashboard:/app
       - dashboard-node-modules:/app/node_modules
       - dashboard-next:/app/.next
+      - dashboard-cache:/app/.cache
     command: sh -c "npm install && npm run dev"
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
@@ -57,7 +77,8 @@ services:
       NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL}
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       - "3000:3000"
 
@@ -77,11 +98,16 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /app
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   db-data:
   dashboard-node-modules:
   dashboard-next:
+  dashboard-cache:
