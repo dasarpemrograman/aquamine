@@ -30,6 +30,7 @@ class SensorCreate(SensorBase):
 class SensorResponse(SensorBase):
     id: int
     created_at: datetime
+    current_state: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

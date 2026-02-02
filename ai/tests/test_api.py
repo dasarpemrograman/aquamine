@@ -3,7 +3,7 @@ import pytest_asyncio
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch, AsyncMock
 from ai.main import app
-from ai.schemas.sensor import SensorDataIngest
+from ai.schemas.sensor import SensorDataIngest, SensorResponse
 from datetime import datetime, timezone
 
 
@@ -67,3 +67,28 @@ def test_acknowledge_alert_not_found(client):
     assert response.status_code == 404
 
     app.dependency_overrides = {}
+
+
+def test_sensor_response_schema_includes_current_state():
+    sensor = SensorResponse(
+        id=1,
+        sensor_id="TEST001",
+        name="Test Sensor",
+        latitude=46.02,
+        longitude=-112.51,
+        is_active=True,
+        created_at=datetime.now(timezone.utc),
+        current_state="normal",
+    )
+    assert sensor.current_state == "normal"
+
+
+def test_sensor_response_schema_current_state_optional():
+    sensor = SensorResponse(
+        id=1,
+        sensor_id="TEST001",
+        name="Test Sensor",
+        is_active=True,
+        created_at=datetime.now(timezone.utc),
+    )
+    assert sensor.current_state is None
