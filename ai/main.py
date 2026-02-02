@@ -1803,7 +1803,7 @@ async def send_message(
 
     # Call orchestrator
     response_content = await chat_orchestrator.process_user_message(
-        request.content, f"thread-{thread_id}-{active_segment.id}"
+        request.content, f"thread-{thread_id}-{active_segment.id}", history=conversation
     )
 
     # Check if compaction was triggered during processing

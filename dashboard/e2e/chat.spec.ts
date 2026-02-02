@@ -208,7 +208,7 @@ test.describe('Chat Compaction', () => {
     await expect(
       page
         .locator(selectors.message)
-        .filter({ hasText: 'Percakapan sudah cukup panjang' })
+        .filter({ hasText: 'Memory penuh' })
         .first()
     ).toBeVisible({ timeout: 10_000 });
   });

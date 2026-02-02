@@ -54,17 +54,25 @@ class ChatOrchestrator:
         }
 
     async def process_user_message(
-        self, user_message: str, session_id: str
+        self, user_message: str, session_id: str, history: list[dict[str, Any]] | None = None
     ) -> str | dict[str, Any]:
-        messages = self.sessions.setdefault(session_id, [])
+        # Use provided history or fallback to internal session state (deprecated)
+        if history is not None:
+            messages = history
+        else:
+            messages = self.sessions.setdefault(session_id, [])
+            # Prepend system prompt if new session (legacy path)
+            if not messages:
+                sys_msg = {"role": "system", "content": SYSTEM_PROMPT}
+                sys_msg["token_estimate"] = estimate_message_tokens(sys_msg)
+                messages.append(sys_msg)
 
-        # Prepend system prompt if new session
-        if not messages:
-            sys_msg = {"role": "system", "content": SYSTEM_PROMPT}
-            sys_msg["token_estimate"] = estimate_message_tokens(sys_msg)
-            messages.append(sys_msg)
+            user_msg = {"role": "user", "content": user_message}
+            user_msg["token_estimate"] = estimate_message_tokens(user_msg)
+            messages.append(user_msg)
 
-        needs_compaction, stats = should_compact(messages, user_message)
+        # Check compaction on the FULL message list (including the just-added user message)
+        needs_compaction, stats = should_compact(messages)
         if needs_compaction:
             return {
                 "type": "compaction_required",
@@ -72,9 +80,9 @@ class ChatOrchestrator:
                 "stats": stats,
             }
 
-        user_msg = {"role": "user", "content": user_message}
-        user_msg["token_estimate"] = estimate_message_tokens(user_msg)
-        messages.append(user_msg)
+        # If we are using legacy internal state, we already appended the user message.
+        # If we are using 'history' passed from main.py, it SHOULD include the user message.
+        # Let's verify assumption: main.py appends user message to 'conversation' before calling.
 
         for _ in range(10):
             response = await self.cerebras_client.chat_completion(messages, tools=TOOLS_SCHEMA)
