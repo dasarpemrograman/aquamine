@@ -24,6 +24,7 @@ import os
 import re
 import time
 import uuid
+import pandas as pd
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, delete, or_, func
@@ -85,7 +86,6 @@ from .anomaly.detector import AnomalyDetector, ANOMALY_THRESHOLDS
 from .alerts.state_machine import AlertStateMachine
 from .alerts.notifications import NotificationService
 from .realtime.websocket import manager as ws_manager
-from .auth.clerk import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -408,8 +408,6 @@ async def _generate_and_store_forecast_for_sensor(sensor_id: int, db: AsyncSessi
                         "y": r.temperature,
                     }
                 )
-
-        import pandas as pd
 
         df = pd.DataFrame(data)
         if df.empty:

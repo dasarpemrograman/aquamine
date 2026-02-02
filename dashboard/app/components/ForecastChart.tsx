@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Line,
   XAxis,
@@ -142,9 +142,12 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
   const [forecastIsStale, setForecastIsStale] = useState<boolean>(false);
   const [forecastStaleReason, setForecastStaleReason] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const isFetchingRef = useRef(false);
 
   useEffect(() => {
     async function fetchData() {
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
       try {
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/forecast`, {
           method: "POST",
@@ -187,6 +190,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
         console.error("Failed to fetch forecast", e);
       } finally {
         setLoading(false);
+        isFetchingRef.current = false;
       }
     }
 
