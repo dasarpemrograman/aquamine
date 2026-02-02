@@ -1135,17 +1135,25 @@ async def get_forecast_compatibility(
                     refresh_allowed = True
 
             if refresh_allowed:
-                generation_result = await _generate_and_store_forecast_for_sensor(
-                    payload.sensor_id, db
-                )
-
-                if generation_result.get("status") == "success":
+                generation_success = False
+                generation_result = {}
+                try:
+                    generation_result = await _generate_and_store_forecast_for_sensor(
+                        payload.sensor_id, db
+                    )
+                    if generation_result.get("status") == "success":
+                        generation_success = True
+                except Exception as e:
+                    generation_result = {"status": "error", "message": str(e)}
+                finally:
                     async with _forecast_regeneration_lock:
-                        _last_forecast_regeneration[regen_key] = now_utc
+                        if generation_success:
+                            _last_forecast_regeneration[regen_key] = now_utc
+                            # Cleanup old entries to prevent memory leak
+                            _cleanup_forecast_regeneration_cache()
                         _forecast_regeneration_inflight.discard(regen_key)
-                        # Cleanup old entries to prevent memory leak
-                        _cleanup_forecast_regeneration_cache()
 
+                if generation_success:
                     refreshed_result = await db.execute(prediction_query)
                     prediction = refreshed_result.scalar_one_or_none()
                     refreshed_staleness = check_forecast_staleness(
@@ -1158,9 +1166,6 @@ async def get_forecast_compatibility(
                     else:
                         forecast_warning = None
                 else:
-                    async with _forecast_regeneration_lock:
-                        _forecast_regeneration_inflight.discard(regen_key)
-
                     error_message = generation_result.get("message") or "Unknown error"
                     forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh failed: {error_message}"
             else:

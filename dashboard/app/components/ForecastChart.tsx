@@ -143,6 +143,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
   const [forecastStaleReason, setForecastStaleReason] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const isFetchingRef = useRef(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -194,33 +195,40 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
       }
     }
 
+    const startInterval = () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = setInterval(() => {
+        if (sensorId) {
+          fetchData();
+        }
+      }, 10 * 60 * 1000);
+    };
+
+    const stopInterval = () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+
     if (sensorId) {
       fetchData();
+      startInterval();
     }
-
-    let intervalId = setInterval(() => {
-      if (sensorId) {
-        fetchData();
-      }
-    }, 10 * 60 * 1000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && sensorId) {
         // Reset interval to prevent duplicate fetches near the 10-minute boundary
-        clearInterval(intervalId);
+        stopInterval();
         fetchData();
-        intervalId = setInterval(() => {
-          if (sensorId) {
-            fetchData();
-          }
-        }, 10 * 60 * 1000);
+        startInterval();
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      clearInterval(intervalId);
+      stopInterval();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [sensorId]);
@@ -231,7 +239,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
     : null;
 
   const chartDomain = useMemo(() => {
-    if (!data.length && !forecastStart && !forecastEnd) {
+    if (!data.length && !forecastStart && !forecastEnd && !lastReadingTimestamp) {
       return undefined;
     }
     // Always include data points, current time, and last reading in domain calculation
