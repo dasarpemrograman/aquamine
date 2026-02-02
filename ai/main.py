@@ -1053,11 +1053,11 @@ async def get_forecast_compatibility(
     result = await db.execute(prediction_query)
     prediction = result.scalar_one_or_none()
 
-    warning: Optional[str] = None
+    forecast_warning: Optional[str] = None
     staleness = check_forecast_staleness(prediction, latest_reading, window_end, now_utc)
     if staleness.get("is_stale"):
         stale_reason = staleness.get("stale_reason")
-        warning = f"pH forecast may be stale ({stale_reason})"
+        forecast_warning = f"pH forecast may be stale ({stale_reason})"
 
         refreshable_reasons = {
             "no_prediction",
@@ -1132,22 +1132,24 @@ async def get_forecast_compatibility(
                         staleness = refreshed_staleness
                         if refreshed_staleness.get("is_stale"):
                             refreshed_reason = refreshed_staleness.get("stale_reason")
-                            warning = f"pH forecast may be stale ({refreshed_reason})"
+                            forecast_warning = f"pH forecast may be stale ({refreshed_reason})"
                         else:
-                            warning = None
+                            forecast_warning = None
                     else:
                         async with _forecast_regeneration_lock:
                             _forecast_regeneration_inflight.discard(regen_key)
 
                         error_message = generation_result.get("message") or "Unknown error"
-                        warning = f"pH forecast may be stale ({stale_reason}); refresh failed: {error_message}"
+                        forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh failed: {error_message}"
             else:
                 if already_refreshed_today:
-                    warning = f"pH forecast may be stale ({stale_reason}); refresh skipped (already refreshed today)"
+                    forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh skipped (already refreshed today)"
                 elif refresh_in_progress:
-                    warning = f"pH forecast may be stale ({stale_reason}); refresh in progress"
+                    forecast_warning = (
+                        f"pH forecast may be stale ({stale_reason}); refresh in progress"
+                    )
                 else:
-                    warning = f"pH forecast may be stale ({stale_reason}); refresh skipped"
+                    forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh skipped"
     data_quality = min(recent_ph_count / 24.0, 1.0)
     raw_forecast = _format_forecast_points(
         prediction.forecast_values if prediction else [], data_quality=data_quality
@@ -1157,9 +1159,9 @@ async def get_forecast_compatibility(
     forecast = _trim_forecast_to_window(raw_forecast, window_start, window_end)
 
     if not forecast and raw_forecast:
-        warning = (
-            f"{warning}; Forecast data exists but is outside the current 7-day window"
-            if warning
+        forecast_warning = (
+            f"{forecast_warning}; Forecast data exists but is outside the current 7-day window"
+            if forecast_warning
             else "Forecast data exists but is outside the current 7-day window"
         )
 
@@ -1179,7 +1181,7 @@ async def get_forecast_compatibility(
         "anomaly": anomaly_summary,
         "latest_reading": latest_snapshot,
         "history_hours": history_hours,
-        "warning": warning,
+        "warning": forecast_warning,
         "forecast_generated_at": prediction.created_at if prediction else None,
         "forecast_start": prediction.forecast_start if prediction else None,
         "forecast_end": prediction.forecast_end if prediction else None,

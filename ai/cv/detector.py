@@ -193,6 +193,9 @@ class TemporalValidator:
         Object harus muncul di N frame berturut-turut (consecutive),
         bukan total match di seluruh history.
 
+        Greptile Fix: This now properly tracks truly consecutive frames
+        by iterating backwards through history and breaking on mismatch.
+
         Returns:
             List deteksi yang valid (muncul di minimal N frame berturut-turut)
         """
