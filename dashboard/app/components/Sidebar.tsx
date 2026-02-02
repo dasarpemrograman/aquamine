@@ -38,7 +38,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps = {}) {
   }
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-72 z-40 hidden md:flex flex-col border-r border-white/75 bg-white/60 backdrop-blur-xl shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300">
+    <aside className="fixed left-0 top-0 h-full w-64 z-40 hidden md:flex flex-col border-r border-white/75 bg-[#FBFCFF] backdrop-blur-xl shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300">
       <div className="h-20 flex items-center px-8 border-b border-white/50">
         <Link href="/" className="flex items-center group">
             <Image 

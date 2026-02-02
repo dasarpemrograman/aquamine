@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface StatusChipProps {
-  status: 'active' | 'inactive' | 'warning' | 'critical' | 'info';
+  status: 'active' | 'inactive' | 'warning' | 'critical' | 'info' | 'partial';
   label: string;
   size?: 'sm' | 'md';
 }
@@ -13,6 +13,7 @@ export function StatusChip({ status, label, size = 'md' }: StatusChipProps) {
     warning: 'bg-amber-100 text-amber-700 border-amber-200',
     critical: 'bg-rose-100 text-rose-700 border-rose-200',
     info: 'bg-sky-100 text-sky-700 border-sky-200',
+    partial: 'bg-orange-100 text-orange-700 border-orange-200',
   };
 
   const sizeStyles = {

@@ -4,7 +4,7 @@ interface GlassCardProps {
   children: React.ReactNode;
   className?: string;
   variant?: 'default' | 'elevated' | 'flat';
-  padding?: 'sm' | 'md' | 'lg';
+  padding?: 'none' | 'xs' | 'sm' | 'md' | 'lg';
 }
 
 export function GlassCard({
@@ -14,6 +14,8 @@ export function GlassCard({
   padding = 'md',
 }: GlassCardProps) {
   const paddingClasses = {
+    none: 'p-0',
+    xs: 'p-3',
     sm: 'p-4',
     md: 'p-6',
     lg: 'p-8',
@@ -28,7 +30,7 @@ export function GlassCard({
   return (
     <div
       className={`
-        rounded-2xl 
+        rounded-xl 
         transition-all duration-300
         hover:border-white/80 hover:shadow-md
         ${variantClasses[variant]}

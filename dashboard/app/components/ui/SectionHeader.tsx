@@ -22,18 +22,18 @@ export function SectionHeader({
             <Icon size={20} strokeWidth={2} />
           </div>
         )}
-        <div>
+        <div className="flex items-center gap-3">
           <h2 className="text-xl font-bold text-slate-800 tracking-tight">{title}</h2>
-          {subtitle && (
-            <p className="text-sm text-slate-500 font-medium mt-0.5">{subtitle}</p>
+          {actions && (
+            <div className="flex items-center gap-2">
+              {actions}
+            </div>
           )}
         </div>
-      </div>
-      {actions && (
-        <div className="flex items-center gap-2">
-          {actions}
-        </div>
-      )}
+        {subtitle && (
+          <p className="text-sm text-slate-500 font-medium mt-0.5">{subtitle}</p>
+        )}
+    </div>
     </div>
   );
 }

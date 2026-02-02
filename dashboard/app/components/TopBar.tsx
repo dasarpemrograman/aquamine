@@ -28,9 +28,7 @@ export default function TopBar() {
   }, [refreshInterval]);
 
   useEffect(() => {
-    if (!userId) {
-      return;
-    }
+    if (!userId) return;
 
     fetchSettings(userId)
       .then((settings) => {
@@ -69,11 +67,17 @@ export default function TopBar() {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-20 items-center justify-between px-8 backdrop-blur-md bg-white/40 border-b border-white/50 transition-all duration-300">
-      <div className="flex items-center gap-4 flex-1">
+    
+    /* Changed: Added w-full and used px-4 to match the wide dashboard layout */
+    <header className="sticky top-0 z-30 flex h-20 w-full items-center justify-between px-4 lg:px-5 backdrop-blur-md bg-[#FBFCFF] border-b border-white/50 transition-all duration-300">
+      
+      {/* Left section: flex-1 ensures it pushes items to the edges */}
+      <div className="flex-1 items-center gap-4 flex-1">
+        {/* Placeholder for Breadcrumbs or Logo if needed */}
       </div>
 
-      <div className="flex items-center gap-3">
+      {/* Right section: Actions */}
+      <div className="flex items-center gap-2 md:gap-3">
         <div className="mr-2 hidden md:block">
           <StatusChip status={status} label={statusLabel} size="sm" />
         </div>
