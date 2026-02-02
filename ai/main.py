@@ -1808,6 +1808,10 @@ async def send_message(
 
     # Check if compaction was triggered during processing
     if isinstance(response_content, dict) and response_content.get("type") == "compaction_required":
+        # Rollback: delete the user message we just saved to avoid duplication on retry
+        await db.delete(user_message)
+        await db.commit()
+
         return SendMessageResponse(
             message=MessageResponse(
                 id=user_message.id,
