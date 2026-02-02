@@ -10,24 +10,38 @@ import {
   Zap, 
   Clock, 
   Waves,
-  ArrowRight
+  ArrowRight,
+  Map
 } from "lucide-react";
 
 import SensorStatus from "@/app/components/SensorStatus";
 import AlertList from "@/app/components/AlertList";
+import BerkeleyPitMap from "@/app/components/map/BerkeleyPitMap";
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { StatusChip } from "@/app/components/ui/StatusChip";
 import { IconBadge } from "@/app/components/ui/IconBadge";
+
+interface Sensor {
+  id: number;
+  sensor_id: string;
+  name: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  is_active: boolean;
+  current_state?: string | null;
+}
 
 export default function Home() {
   const [stats, setStats] = useState({
     healthScore: 100,
     activeSensors: 0,
     totalSensors: 0,
-    latestAnomaly: "None",
+    currentStatus: "offline",
+    statusSensorName: "",
     lastUpdate: "--:--:--"
   });
+  const [sensors, setSensors] = useState<Sensor[]>([]);
 
   useEffect(() => {
     async function fetchStats() {
@@ -37,11 +51,14 @@ export default function Home() {
             fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/alerts`)
         ]);
 
-        const sensors = await sensorsRes.json();
+        const sensorsData = await sensorsRes.json();
         const alerts = await alertsRes.json();
 
-        const active = Array.isArray(sensors) ? sensors.filter((s: any) => s.is_active).length : 0;
-        const total = Array.isArray(sensors) ? sensors.length : 0;
+        setSensors(Array.isArray(sensorsData) ? sensorsData : []);
+
+        const activeSensors = Array.isArray(sensorsData) ? sensorsData.filter((s: Sensor) => s.is_active) : [];
+        const active = activeSensors.length;
+        const total = Array.isArray(sensorsData) ? sensorsData.length : 0;
         
         const criticalAlerts = Array.isArray(alerts) ? alerts.filter((a: any) => a.severity === 'critical').length : 0;
         const warningAlerts = Array.isArray(alerts) ? alerts.filter((a: any) => a.severity === 'warning').length : 0;
@@ -50,13 +67,29 @@ export default function Home() {
         let calculatedHealth = 100 - (criticalAlerts * 20) - (warningAlerts * 5) - (inactiveSensors * 10);
         if (calculatedHealth < 0) calculatedHealth = 0;
 
-        const latest = Array.isArray(alerts) && alerts.length > 0 ? alerts[0].severity : "None";
+        const getMostCriticalSensor = (): { status: string; name: string } => {
+          if (activeSensors.length === 0) return { status: "offline", name: "" };
+          
+          const critical = activeSensors.find((s: Sensor) => s.current_state?.toLowerCase() === "critical");
+          if (critical) return { status: "critical", name: critical.name };
+          
+          const warning = activeSensors.find((s: Sensor) => s.current_state?.toLowerCase() === "warning");
+          if (warning) return { status: "warning", name: warning.name };
+          
+          const normal = activeSensors.find((s: Sensor) => s.current_state?.toLowerCase() === "normal");
+          if (normal) return { status: "normal", name: normal.name };
+          
+          return { status: "unknown", name: activeSensors[0]?.name || "" };
+        };
+
+        const { status, name } = getMostCriticalSensor();
 
         setStats({
             healthScore: calculatedHealth,
             activeSensors: active,
             totalSensors: total,
-            latestAnomaly: latest,
+            currentStatus: status,
+            statusSensorName: name,
             lastUpdate: new Date().toLocaleTimeString()
         });
       } catch (e) {
@@ -118,14 +151,22 @@ export default function Home() {
 
           <GlassCard variant="flat" className="relative group hover:bg-white/60 transition-colors">
               <div className="flex justify-between items-start mb-4">
-                  <IconBadge icon={AlertTriangle} variant={stats.latestAnomaly === 'critical' ? 'coral' : 'default'} />
-                  <span className="text-xs font-mono text-slate-400">LOG-01</span>
+                  <IconBadge icon={AlertTriangle} variant={stats.currentStatus === 'critical' ? 'coral' : stats.currentStatus === 'warning' ? 'amber' : 'default'} />
+                  {stats.statusSensorName && (
+                    <span className="text-xs font-medium text-slate-400 truncate max-w-[100px]" title={stats.statusSensorName}>
+                      {stats.statusSensorName}
+                    </span>
+                  )}
               </div>
               <div>
-                  <span className={`text-2xl font-bold capitalize ${stats.latestAnomaly === 'critical' ? 'text-rose-600' : 'text-slate-800'}`}>
-                      {stats.latestAnomaly}
+                  <span className={`text-2xl font-bold capitalize ${
+                    stats.currentStatus === 'critical' ? 'text-rose-600' : 
+                    stats.currentStatus === 'warning' ? 'text-amber-600' : 
+                    stats.currentStatus === 'normal' ? 'text-emerald-600' : 'text-slate-800'
+                  }`}>
+                      {stats.currentStatus}
                   </span>
-                  <p className="text-sm text-slate-500 mt-1">Latest Status</p>
+                  <p className="text-sm text-slate-500 mt-1">Current Status</p>
               </div>
           </GlassCard>
 
@@ -139,6 +180,22 @@ export default function Home() {
               </div>
           </GlassCard>
         </div>
+
+        <Link href="/map" className="block">
+          <GlassCard className="hover:border-cyan-300 transition-all duration-300 group cursor-pointer relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="relative z-10">
+              <div className="flex justify-between items-start mb-4">
+                <IconBadge icon={Map} variant="aqua" size="lg" />
+                <ArrowRight className="text-slate-300 group-hover:text-cyan-500 transition-colors" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 group-hover:text-cyan-700 transition-colors mb-2">Site Map</h3>
+              <div className="h-[200px] rounded-lg overflow-hidden">
+                <BerkeleyPitMap sensors={sensors} height="200px" showPolygon={true} />
+              </div>
+            </div>
+          </GlassCard>
+        </Link>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">

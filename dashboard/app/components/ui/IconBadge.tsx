@@ -3,7 +3,7 @@ import { LucideIcon } from 'lucide-react';
 
 interface IconBadgeProps {
   icon: LucideIcon;
-  variant?: 'default' | 'aqua' | 'teal' | 'coral';
+  variant?: 'default' | 'aqua' | 'teal' | 'coral' | 'amber';
   size?: 'sm' | 'md' | 'lg';
 }
 
@@ -13,6 +13,7 @@ export function IconBadge({ icon: Icon, variant = 'default', size = 'md' }: Icon
     aqua: 'bg-cyan-100 text-cyan-700',
     teal: 'bg-teal-100 text-teal-700',
     coral: 'bg-rose-100 text-rose-700',
+    amber: 'bg-amber-100 text-amber-700',
   };
   
   const sizeStyles = {
