@@ -1837,20 +1837,35 @@ async def send_message(
     db.add(assistant_message)
 
     # Generate title if this is the first exchange and title is still default
+    # Re-fetch thread with row-level lock to prevent race condition when multiple
+    # requests try to generate title simultaneously
     if thread.title_source == "auto" and (thread.title == "New chat" or not thread.title):
-        # Generate LLM title in parallel (non-blocking)
-        try:
-            llm_title = await generate_thread_title(
-                request.content,
-                str(response_content),
-            )
-            thread.title = llm_title
-            db.add(thread)  # Explicitly add to session to track changes
-        except Exception as e:
-            logger.warning(f"Failed to generate LLM title: {e}")
-            # Fallback: use first 30 chars of user message
-            thread.title = request.content[:30] + ("..." if len(request.content) > 30 else "")
-            db.add(thread)  # Explicitly add to session to track changes
+        fresh_thread_stmt = (
+            select(ChatThread).where(ChatThread.id == thread_id).with_for_update(skip_locked=True)
+        )
+        fresh_result = await db.execute(fresh_thread_stmt)
+        fresh_thread = fresh_result.scalar_one_or_none()
+
+        # Only generate if thread still needs title (another request may have set it)
+        if (
+            fresh_thread
+            and fresh_thread.title_source == "auto"
+            and (fresh_thread.title == "New chat" or not fresh_thread.title)
+        ):
+            try:
+                llm_title = await generate_thread_title(
+                    request.content,
+                    str(response_content),
+                )
+                fresh_thread.title = llm_title
+                db.add(fresh_thread)
+            except Exception as e:
+                logger.warning(f"Failed to generate LLM title: {e}")
+                # Fallback: use first 30 chars of user message
+                fresh_thread.title = request.content[:30] + (
+                    "..." if len(request.content) > 30 else ""
+                )
+                db.add(fresh_thread)
 
     await db.commit()
     await db.refresh(assistant_message)

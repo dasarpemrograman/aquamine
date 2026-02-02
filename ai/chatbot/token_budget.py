@@ -65,8 +65,11 @@ def calculate_context_stats(
     Calculate token usage statistics for the current context.
     """
     total_tokens = 0
+    has_system_message = False
+
     for msg in messages:
-        # If token_estimate is already calculated and stored, use it.
+        if msg.get("role") == "system":
+            has_system_message = True
         if "token_estimate" in msg:
             total_tokens += int(msg["token_estimate"])
         else:
@@ -75,8 +78,8 @@ def calculate_context_stats(
     if pending_user_message:
         total_tokens += estimate_message_tokens({"role": "user", "content": pending_user_message})
 
-    # Add system overhead
-    total_tokens += SYSTEM_PROMPT_OVERHEAD
+    if not has_system_message:
+        total_tokens += SYSTEM_PROMPT_OVERHEAD
 
     usage_ratio = total_tokens / CONTEXT_WINDOW_TOKENS
     remaining_tokens = CONTEXT_WINDOW_TOKENS - total_tokens

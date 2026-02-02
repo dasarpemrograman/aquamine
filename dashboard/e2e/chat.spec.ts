@@ -74,7 +74,6 @@ test.describe('Chat Threads', () => {
 
   test('create new chat, send first message, and verify title auto-updates in sidebar', async ({ page }) => {
     const firstMessage = `Hello from E2E ${Date.now()} - this message should become the title.`;
-    const expectedTitle = `${firstMessage.slice(0, 30)}...`;
 
     await page.click(selectors.newChat);
 

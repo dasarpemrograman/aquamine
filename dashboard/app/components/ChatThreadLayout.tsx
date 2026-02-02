@@ -12,6 +12,8 @@ interface Thread {
   active_segment_id: string | null;
 }
 
+const TITLE_MAX_LENGTH = 200;
+
 export default function ChatThreadLayout() {
   const { getToken, userId } = useAuth();
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -20,6 +22,7 @@ export default function ChatThreadLayout() {
   const [isLoading, setIsLoading] = useState(false);
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
 
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8181";
 
@@ -94,6 +97,12 @@ export default function ChatThreadLayout() {
   };
 
   const renameThread = async (threadId: string, newTitle: string) => {
+    if (newTitle.length > TITLE_MAX_LENGTH) {
+      setRenameError(`Title must be ${TITLE_MAX_LENGTH} characters or less`);
+      return;
+    }
+    setRenameError(null);
+
     try {
       const token = await getToken();
       const response = await fetch(`${API_BASE}/api/v1/chat/threads/${threadId}`, {
@@ -110,9 +119,13 @@ export default function ChatThreadLayout() {
         setThreads((prev: Thread[]) =>
           prev.map((t: Thread) => (t.id === threadId ? updatedThread : t))
         );
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setRenameError(errorData.detail || "Failed to rename thread");
       }
     } catch (error) {
       console.error("Failed to rename thread:", error);
+      setRenameError("Network error");
     } finally {
       setEditingThreadId(null);
       setEditTitle("");
@@ -122,6 +135,7 @@ export default function ChatThreadLayout() {
   const startEditing = (thread: Thread) => {
     setEditingThreadId(thread.id);
     setEditTitle(thread.title);
+    setRenameError(null);
   };
 
   const handleEditSubmit = (threadId: string) => {
@@ -188,20 +202,26 @@ export default function ChatThreadLayout() {
                 <MessageSquare className="w-4 h-4 flex-shrink-0" />
                 
                 {editingThreadId === thread.id ? (
-                  <input
-                    type="text"
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    onBlur={() => handleEditSubmit(thread.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleEditSubmit(thread.id);
-                      if (e.key === "Escape") setEditingThreadId(null);
-                    }}
-                    autoFocus
-                    data-testid="chat-thread-rename-input"
-                    className="flex-1 min-w-0 bg-white/80 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400"
-                    onClick={(e) => e.stopPropagation()}
-                  />
+                  <div className="flex-1 min-w-0">
+                    <input
+                      type="text"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onBlur={() => handleEditSubmit(thread.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleEditSubmit(thread.id);
+                        if (e.key === "Escape") setEditingThreadId(null);
+                      }}
+                      maxLength={TITLE_MAX_LENGTH}
+                      autoFocus
+                      data-testid="chat-thread-rename-input"
+                      className="w-full bg-white/80 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    {renameError && (
+                      <p className="text-xs text-red-500 mt-1">{renameError}</p>
+                    )}
+                  </div>
                 ) : (
                   <span className="flex-1 min-w-0 truncate text-sm font-medium" data-testid="chat-thread-title">
                     {thread.title}
