@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Settings, HelpCircle, LogIn } from "lucide-react";
+import { Settings, HelpCircle, LogIn, Menu } from "lucide-react";
 import { StatusChip } from "./ui/StatusChip";
 import { UserButton, SignedIn, SignedOut, useUser } from "@clerk/nextjs";
 import Link from "next/link";
@@ -10,7 +10,11 @@ import { fetchHealth, fetchSensors, fetchSettings, Sensor } from "@/lib/api";
 
 type SystemStatus = "active" | "warning" | "critical";
 
-export default function TopBar() {
+interface TopBarProps {
+  onMenuClick?: () => void;
+}
+
+export default function TopBar({ onMenuClick }: TopBarProps) {
   const { user } = useUser();
   const userId = user?.id;
   const [status, setStatus] = useState<SystemStatus>("active");
@@ -67,16 +71,17 @@ export default function TopBar() {
   };
 
   return (
-    
-    /* Changed: Added w-full and used px-4 to match the wide dashboard layout */
-    <header className="sticky top-0 z-30 flex h-20 w-full items-center justify-between px-4 lg:px-5 backdrop-blur-md bg-[#FBFCFF] border-b border-white/50 transition-all duration-300">
-      
-      {/* Left section: flex-1 ensures it pushes items to the edges */}
-      <div className="flex-1 items-center gap-4 flex-1">
-        {/* Placeholder for Breadcrumbs or Logo if needed */}
+    <header className="sticky top-0 z-30 flex h-20 items-center justify-between px-4 md:px-8 backdrop-blur-md bg-white/40 border-b border-white/50 transition-all duration-300">
+      <div className="flex items-center gap-4 flex-1">
+        <button 
+          onClick={onMenuClick}
+          className="md:hidden p-2 -ml-2 text-slate-500 hover:bg-white/60 hover:text-slate-700 rounded-lg transition-colors"
+          aria-label="Open menu"
+        >
+          <Menu size={24} />
+        </button>
       </div>
 
-      {/* Right section: Actions */}
       <div className="flex items-center gap-2 md:gap-3">
         <div className="mr-2 hidden md:block">
           <StatusChip status={status} label={statusLabel} size="sm" />
@@ -86,14 +91,14 @@ export default function TopBar() {
         
         <Link 
           href="/help"
-          className="p-2.5 rounded-xl text-slate-500 hover:bg-white/60 hover:text-cyan-600 hover:shadow-sm transition-all duration-200"
+          className="p-2 md:p-2.5 rounded-xl text-slate-500 hover:bg-white/60 hover:text-cyan-600 hover:shadow-sm transition-all duration-200 hidden sm:block"
         >
           <HelpCircle size={20} />
         </Link>
 
         <Link 
           href="/settings"
-          className="p-2.5 rounded-xl text-slate-500 hover:bg-white/60 hover:text-cyan-600 hover:shadow-sm transition-all duration-200"
+          className="p-2 md:p-2.5 rounded-xl text-slate-500 hover:bg-white/60 hover:text-cyan-600 hover:shadow-sm transition-all duration-200"
         >
           <Settings size={20} />
         </Link>
@@ -104,7 +109,7 @@ export default function TopBar() {
               afterSignOutUrl="/"
               appearance={{
                 elements: {
-                  avatarBox: "h-9 w-9 ring-2 ring-white shadow-sm"
+                  avatarBox: "h-8 w-8 md:h-9 md:w-9 ring-2 ring-white shadow-sm"
                 }
               }}
             />
@@ -112,10 +117,10 @@ export default function TopBar() {
           <SignedOut>
             <Link 
               href="/login" 
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-all shadow-sm hover:shadow-md active:scale-95"
+              className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-all shadow-sm hover:shadow-md active:scale-95"
             >
               <LogIn size={16} />
-              <span>Sign In</span>
+              <span className="hidden sm:inline">Sign In</span>
             </Link>
           </SignedOut>
         </div>

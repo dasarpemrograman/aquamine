@@ -1,7 +1,8 @@
 import asyncio
 from contextlib import asynccontextmanager, suppress
-from datetime import datetime, timedelta, timezone
-from typing import List, Literal, Optional
+from datetime import date, datetime, timedelta, timezone
+from typing import List, Literal, Optional, Any
+from zoneinfo import ZoneInfo
 
 from fastapi import (
     FastAPI,
@@ -22,6 +23,8 @@ import logging
 import os
 import re
 import time
+import uuid
+import pandas as pd
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, delete, or_, func
@@ -30,7 +33,7 @@ from sqlalchemy import select, desc, delete, or_, func
 from .schemas.cv import BoundingBox, ImageAnalysisResponse
 from .cv.detector import YellowBoyDetector, ImageDecodeError
 from .utils.responses import error_response
-from .chatbot.orchestrator import ChatOrchestrator
+from .chatbot.orchestrator import ChatOrchestrator, SYSTEM_PROMPT
 
 # Import IoT/ML modules
 from .db.connection import get_db
@@ -43,6 +46,9 @@ from .db.models import (
     NotificationRecipient,
     SensorAlertState,
     UserSettings,
+    ChatThread,
+    ChatSessionSegment,
+    ChatMessage,
 )
 from .schemas.sensor import SensorResponse, ReadingResponse, SensorDataIngest
 from .schemas.forecast import PredictionResponse
@@ -57,6 +63,23 @@ from .schemas.alert import (
 from .schemas.settings import UserSettingsResponse, UserSettingsUpdate
 from .schemas.help import FaqItem, FaqResponse
 from .schemas.base import BaseSchema
+from .schemas.chat import (
+    ThreadCreate,
+    ThreadUpdate,
+    ThreadResponse,
+    ThreadListResponse,
+    MessageCreate,
+    MessageResponse,
+    MessageListResponse,
+    SendMessageRequest,
+    SendMessageResponse,
+    CompactionPreviewRequest,
+    CompactionPreviewResponse,
+    CompactionCommitRequest,
+    CompactionCommitResponse,
+    SegmentResponse,
+)
+from .auth.clerk import get_current_user
 from .iot.mqtt_bridge import process_mqtt_message
 from .forecasting.timegpt_client import TimeGPTClient
 from .anomaly.detector import AnomalyDetector, ANOMALY_THRESHOLDS
@@ -69,6 +92,40 @@ logger = logging.getLogger(__name__)
 REFRESH_INTERVAL_MIN_SECONDS = 5
 REFRESH_INTERVAL_MAX_SECONDS = 60
 QUIET_HOURS_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+# Forecast regeneration configuration
+FORECAST_REGEN_DATA_THRESHOLD_HOURS = 6  # Minimum new data hours to trigger dynamic regeneration
+FORECAST_REGEN_MIN_INTERVAL_MINUTES = 30  # Minimum interval between regenerations per sensor
+
+# In-memory rate limiting for forecast regeneration.
+# Keyed by (sensor_id, WIB date). Value is the UTC timestamp of the last successful regeneration.
+_last_forecast_regeneration: dict[tuple[int, date], datetime] = {}
+_forecast_regeneration_inflight: set[tuple[int, date]] = set()
+_forecast_regeneration_lock = asyncio.Lock()
+
+
+def _cleanup_forecast_regeneration_cache(cutoff_days: int = 7) -> None:
+    """Remove old entries from forecast regeneration cache to prevent memory leak.
+
+    Args:
+        cutoff_days: Remove entries older than this many days (default: 7)
+    """
+    global _last_forecast_regeneration
+    if not _last_forecast_regeneration:
+        return
+
+    from datetime import timedelta
+
+    today = datetime.now(timezone.utc).date()
+    cutoff_date = today - timedelta(days=cutoff_days)
+
+    keys_to_remove = [key for key in _last_forecast_regeneration.keys() if key[1] < cutoff_date]
+
+    for key in keys_to_remove:
+        del _last_forecast_regeneration[key]
+
+    if keys_to_remove:
+        logger.debug(f"Cleaned up {len(keys_to_remove)} old forecast regeneration entries")
 
 
 def verify_user_id(user_id: str, x_user_id: Optional[str] = Header(None, alias="x-user-id")) -> str:
@@ -201,6 +258,190 @@ def _format_forecast_points(
         )
 
     return points
+
+
+def compute_forecast_window(now_utc: datetime) -> tuple[datetime, datetime]:
+    """Compute the 7-day forecast window anchored to 'today' in WIB.
+
+    - window_start: today's 00:00 in Asia/Jakarta, converted to UTC
+    - window_end: window_start + 7 days
+
+    Naive datetimes are treated as UTC.
+    """
+
+    if now_utc.tzinfo is None:
+        now_utc_utc = now_utc.replace(tzinfo=timezone.utc)
+    else:
+        now_utc_utc = now_utc.astimezone(timezone.utc)
+
+    wib = ZoneInfo("Asia/Jakarta")
+    now_wib = now_utc_utc.astimezone(wib)
+    today_wib_start = datetime(now_wib.year, now_wib.month, now_wib.day, tzinfo=wib)
+    window_start = today_wib_start.astimezone(timezone.utc)
+    window_end = window_start + timedelta(days=7)
+    return window_start, window_end
+
+
+def check_forecast_staleness(
+    prediction,
+    latest_reading,
+    window_end: datetime,
+    now_utc: datetime,
+) -> dict:
+    """Determine if a forecast is stale.
+
+    Rule order:
+    1) no_prediction
+    2) forecast_end_before_window_end
+    3) newer_reading_exists
+    4) created_before_today_wib
+
+    Naive datetimes are treated as UTC.
+    """
+
+    def _as_utc_optional(value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def _as_utc_required(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    window_end_utc = _as_utc_required(window_end)
+    now_utc_utc = _as_utc_required(now_utc)
+
+    if prediction is None:
+        return {"is_stale": True, "stale_reason": "no_prediction"}
+
+    wib = ZoneInfo("Asia/Jakarta")
+    created_at_utc = _as_utc_optional(getattr(prediction, "created_at", None))
+    forecast_end_utc = _as_utc_optional(getattr(prediction, "forecast_end", None))
+
+    if forecast_end_utc is None or forecast_end_utc < window_end_utc:
+        return {"is_stale": True, "stale_reason": "forecast_end_before_window_end"}
+
+    latest_ts_utc = None
+    if latest_reading is not None:
+        latest_ts_utc = _as_utc_optional(getattr(latest_reading, "timestamp", None))
+
+    if latest_ts_utc is not None and created_at_utc is not None and latest_ts_utc > created_at_utc:
+        return {"is_stale": True, "stale_reason": "newer_reading_exists"}
+
+    if created_at_utc is None:
+        return {"is_stale": True, "stale_reason": "created_before_today_wib"}
+
+    created_date_wib = created_at_utc.astimezone(wib).date()
+    today_date_wib = now_utc_utc.astimezone(wib).date()
+    if created_date_wib < today_date_wib:
+        return {"is_stale": True, "stale_reason": "created_before_today_wib"}
+
+    return {"is_stale": False, "stale_reason": None}
+
+
+def _trim_forecast_to_window(
+    forecast: list[dict], window_start: datetime, window_end: datetime
+) -> list[dict]:
+    points_in_window = []
+    for point in forecast:
+        ts = point.get("timestamp")
+        if isinstance(ts, str):
+            try:
+                ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+        if not isinstance(ts, datetime):
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        if window_start <= ts < window_end:
+            points_in_window.append(point)
+
+    points_in_window.sort(key=lambda p: p.get("timestamp") or "")
+    return points_in_window
+
+
+async def _generate_and_store_forecast_for_sensor(sensor_id: int, db: AsyncSession) -> dict:
+    """Generate and persist a 7-day forecast (168 points) for a sensor.
+
+    Returns:
+        {"status": "success", "predictions_generated": int}
+        {"status": "error", "message": str}
+    """
+
+    try:
+        # 1) Fetch historical data (7 days)
+        start_time = datetime.now(timezone.utc) - timedelta(days=7)
+        query = (
+            select(Reading)
+            .where(Reading.sensor_id == sensor_id, Reading.timestamp >= start_time)
+            .order_by(Reading.timestamp)
+        )
+        result = await db.execute(query)
+        readings = result.scalars().all()
+
+        if not readings:
+            return {"status": "error", "message": "No data found for forecasting"}
+
+        # 2) Prepare data for TimeGPT: unique_id, ds, y
+        data: list[dict[str, object]] = []
+        sensor_str = f"sensor_{sensor_id}"
+        for r in readings:
+            if r.ph is not None:
+                data.append({"unique_id": f"{sensor_str}_ph", "ds": r.timestamp, "y": r.ph})
+            if r.turbidity is not None:
+                data.append(
+                    {
+                        "unique_id": f"{sensor_str}_turbidity",
+                        "ds": r.timestamp,
+                        "y": r.turbidity,
+                    }
+                )
+            if r.temperature is not None:
+                data.append(
+                    {
+                        "unique_id": f"{sensor_str}_temperature",
+                        "ds": r.timestamp,
+                        "y": r.temperature,
+                    }
+                )
+
+        df = pd.DataFrame(data)
+        if df.empty:
+            return {"status": "error", "message": "No data found for forecasting"}
+
+        # 3) Generate forecast
+        forecasts = timegpt.generate_forecast(df, horizon=168)
+
+        # 4) Store predictions
+        count = 0
+        for uid, points in (forecasts or {}).items():
+            if not points:
+                continue
+
+            parameter = uid.split("_")[-1]
+            forecast_values = [p.model_dump(mode="json") for p in points]
+
+            prediction = Prediction(
+                sensor_id=sensor_id,
+                forecast_start=points[0].timestamp,
+                forecast_end=points[-1].timestamp,
+                parameter=parameter,
+                forecast_values=forecast_values,
+                model_version="timegpt-1",
+            )
+            db.add(prediction)
+            count += 1
+
+        await db.commit()
+        return {"status": "success", "predictions_generated": count}
+    except Exception as e:
+        await db.rollback()
+        logger.exception("Forecast generation failed")
+        return {"status": "error", "message": str(e)}
 
 
 def _format_anomaly_label(parameter: Optional[str]) -> str:
@@ -387,6 +628,15 @@ class TimelineForecastResponse(BaseSchema):
     history_hours: Optional[int] = None
     warning: Optional[str] = None
 
+    # Forecast freshness metadata (backwards compatible)
+    forecast_generated_at: Optional[datetime] = None
+    forecast_start: Optional[datetime] = None
+    forecast_end: Optional[datetime] = None
+    forecast_timezone: str = "Asia/Jakarta"
+    forecast_is_stale: bool = False
+    forecast_stale_reason: Optional[str] = None
+    source_prediction_id: Optional[int] = None
+
 
 FAQ_ITEMS: List[FaqItem] = [
     FaqItem(
@@ -457,16 +707,24 @@ def get_faq() -> FaqResponse:
 
 
 @app.post("/api/v1/chat")
-async def chat(request: ChatRequest) -> dict[str, str]:
-    response = await chat_orchestrator.process_user_message(request.message, request.session_id)
-    return {"response": response}
+async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)) -> dict[str, Any]:
+    result = await chat_orchestrator.process_user_message(request.message, request.session_id)
+
+    if isinstance(result, dict) and result.get("type") == "compaction_required":
+        return {
+            "response": result.get("message", "Compaction required"),
+            "compaction_required": True,
+            "token_usage": result.get("stats"),
+        }
+
+    return {"response": str(result), "compaction_required": False}
 
 
 # --- CV Endpoints ---
 
 
 @app.post("/api/v1/cv/analyze")
-async def analyze_image(file: UploadFile | None = File(None)):
+async def analyze_image(file: Optional[UploadFile] = File(None)):
     if file is None:
         return error_response(
             422, "MISSING_FILE", "No file uploaded. Use 'file' field in multipart form."
@@ -739,12 +997,17 @@ async def get_forecast(sensor_id: int, db: AsyncSession = Depends(get_db)):
 async def get_forecast_compatibility(
     payload: ForecastCompatibilityRequest, db: AsyncSession = Depends(get_db)
 ):
+    now_utc = datetime.now(timezone.utc)
+    _window_start, window_end = compute_forecast_window(now_utc)
+
+    forecast_timezone = "Asia/Jakarta"
+
     latest_reading = await _get_latest_reading(db, payload.sensor_id)
     anomaly_summary = _format_current_sensor_state(latest_reading)
 
     history_hours = None
     if latest_reading:
-        history_window_start = datetime.now(timezone.utc) - timedelta(hours=168)
+        history_window_start = now_utc - timedelta(hours=168)
         earliest_result = await db.execute(
             select(Reading.timestamp)
             .where(
@@ -760,7 +1023,7 @@ async def get_forecast_compatibility(
                 int((latest_reading.timestamp - earliest).total_seconds() / 3600), 1
             )
 
-    data_window_start = datetime.now(timezone.utc) - timedelta(hours=24)
+    data_window_start = now_utc - timedelta(hours=24)
     count_result = await db.execute(
         select(func.count())
         .select_from(Reading)
@@ -773,6 +1036,17 @@ async def get_forecast_compatibility(
     recent_ph_count = int(count_result.scalar_one() or 0)
     if recent_ph_count < 12:
         warning = "Insufficient data for pH forecast (need 24h of data)"
+
+        prediction_query = (
+            select(Prediction)
+            .where(Prediction.sensor_id == payload.sensor_id, Prediction.parameter == "ph")
+            .order_by(desc(Prediction.created_at))
+            .limit(1)
+        )
+        result = await db.execute(prediction_query)
+        prediction = result.scalar_one_or_none()
+        staleness = check_forecast_staleness(prediction, latest_reading, window_end, now_utc)
+
         latest_snapshot = (
             LatestReadingSnapshot(
                 timestamp=latest_reading.timestamp,
@@ -789,6 +1063,13 @@ async def get_forecast_compatibility(
             "latest_reading": latest_snapshot,
             "history_hours": history_hours,
             "warning": warning,
+            "forecast_generated_at": prediction.created_at if prediction else None,
+            "forecast_start": prediction.forecast_start if prediction else None,
+            "forecast_end": prediction.forecast_end if prediction else None,
+            "forecast_timezone": forecast_timezone,
+            "forecast_is_stale": bool(staleness.get("is_stale")),
+            "forecast_stale_reason": staleness.get("stale_reason"),
+            "source_prediction_id": prediction.id if prediction else None,
         }
 
     prediction_query = (
@@ -799,10 +1080,117 @@ async def get_forecast_compatibility(
     )
     result = await db.execute(prediction_query)
     prediction = result.scalar_one_or_none()
+
+    forecast_warning: Optional[str] = None
+    staleness = check_forecast_staleness(prediction, latest_reading, window_end, now_utc)
+    if staleness.get("is_stale"):
+        stale_reason = staleness.get("stale_reason")
+        forecast_warning = f"pH forecast may be stale ({stale_reason})"
+
+        refreshable_reasons = {
+            "no_prediction",
+            "forecast_end_before_window_end",
+            "created_before_today_wib",
+            "newer_reading_exists",
+        }
+
+        should_refresh = stale_reason in refreshable_reasons
+
+        # For dynamic regeneration (newer_reading_exists), check if significant new data exists
+        if (
+            should_refresh
+            and stale_reason == "newer_reading_exists"
+            and prediction
+            and latest_reading
+        ):
+            pred_created = getattr(prediction, "created_at", None)
+            latest_ts = getattr(latest_reading, "timestamp", None)
+            if pred_created and latest_ts:
+                new_data_hours = (latest_ts - pred_created).total_seconds() / 3600
+                if new_data_hours < FORECAST_REGEN_DATA_THRESHOLD_HOURS:
+                    should_refresh = False  # Not enough new data to justify regeneration
+
+        if should_refresh:
+            wib = ZoneInfo("Asia/Jakarta")
+            today_wib_date = now_utc.astimezone(wib).date()
+            regen_key = (payload.sensor_id, today_wib_date)
+
+            refresh_allowed = False
+            already_refreshed_today = False
+            refresh_in_progress = False
+            # Single critical section: hold lock for entire decision-making to prevent race conditions
+            async with _forecast_regeneration_lock:
+                if regen_key in _last_forecast_regeneration:
+                    last_regen = _last_forecast_regeneration[regen_key]
+                    minutes_since_regen = (now_utc - last_regen).total_seconds() / 60
+                    if minutes_since_regen >= FORECAST_REGEN_MIN_INTERVAL_MINUTES:
+                        _forecast_regeneration_inflight.add(regen_key)
+                        refresh_allowed = True
+                    else:
+                        already_refreshed_today = True
+                elif regen_key in _forecast_regeneration_inflight:
+                    refresh_in_progress = True
+                else:
+                    _forecast_regeneration_inflight.add(regen_key)
+                    refresh_allowed = True
+
+            if refresh_allowed:
+                generation_success = False
+                generation_result = {}
+                try:
+                    generation_result = await _generate_and_store_forecast_for_sensor(
+                        payload.sensor_id, db
+                    )
+                    if generation_result.get("status") == "success":
+                        generation_success = True
+                except Exception as e:
+                    generation_result = {"status": "error", "message": str(e)}
+                finally:
+                    async with _forecast_regeneration_lock:
+                        if generation_success:
+                            _last_forecast_regeneration[regen_key] = now_utc
+                            # Cleanup old entries to prevent memory leak
+                            _cleanup_forecast_regeneration_cache()
+                        _forecast_regeneration_inflight.discard(regen_key)
+
+                if generation_success:
+                    refreshed_result = await db.execute(prediction_query)
+                    prediction = refreshed_result.scalar_one_or_none()
+                    refreshed_staleness = check_forecast_staleness(
+                        prediction, latest_reading, window_end, now_utc
+                    )
+                    staleness = refreshed_staleness
+                    if refreshed_staleness.get("is_stale"):
+                        refreshed_reason = refreshed_staleness.get("stale_reason")
+                        forecast_warning = f"pH forecast may be stale ({refreshed_reason})"
+                    else:
+                        forecast_warning = None
+                else:
+                    error_message = generation_result.get("message") or "Unknown error"
+                    forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh failed: {error_message}"
+            else:
+                if already_refreshed_today:
+                    forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh skipped (already refreshed today)"
+                elif refresh_in_progress:
+                    forecast_warning = (
+                        f"pH forecast may be stale ({stale_reason}); refresh in progress"
+                    )
+                else:
+                    forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh skipped"
     data_quality = min(recent_ph_count / 24.0, 1.0)
-    forecast = _format_forecast_points(
+    raw_forecast = _format_forecast_points(
         prediction.forecast_values if prediction else [], data_quality=data_quality
     )
+
+    # Reuse window_end from line 1003 to ensure consistency between staleness check and trimming
+    forecast = _trim_forecast_to_window(raw_forecast, _window_start, window_end)
+
+    if not forecast and raw_forecast:
+        forecast_warning = (
+            f"{forecast_warning}; Forecast data exists but is outside the current 7-day window"
+            if forecast_warning
+            else "Forecast data exists but is outside the current 7-day window"
+        )
 
     latest_snapshot = (
         LatestReadingSnapshot(
@@ -820,7 +1208,14 @@ async def get_forecast_compatibility(
         "anomaly": anomaly_summary,
         "latest_reading": latest_snapshot,
         "history_hours": history_hours,
-        "warning": None,
+        "warning": forecast_warning,
+        "forecast_generated_at": prediction.created_at if prediction else None,
+        "forecast_start": prediction.forecast_start if prediction else None,
+        "forecast_end": prediction.forecast_end if prediction else None,
+        "forecast_timezone": forecast_timezone,
+        "forecast_is_stale": bool(staleness.get("is_stale")),
+        "forecast_stale_reason": staleness.get("stale_reason"),
+        "source_prediction_id": prediction.id if prediction else None,
     }
 
 
@@ -829,68 +1224,7 @@ async def generate_forecast_endpoint(
     sensor_id: int, _background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
 ):
     """Generate forecast for a sensor."""
-    # 1. Fetch historical data (7 days)
-    start_time = datetime.now(timezone.utc) - timedelta(days=7)
-    query = (
-        select(Reading)
-        .where(Reading.sensor_id == sensor_id, Reading.timestamp >= start_time)
-        .order_by(Reading.timestamp)
-    )
-    result = await db.execute(query)
-    readings = result.scalars().all()
-
-    if not readings:
-        return {"status": "error", "message": "No data found for forecasting"}
-
-    # 2. Prepare data for TimeGPT
-    # We need a DataFrame with unique_id, ds, y
-    data = []
-    sensor_str = f"sensor_{sensor_id}"
-    for r in readings:
-        # Flatten parameters
-        if r.ph is not None:
-            data.append({"unique_id": f"{sensor_str}_ph", "ds": r.timestamp, "y": r.ph})
-        if r.turbidity is not None:
-            data.append(
-                {"unique_id": f"{sensor_str}_turbidity", "ds": r.timestamp, "y": r.turbidity}
-            )
-        if r.temperature is not None:
-            data.append(
-                {"unique_id": f"{sensor_str}_temperature", "ds": r.timestamp, "y": r.temperature}
-            )
-
-    import pandas as pd
-
-    df = pd.DataFrame(data)
-
-    # 3. Generate Forecast (Async)
-    # We run this in background or await if fast enough. Mock is fast.
-    # For now, let's await it to return immediate status.
-    forecasts = timegpt.generate_forecast(df, horizon=168)  # 7 days
-
-    # 4. Store Predictions
-    count = 0
-    for uid, points in forecasts.items():
-        # uid: sensor_1_ph -> parameter: ph
-        parameter = uid.split("_")[-1]
-
-        # Serialize values
-        forecast_values = [p.model_dump(mode="json") for p in points]
-
-        prediction = Prediction(
-            sensor_id=sensor_id,
-            forecast_start=points[0].timestamp,
-            forecast_end=points[-1].timestamp,
-            parameter=parameter,
-            forecast_values=forecast_values,
-            model_version="timegpt-1",
-        )
-        db.add(prediction)
-        count += 1
-
-    await db.commit()
-
-    return {"status": "success", "predictions_generated": count}
+    return await _generate_and_store_forecast_for_sensor(sensor_id, db)
 
 
 @app.get("/api/v1/anomaly", response_model=TimelineAnomalySummary)
@@ -1080,6 +1414,595 @@ async def acknowledge_alert(
     alert.acknowledged_by = username
     await db.commit()
     return {"status": "acknowledged"}
+
+
+# --- Chat Thread Endpoints ---
+
+
+@app.get("/api/v1/chat/threads", response_model=ThreadListResponse)
+async def list_threads(
+    query: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List user's non-deleted chat threads, ordered by recent activity."""
+    stmt = (
+        select(ChatThread)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+        .order_by(desc(ChatThread.updated_at))
+    )
+
+    if query:
+        stmt = stmt.where(ChatThread.title.ilike(f"%{query}%"))
+
+    # Get total count
+    count_stmt = (
+        select(func.count())
+        .select_from(ChatThread)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    if query:
+        count_stmt = count_stmt.where(ChatThread.title.ilike(f"%{query}%"))
+
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar() or 0
+
+    # Get threads
+    stmt = stmt.limit(limit).offset(offset)
+    result = await db.execute(stmt)
+    threads = result.scalars().all()
+
+    # Get active segment for each thread
+    thread_responses = []
+    for thread in threads:
+        # Find the most recent segment
+        segment_stmt = (
+            select(ChatSessionSegment)
+            .where(ChatSessionSegment.thread_id == thread.id)
+            .order_by(desc(ChatSessionSegment.index))
+            .limit(1)
+        )
+        segment_result = await db.execute(segment_stmt)
+        active_segment = segment_result.scalar_one_or_none()
+
+        thread_responses.append(
+            ThreadResponse(
+                id=thread.id,
+                user_id=thread.user_id,
+                title=thread.title or "New chat",
+                title_source=thread.title_source,
+                created_at=thread.created_at,
+                updated_at=thread.updated_at,
+                active_segment_id=active_segment.id if active_segment else None,
+            )
+        )
+
+    return ThreadListResponse(threads=thread_responses, total=total)
+
+
+@app.post("/api/v1/chat/threads", response_model=ThreadResponse)
+async def create_thread(
+    request: ThreadCreate,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new chat thread with an initial segment."""
+    thread_id = str(uuid.uuid4())
+    segment_id = str(uuid.uuid4())
+
+    # Create thread
+    thread = ChatThread(
+        id=thread_id,
+        user_id=user_id,
+        title=request.title or "New chat",
+        title_source="auto" if not request.title else "user",
+    )
+    db.add(thread)
+
+    # Create initial segment (index 0)
+    segment = ChatSessionSegment(
+        id=segment_id,
+        thread_id=thread_id,
+        index=0,
+    )
+    db.add(segment)
+
+    await db.commit()
+    await db.refresh(thread)
+
+    return ThreadResponse(
+        id=thread.id,
+        user_id=thread.user_id,
+        title=thread.title or "New chat",
+        title_source=thread.title_source,
+        created_at=thread.created_at,
+        updated_at=thread.updated_at,
+        active_segment_id=segment_id,
+    )
+
+
+@app.get("/api/v1/chat/threads/{thread_id}", response_model=ThreadResponse)
+async def get_thread(
+    thread_id: str,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get thread metadata."""
+    stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    result = await db.execute(stmt)
+    thread = result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Get active segment
+    segment_stmt = (
+        select(ChatSessionSegment)
+        .where(ChatSessionSegment.thread_id == thread_id)
+        .order_by(desc(ChatSessionSegment.index))
+        .limit(1)
+    )
+    segment_result = await db.execute(segment_stmt)
+    active_segment = segment_result.scalar_one_or_none()
+
+    return ThreadResponse(
+        id=thread.id,
+        user_id=thread.user_id,
+        title=thread.title or "New chat",
+        title_source=thread.title_source,
+        created_at=thread.created_at,
+        updated_at=thread.updated_at,
+        active_segment_id=active_segment.id if active_segment else None,
+    )
+
+
+@app.patch("/api/v1/chat/threads/{thread_id}", response_model=ThreadResponse)
+async def update_thread(
+    thread_id: str,
+    request: ThreadUpdate,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename a thread (marks title_source as 'user')."""
+    stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    result = await db.execute(stmt)
+    thread = result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    thread.title = request.title
+    thread.title_source = "user"
+    await db.commit()
+    await db.refresh(thread)
+
+    # Get active segment
+    segment_stmt = (
+        select(ChatSessionSegment)
+        .where(ChatSessionSegment.thread_id == thread_id)
+        .order_by(desc(ChatSessionSegment.index))
+        .limit(1)
+    )
+    segment_result = await db.execute(segment_stmt)
+    active_segment = segment_result.scalar_one_or_none()
+
+    return ThreadResponse(
+        id=thread.id,
+        user_id=thread.user_id,
+        title=thread.title or "New chat",
+        title_source=thread.title_source,
+        created_at=thread.created_at,
+        updated_at=thread.updated_at,
+        active_segment_id=active_segment.id if active_segment else None,
+    )
+
+
+@app.delete("/api/v1/chat/threads/{thread_id}")
+async def delete_thread(
+    thread_id: str,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft delete a thread."""
+    stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    result = await db.execute(stmt)
+    thread = result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    thread.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return {"status": "deleted", "thread_id": thread_id}
+
+
+@app.get("/api/v1/chat/threads/{thread_id}/messages", response_model=MessageListResponse)
+async def get_messages(
+    thread_id: str,
+    cursor: Optional[str] = None,
+    limit: int = 50,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get messages for a thread with cursor-based pagination."""
+    # Verify thread ownership
+    thread_stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    thread_result = await db.execute(thread_stmt)
+    thread = thread_result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Build query
+    stmt = (
+        select(ChatMessage)
+        .where(ChatMessage.thread_id == thread_id)
+        .order_by(desc(ChatMessage.created_at))
+        .limit(limit + 1)  # Get one extra to check for more
+    )
+
+    if cursor:
+        # Decode cursor (message ID)
+        try:
+            cursor_id = int(cursor)
+            cursor_stmt = select(ChatMessage).where(ChatMessage.id == cursor_id)
+            cursor_result = await db.execute(cursor_stmt)
+            cursor_msg = cursor_result.scalar_one_or_none()
+            if cursor_msg:
+                stmt = stmt.where(ChatMessage.created_at < cursor_msg.created_at)
+        except (ValueError, SQLAlchemyError):
+            pass
+
+    result = await db.execute(stmt)
+    messages = result.scalars().all()
+
+    has_more = len(messages) > limit
+    if has_more:
+        messages = messages[:limit]
+
+    # Reverse to get oldest first for UI
+    messages = list(reversed(messages))
+
+    # Build response
+    message_responses = [
+        MessageResponse(
+            id=msg.id,
+            thread_id=msg.thread_id,
+            segment_id=msg.segment_id,
+            role=msg.role,
+            content=msg.content,
+            created_at=msg.created_at,
+            token_estimate=msg.token_estimate,
+            metadata=msg.metadata_,
+        )
+        for msg in messages
+    ]
+
+    next_cursor = None
+    if has_more and messages:
+        next_cursor = str(messages[0].id)
+
+    return MessageListResponse(
+        messages=message_responses,
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
+
+
+@app.post("/api/v1/chat/threads/{thread_id}/messages", response_model=SendMessageResponse)
+async def send_message(
+    thread_id: str,
+    request: SendMessageRequest,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a message in a thread."""
+    from .chatbot.token_budget import should_compact, estimate_message_tokens
+
+    # Verify thread ownership
+    thread_stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    thread_result = await db.execute(thread_stmt)
+    thread = thread_result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Get active segment
+    segment_stmt = (
+        select(ChatSessionSegment)
+        .where(ChatSessionSegment.thread_id == thread_id)
+        .order_by(desc(ChatSessionSegment.index))
+        .limit(1)
+    )
+    segment_result = await db.execute(segment_stmt)
+    active_segment = segment_result.scalar_one_or_none()
+
+    if not active_segment:
+        raise HTTPException(status_code=400, detail="No active segment found")
+
+    # Get all messages in this segment for token budget check
+    messages_stmt = (
+        select(ChatMessage)
+        .where(ChatMessage.segment_id == active_segment.id)
+        .order_by(ChatMessage.created_at)
+    )
+    messages_result = await db.execute(messages_stmt)
+    existing_messages = messages_result.scalars().all()
+
+    # Convert to dict format for token budget check
+    message_dicts = [
+        {
+            "role": msg.role,
+            "content": msg.content,
+            "token_estimate": msg.token_estimate,
+            "metadata": msg.metadata_,
+        }
+        for msg in existing_messages
+    ]
+
+    # Check if compaction is needed
+    needs_compaction, stats = should_compact(message_dicts, request.content)
+
+    if needs_compaction:
+        return SendMessageResponse(
+            message=None,
+            response=None,
+            compaction_required=True,
+            token_usage=stats,
+        )
+
+    # Store user message
+    user_message = ChatMessage(
+        thread_id=thread_id,
+        segment_id=active_segment.id,
+        role="user",
+        content=request.content,
+        token_estimate=estimate_message_tokens({"role": "user", "content": request.content}),
+    )
+    db.add(user_message)
+    await db.commit()
+    await db.refresh(user_message)
+
+    # Get response from LLM
+    # Build conversation history
+    conversation = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for msg in existing_messages:
+        conversation.append({"role": msg.role, "content": msg.content})
+    conversation.append({"role": "user", "content": request.content})
+
+    # Call orchestrator
+    response_content = await chat_orchestrator.process_user_message(
+        request.content, f"thread-{thread_id}-{active_segment.id}"
+    )
+
+    # Check if compaction was triggered during processing
+    if isinstance(response_content, dict) and response_content.get("type") == "compaction_required":
+        return SendMessageResponse(
+            message=MessageResponse(
+                id=user_message.id,
+                thread_id=user_message.thread_id,
+                segment_id=user_message.segment_id,
+                role=user_message.role,
+                content=user_message.content,
+                created_at=user_message.created_at,
+                token_estimate=user_message.token_estimate,
+                metadata=user_message.metadata_,
+            ),
+            response=None,
+            compaction_required=True,
+            token_usage=response_content.get("stats"),
+        )
+
+    # Store assistant response
+    assistant_message = ChatMessage(
+        thread_id=thread_id,
+        segment_id=active_segment.id,
+        role="assistant",
+        content=str(response_content),
+        token_estimate=estimate_message_tokens(
+            {"role": "assistant", "content": str(response_content)}
+        ),
+    )
+    db.add(assistant_message)
+
+    # Generate title if this is the first exchange and title is still default
+    if thread.title_source == "auto" and (thread.title == "New chat" or not thread.title):
+        # Simple heuristic: use first 30 chars of first user message
+        new_title = request.content[:30] + ("..." if len(request.content) > 30 else "")
+        thread.title = new_title
+        # TODO: In Task 5, replace with LLM-generated title
+
+    await db.commit()
+    await db.refresh(assistant_message)
+
+    return SendMessageResponse(
+        message=MessageResponse(
+            id=assistant_message.id,
+            thread_id=assistant_message.thread_id,
+            segment_id=assistant_message.segment_id,
+            role=assistant_message.role,
+            content=assistant_message.content,
+            created_at=assistant_message.created_at,
+            token_estimate=assistant_message.token_estimate,
+            metadata=assistant_message.metadata_,
+        ),
+        response=assistant_message.content,
+        compaction_required=False,
+        token_usage=stats,
+    )
+
+
+@app.post(
+    "/api/v1/chat/threads/{thread_id}/compaction/preview", response_model=CompactionPreviewResponse
+)
+async def preview_compaction(
+    thread_id: str,
+    request: CompactionPreviewRequest,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a summary preview for compaction."""
+    from .chatbot.token_budget import calculate_context_stats, estimate_message_tokens
+
+    # Verify thread ownership
+    thread_stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    thread_result = await db.execute(thread_stmt)
+    thread = thread_result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Get active segment
+    segment_stmt = (
+        select(ChatSessionSegment)
+        .where(ChatSessionSegment.thread_id == thread_id)
+        .order_by(desc(ChatSessionSegment.index))
+        .limit(1)
+    )
+    segment_result = await db.execute(segment_stmt)
+    active_segment = segment_result.scalar_one_or_none()
+
+    if not active_segment:
+        raise HTTPException(status_code=400, detail="No active segment found")
+
+    # Get messages
+    messages_stmt = (
+        select(ChatMessage)
+        .where(ChatMessage.segment_id == active_segment.id)
+        .order_by(ChatMessage.created_at)
+    )
+    messages_result = await db.execute(messages_stmt)
+    messages = messages_result.scalars().all()
+
+    # Calculate stats
+    message_dicts = [
+        {"role": msg.role, "content": msg.content, "token_estimate": msg.token_estimate}
+        for msg in messages
+    ]
+    stats = calculate_context_stats(message_dicts, request.pending_message or "")
+
+    # Generate summary (simple implementation - Task 5 will improve this)
+    # For now, create a simple summary from the conversation
+    summary_parts = []
+    for msg in messages:
+        if msg.role == "user":
+            summary_parts.append(f"User asked: {msg.content[:50]}...")
+        elif msg.role == "assistant":
+            summary_parts.append(f"Assistant responded about: {msg.content[:50]}...")
+
+    summary_draft = "\n".join(summary_parts[:5])  # Limit to first 5 exchanges
+    if not summary_draft:
+        summary_draft = "Conversation about AquaMine water quality monitoring."
+
+    return CompactionPreviewResponse(
+        summary_draft=summary_draft,
+        token_stats=stats,
+        can_compact=True,
+    )
+
+
+@app.post(
+    "/api/v1/chat/threads/{thread_id}/compaction/commit", response_model=CompactionCommitResponse
+)
+async def commit_compaction(
+    thread_id: str,
+    request: CompactionCommitRequest,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Commit compaction by creating a new segment with the summary."""
+    # Verify thread ownership
+    thread_stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    thread_result = await db.execute(thread_stmt)
+    thread = thread_result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Get current active segment
+    segment_stmt = (
+        select(ChatSessionSegment)
+        .where(ChatSessionSegment.thread_id == thread_id)
+        .order_by(desc(ChatSessionSegment.index))
+        .limit(1)
+    )
+    segment_result = await db.execute(segment_stmt)
+    current_segment = segment_result.scalar_one_or_none()
+
+    if not current_segment:
+        raise HTTPException(status_code=400, detail="No active segment found")
+
+    # Get the last message in the current segment to mark compaction point
+    last_msg_stmt = (
+        select(ChatMessage)
+        .where(ChatMessage.segment_id == current_segment.id)
+        .order_by(desc(ChatMessage.created_at))
+        .limit(1)
+    )
+    last_msg_result = await db.execute(last_msg_stmt)
+    last_message = last_msg_result.scalar_one_or_none()
+
+    # Update current segment with summary
+    current_segment.compaction_summary = request.summary
+    if last_message:
+        current_segment.compacted_from_message_id = last_message.id
+
+    # Create new segment
+    new_segment_id = str(uuid.uuid4())
+    new_segment = ChatSessionSegment(
+        id=new_segment_id,
+        thread_id=thread_id,
+        index=current_segment.index + 1,
+    )
+    db.add(new_segment)
+
+    await db.commit()
+
+    return CompactionCommitResponse(
+        success=True,
+        new_segment_id=new_segment_id,
+        message="Compaction successful. New segment created.",
+    )
 
 
 # --- WebSocket ---

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Line,
   XAxis,
@@ -43,6 +43,12 @@ interface ForecastResponse {
   latest_reading?: LatestReading | null;
   history_hours?: number | null;
   warning?: string | null;
+  forecast_generated_at?: string | null;
+  forecast_start?: string | null;
+  forecast_end?: string | null;
+  forecast_timezone?: string;
+  forecast_is_stale?: boolean;
+  forecast_stale_reason?: string | null;
 }
 
 interface ChartPoint {
@@ -138,10 +144,19 @@ export default function ForecastChart({
   const [latestReading, setLatestReading] = useState<LatestReading | null>(null);
   const [historyHours, setHistoryHours] = useState<number | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [forecastGeneratedAt, setForecastGeneratedAt] = useState<string | null>(null);
+  const [forecastStart, setForecastStart] = useState<string | null>(null);
+  const [forecastEnd, setForecastEnd] = useState<string | null>(null);
+  const [forecastIsStale, setForecastIsStale] = useState<boolean>(false);
+  const [forecastStaleReason, setForecastStaleReason] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const isFetchingRef = useRef(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     async function fetchData() {
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
       try {
         const requestBody: any = { sensor_id: parseInt(sensorId) };
         
@@ -172,6 +187,11 @@ export default function ForecastChart({
         setWarning(json.warning ?? null);
         setLatestReading(json.latest_reading ?? null);
         setHistoryHours(json.history_hours ?? null);
+        setForecastGeneratedAt(json.forecast_generated_at ?? null);
+        setForecastStart(json.forecast_start ?? null);
+        setForecastEnd(json.forecast_end ?? null);
+        setForecastIsStale(json.forecast_is_stale ?? false);
+        setForecastStaleReason(json.forecast_stale_reason ?? null);
 
         if (json && json.forecast) {
           const chartData = json.forecast.map((p) => ({
@@ -191,13 +211,47 @@ export default function ForecastChart({
         console.error("Failed to fetch forecast", e);
       } finally {
         setLoading(false);
+        isFetchingRef.current = false;
       }
     }
 
+    const startInterval = () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = setInterval(() => {
+        if (sensorId) {
+          fetchData();
+        }
+      }, 10 * 60 * 1000);
+    };
+
+    const stopInterval = () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+
     if (sensorId) {
       fetchData();
+      startInterval();
     }
-  }, [sensorId, forecastType, selectedDate]);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && sensorId) {
+        // Reset interval to prevent duplicate fetches near the 10-minute boundary
+        stopInterval();
+        fetchData();
+        startInterval();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      stopInterval();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [sensorId]);
 
   const nowTimestamp = Date.now();
   const lastReadingTimestamp = latestReading
@@ -205,24 +259,37 @@ export default function ForecastChart({
     : null;
 
   const chartDomain = useMemo(() => {
-    if (!data.length) {
+    if (!data.length && !forecastStart && !forecastEnd && !lastReadingTimestamp) {
       return undefined;
     }
+    // Always include data points, current time, and last reading in domain calculation
+    // to ensure all indicators are visible even if forecast metadata differs
     const timestamps = data.map((point) => point.timestamp);
-    let min = Math.min(...timestamps, nowTimestamp);
-    let max = Math.max(...timestamps, nowTimestamp);
+    let min = nowTimestamp;
+    let max = nowTimestamp;
+    if (timestamps.length > 0) {
+      min = Math.min(min, ...timestamps);
+      max = Math.max(max, ...timestamps);
+    }
+    if (forecastStart) {
+      min = Math.min(min, new Date(forecastStart).getTime());
+    }
+    if (forecastEnd) {
+      max = Math.max(max, new Date(forecastEnd).getTime());
+    }
     if (lastReadingTimestamp !== null) {
       min = Math.min(min, lastReadingTimestamp);
       max = Math.max(max, lastReadingTimestamp);
     }
     return [min, max] as [number, number];
-  }, [data, lastReadingTimestamp, nowTimestamp]);
+  }, [data, lastReadingTimestamp, nowTimestamp, forecastStart, forecastEnd]);
 
   if (loading) return <div className="text-sm text-slate-500">Loading forecast...</div>;
 
   const statusLabel = anomaly ? anomaly.severity.toUpperCase() : "UNKNOWN";
-  const lastUpdatedLabel = anomaly?.last_updated ? formatWIB(anomaly.last_updated) : null;
-  const forecastStart = data.length ? formatWIB(data[0].timestamp) : null;
+  const sensorUpdatedLabel = latestReading ? formatWIB(latestReading.timestamp) : null;
+  const forecastGeneratedLabel = forecastGeneratedAt ? formatWIB(forecastGeneratedAt) : null;
+  const forecastStartLabel = data.length ? formatWIB(data[0].timestamp) : null;
 
   const getChartTitle = () => {
     if (forecastType === 'daily' && selectedDate) {
@@ -257,9 +324,17 @@ export default function ForecastChart({
               label={statusLabel}
               size="sm"
             />
-            {lastUpdatedLabel ? (
-              <div className="text-xs text-slate-500">Last updated: {lastUpdatedLabel}</div>
+            {sensorUpdatedLabel ? (
+              <div className="text-xs text-slate-500">Sensor updated: {sensorUpdatedLabel}</div>
             ) : null}
+            {forecastGeneratedLabel ? (
+              <div className="text-xs text-slate-500">Forecast generated: {forecastGeneratedLabel}</div>
+            ) : null}
+            {forecastIsStale && (
+              <div className="text-xs text-amber-600 font-medium">
+                Stale{forecastStaleReason ? `: ${forecastStaleReason}` : ""}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -373,10 +448,10 @@ export default function ForecastChart({
         ) : (
           <div className="p-3 bg-background/50 rounded-xl border border-white/5">Last Reading: No data</div>
         )}
-        {forecastStart ? (
+        {forecastStartLabel ? (
            <div className="p-3 bg-background/50 rounded-xl border border-white/5">
               <span className="block text-xs font-bold uppercase tracking-wider mb-1 text-primary">Forecast Start</span>
-              {forecastStart}
+              {forecastStartLabel}
            </div>
         ) : null}
       </div>
