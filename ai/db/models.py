@@ -200,6 +200,11 @@ class ChatSessionSegment(Base):
         ),
         nullable=True,
     )
+    compacted_from_message: Mapped[Optional["ChatMessage"]] = relationship(
+        "ChatMessage",
+        foreign_keys=[compacted_from_message_id],
+        back_populates="compacted_segments",
+    )
 
     thread: Mapped["ChatThread"] = relationship(back_populates="segments")
     messages: Mapped[List["ChatMessage"]] = relationship(
@@ -234,6 +239,11 @@ class ChatMessage(Base):
     segment: Mapped["ChatSessionSegment"] = relationship(
         back_populates="messages",
         foreign_keys=[segment_id],
+    )
+    compacted_segments: Mapped[List["ChatSessionSegment"]] = relationship(
+        "ChatSessionSegment",
+        back_populates="compacted_from_message",
+        foreign_keys="ChatSessionSegment.compacted_from_message_id",
     )
 
     __table_args__ = (

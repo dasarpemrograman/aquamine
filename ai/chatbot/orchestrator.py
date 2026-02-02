@@ -71,14 +71,16 @@ class ChatOrchestrator:
             user_msg["token_estimate"] = estimate_message_tokens(user_msg)
             messages.append(user_msg)
 
-        # Check compaction on the FULL message list (including the just-added user message)
-        needs_compaction, stats = should_compact(messages)
-        if needs_compaction:
-            return {
-                "type": "compaction_required",
-                "message": "Context limit approaching. Compaction recommended.",
-                "stats": stats,
-            }
+        # Check compaction only if using internal state (legacy)
+        # If history is provided, we assume the caller (main.py) already performed the check/budgeting correctly.
+        if history is None:
+            needs_compaction, stats = should_compact(messages)
+            if needs_compaction:
+                return {
+                    "type": "compaction_required",
+                    "message": "Context limit approaching. Compaction recommended.",
+                    "stats": stats,
+                }
 
         # If we are using legacy internal state, we already appended the user message.
         # If we are using 'history' passed from main.py, it SHOULD include the user message.

@@ -1798,8 +1798,12 @@ async def send_message(
     # Build conversation history
     conversation = [{"role": "system", "content": SYSTEM_PROMPT}]
     for msg in existing_messages:
-        conversation.append({"role": msg.role, "content": msg.content})
-    conversation.append({"role": "user", "content": request.content})
+        conversation.append(
+            {"role": msg.role, "content": msg.content, "token_estimate": msg.token_estimate}
+        )
+    conversation.append(
+        {"role": "user", "content": request.content, "token_estimate": user_message.token_estimate}
+    )
 
     # Call orchestrator
     response_content = await chat_orchestrator.process_user_message(
