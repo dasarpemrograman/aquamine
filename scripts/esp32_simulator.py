@@ -113,7 +113,10 @@ async def _update_alert_state(session, sensor_id: int, new_state: str) -> None:
     alert_state = state_result.scalar_one_or_none()
     if alert_state:
         alert_state.current_state = new_state
-        await session.commit()
+    else:
+        alert_state = SensorAlertState(sensor_id=sensor_id, current_state=new_state)
+        session.add(alert_state)
+    await session.commit()
 
 
 async def _ensure_alert_state(session, sensor_id: int) -> None:
