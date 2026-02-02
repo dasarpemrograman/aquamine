@@ -2,8 +2,10 @@ import hashlib
 import os
 import io
 import logging
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+from typing import List, Optional, Tuple
 from PIL import Image
 
 
@@ -66,8 +68,8 @@ class YellowBoyDetector:
         return self._model
 
     def detect(
-        self, image_bytes: bytes, img: Image.Image | None = None
-    ) -> tuple[list[Detection], list[str]]:
+        self, image_bytes: bytes, img: Optional[Image.Image] = None
+    ) -> Tuple[List[Detection], List[str]]:
         """
         Detect yellow boy in image.
 
@@ -144,10 +146,10 @@ class YellowBoyDetector:
         return sorted(detections, key=lambda d: d.confidence, reverse=True)
 
     def _real_detect(
-        self, model, img: Image.Image, img_width: int, img_height: int, warnings: list[str]
-    ) -> tuple[list[Detection], list[str]]:
+        self, model, img: Image.Image, img_width: int, img_height: int, warnings: List[str]
+    ) -> Tuple[List[Detection], List[str]]:
         results = model.predict(
-            img, conf=0.65, iou=0.6, max_det=20, agnostic_nms=False, verbose=False
+            img, conf=0.70, iou=0.6, max_det=20, agnostic_nms=False, verbose=False
         )
 
         detections = []
@@ -162,3 +164,128 @@ class YellowBoyDetector:
                 detections.append(Detection(x=x, y=y, width=width, height=height, confidence=conf))
 
         return sorted(detections, key=lambda d: d.confidence, reverse=True), warnings
+
+
+class TemporalValidator:
+    """
+    Temporal validator untuk video stream.
+
+    Yellow boy harus muncul di minimal N frame berturut-turut untuk dianggap valid.
+    Ini mengurangi false positive yang "flicker" (muncul 1 frame lalu hilang).
+
+    Args:
+        history_size: Jumlah frame history yang disimpan
+        iou_threshold: Minimum IoU untuk dianggap object yang sama
+        min_consecutive_frames: Minimum frame berturut-turut untuk validasi
+    """
+
+    def __init__(
+        self, history_size: int = 5, iou_threshold: float = 0.5, min_consecutive_frames: int = 3
+    ):
+        self.history = deque(maxlen=history_size)
+        self.iou_threshold = iou_threshold
+        self.min_consecutive_frames = min_consecutive_frames
+
+    def validate(self, current_detections: List[Detection]) -> List[Detection]:
+        """
+        Validasi deteksi berdasarkan temporal consistency.
+
+        Object harus muncul di N frame berturut-turut (consecutive),
+        bukan total match di seluruh history.
+
+        Greptile Fix: This now properly tracks truly consecutive frames
+        by iterating backwards through history and breaking on mismatch.
+
+        Returns:
+            List deteksi yang valid (muncul di minimal N frame berturut-turut)
+        """
+        self.history.append(current_detections)
+
+        if len(self.history) < self.min_consecutive_frames:
+            return current_detections
+
+        validated = []
+
+        for det in current_detections:
+            consecutive_count = 1
+
+            history_list = list(self.history)
+            current_idx = len(history_list) - 1
+
+            for i in range(current_idx - 1, -1, -1):
+                if self._find_match(det, history_list[i]):
+                    consecutive_count += 1
+                else:
+                    break
+
+            if consecutive_count >= self.min_consecutive_frames:
+                validated.append(det)
+
+        return validated
+
+    def _find_match(self, det: Detection, frame_dets: List[Detection]) -> bool:
+        for past_det in frame_dets:
+            if self._calculate_iou(det, past_det) > self.iou_threshold:
+                return True
+        return False
+
+    def _calculate_iou(self, a: Detection, b: Detection) -> float:
+        x1 = max(a.x, b.x)
+        y1 = max(a.y, b.y)
+        x2 = min(a.x + a.width, b.x + b.width)
+        y2 = min(a.y + a.height, b.y + b.height)
+
+        inter_area = max(0, x2 - x1) * max(0, y2 - y1)
+        box_a_area = a.width * a.height
+        box_b_area = b.width * b.height
+        union_area = box_a_area + box_b_area - inter_area
+
+        return inter_area / union_area if union_area > 0 else 0.0
+
+
+class VideoProcessor:
+    """
+    Processor untuk video stream dengan temporal validation.
+
+    Integrasi YellowBoyDetector + TemporalValidator untuk mengurangi
+    false positive di video stream.
+
+    Usage:
+        processor = VideoProcessor()
+        for frame in video_stream:
+            detections = processor.process_frame(frame_bytes)
+            # detections hanya berisi yang consistent di beberapa frame
+    """
+
+    def __init__(
+        self,
+        detector: Optional["YellowBoyDetector"] = None,
+        history_size: int = 5,
+        iou_threshold: float = 0.5,
+        min_consecutive_frames: int = 3,
+    ):
+        self.detector = detector or YellowBoyDetector()
+        self.temporal = TemporalValidator(
+            history_size=history_size,
+            iou_threshold=iou_threshold,
+            min_consecutive_frames=min_consecutive_frames,
+        )
+
+    def process_frame(self, frame_bytes: bytes) -> Tuple[List[Detection], List[str]]:
+        """
+        Process single frame dengan temporal validation.
+
+        Returns:
+            Tuple of (validated_detections, warnings)
+        """
+        detections, warnings = self.detector.detect(frame_bytes)
+        validated = self.temporal.validate(detections)
+
+        if len(detections) > len(validated):
+            filtered = len(detections) - len(validated)
+            warnings.append(f"Temporal filter: {filtered} detection(s) removed (flicker)")
+
+        return validated, warnings
+
+    def reset(self):
+        self.temporal.history.clear()

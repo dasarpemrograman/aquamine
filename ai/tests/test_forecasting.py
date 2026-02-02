@@ -1,8 +1,11 @@
 import pytest
 import pandas as pd
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from unittest.mock import MagicMock, patch
 from ai.forecasting.timegpt_client import TimeGPTClient
 from ai.schemas.forecast import ForecastPoint
+from ai.main import compute_forecast_window, check_forecast_staleness, _trim_forecast_to_window
 
 
 @pytest.fixture
@@ -67,3 +70,206 @@ def test_validate_data_requirements():
 
         # Should return True but log warning (check logs manually if needed, or mock logger)
         assert client.validate_data_requirements(short_df) is True
+
+
+class TestComputeForecastWindow:
+    """Tests for compute_forecast_window helper"""
+
+    def test_basic_window_calculation(self):
+        """Test that window is anchored to today 00:00 WIB"""
+        # Feb 1, 2026 12:00 UTC = Feb 1, 2026 19:00 WIB
+        now_utc = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+        window_start, window_end = compute_forecast_window(now_utc)
+
+        # Window start should be Feb 1, 2026 00:00 WIB = Jan 31, 2026 17:00 UTC
+        expected_start = datetime(2026, 1, 31, 17, 0, 0, tzinfo=timezone.utc)
+        expected_end = expected_start + timedelta(days=7)
+
+        assert window_start == expected_start
+        assert window_end == expected_end
+
+    def test_naive_datetime_treated_as_utc(self):
+        """Test that naive datetimes are treated as UTC"""
+        now_naive = datetime(2026, 2, 1, 12, 0, 0)
+        window_start, window_end = compute_forecast_window(now_naive)
+
+        expected_start = datetime(2026, 1, 31, 17, 0, 0, tzinfo=timezone.utc)
+        assert window_start == expected_start
+
+    def test_window_span_is_7_days(self):
+        """Test that window is exactly 7 days"""
+        now_utc = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+        window_start, window_end = compute_forecast_window(now_utc)
+
+        assert (window_end - window_start) == timedelta(days=7)
+
+
+class TestCheckForecastStaleness:
+    """Tests for check_forecast_staleness helper"""
+
+    def test_no_prediction_is_stale(self):
+        """Test that no prediction is considered stale"""
+        now_utc = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+        window_end = now_utc + timedelta(days=7)
+
+        result = check_forecast_staleness(None, None, window_end, now_utc)
+
+        assert result["is_stale"] is True
+        assert result["stale_reason"] == "no_prediction"
+
+    def test_forecast_end_before_window_end_is_stale(self):
+        """Test that forecast ending before window end is stale"""
+        now_utc = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+        window_end = now_utc + timedelta(days=7)
+
+        prediction = MagicMock()
+        prediction.created_at = now_utc
+        prediction.forecast_end = now_utc + timedelta(days=6)  # Ends before window
+
+        result = check_forecast_staleness(prediction, None, window_end, now_utc)
+
+        assert result["is_stale"] is True
+        assert result["stale_reason"] == "forecast_end_before_window_end"
+
+    def test_created_before_today_wib_is_stale(self):
+        """Test that prediction created before today WIB is stale"""
+        # Feb 2, 2026 00:00 UTC = Feb 2, 2026 07:00 WIB
+        now_utc = datetime(2026, 2, 2, 0, 0, 0, tzinfo=timezone.utc)
+        window_end = now_utc + timedelta(days=7)
+
+        # Prediction created Feb 1, 2026 12:00 UTC = Feb 1, 2026 19:00 WIB
+        prediction = MagicMock()
+        prediction.created_at = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+        prediction.forecast_end = window_end + timedelta(days=1)
+
+        result = check_forecast_staleness(prediction, None, window_end, now_utc)
+
+        assert result["is_stale"] is True
+        assert result["stale_reason"] == "created_before_today_wib"
+
+    def test_newer_reading_exists_is_stale(self):
+        """Test that prediction older than latest reading is stale"""
+        now_utc = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+        window_end = now_utc + timedelta(days=7)
+
+        prediction = MagicMock()
+        prediction.created_at = now_utc - timedelta(hours=2)
+        prediction.forecast_end = window_end + timedelta(days=1)
+
+        latest_reading = MagicMock()
+        latest_reading.timestamp = now_utc - timedelta(hours=1)
+
+        result = check_forecast_staleness(prediction, latest_reading, window_end, now_utc)
+
+        assert result["is_stale"] is True
+        assert result["stale_reason"] == "newer_reading_exists"
+
+    def test_fresh_prediction_is_not_stale(self):
+        """Test that fresh prediction is not stale"""
+        now_utc = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+        window_start, window_end = compute_forecast_window(now_utc)
+
+        prediction = MagicMock()
+        prediction.created_at = now_utc
+        prediction.forecast_end = window_end + timedelta(days=1)
+
+        result = check_forecast_staleness(prediction, None, window_end, now_utc)
+
+        assert result["is_stale"] is False
+        assert result["stale_reason"] is None
+
+
+class TestTrimForecastToWindow:
+    """Tests for _trim_forecast_to_window helper"""
+
+    def test_filters_points_outside_window(self):
+        """Test that points outside window are filtered out"""
+        window_start = datetime(2026, 2, 1, 0, 0, 0, tzinfo=timezone.utc)
+        window_end = window_start + timedelta(days=7)
+
+        forecast = [
+            {
+                "timestamp": "2026-01-31T00:00:00Z",
+                "ph_pred": 7.0,
+                "confidence": 0.9,
+            },  # Before window
+            {"timestamp": "2026-02-02T00:00:00Z", "ph_pred": 7.1, "confidence": 0.9},  # In window
+            {
+                "timestamp": "2026-02-08T00:00:00Z",
+                "ph_pred": 7.2,
+                "confidence": 0.9,
+            },  # At window end (exclusive)
+            {
+                "timestamp": "2026-02-09T00:00:00Z",
+                "ph_pred": 7.3,
+                "confidence": 0.9,
+            },  # After window
+        ]
+
+        result = _trim_forecast_to_window(forecast, window_start, window_end)
+
+        assert len(result) == 1
+        assert result[0]["ph_pred"] == 7.1
+
+    def test_sorts_points_by_timestamp(self):
+        """Test that points are sorted by timestamp ascending"""
+        window_start = datetime(2026, 2, 1, 0, 0, 0, tzinfo=timezone.utc)
+        window_end = window_start + timedelta(days=7)
+
+        forecast = [
+            {"timestamp": "2026-02-03T00:00:00Z", "ph_pred": 7.2, "confidence": 0.9},
+            {"timestamp": "2026-02-01T00:00:00Z", "ph_pred": 7.0, "confidence": 0.9},
+            {"timestamp": "2026-02-02T00:00:00Z", "ph_pred": 7.1, "confidence": 0.9},
+        ]
+
+        result = _trim_forecast_to_window(forecast, window_start, window_end)
+
+        assert len(result) == 3
+        assert result[0]["ph_pred"] == 7.0
+        assert result[1]["ph_pred"] == 7.1
+        assert result[2]["ph_pred"] == 7.2
+
+    def test_handles_datetime_objects(self):
+        """Test that function handles datetime objects in timestamp field"""
+        window_start = datetime(2026, 2, 1, 0, 0, 0, tzinfo=timezone.utc)
+        window_end = window_start + timedelta(days=7)
+
+        forecast = [
+            {
+                "timestamp": datetime(2026, 2, 2, 0, 0, 0, tzinfo=timezone.utc),
+                "ph_pred": 7.1,
+                "confidence": 0.9,
+            },
+        ]
+
+        result = _trim_forecast_to_window(forecast, window_start, window_end)
+
+        assert len(result) == 1
+        assert result[0]["ph_pred"] == 7.1
+
+    def test_handles_naive_datetimes(self):
+        """Test that function handles naive datetimes (treated as UTC)"""
+        window_start = datetime(2026, 2, 1, 0, 0, 0, tzinfo=timezone.utc)
+        window_end = window_start + timedelta(days=7)
+
+        forecast = [
+            {"timestamp": datetime(2026, 2, 2, 0, 0, 0), "ph_pred": 7.1, "confidence": 0.9},
+        ]
+
+        result = _trim_forecast_to_window(forecast, window_start, window_end)
+
+        assert len(result) == 1
+
+    def test_returns_empty_list_for_no_valid_points(self):
+        """Test that empty list is returned when no points are in window"""
+        window_start = datetime(2026, 2, 1, 0, 0, 0, tzinfo=timezone.utc)
+        window_end = window_start + timedelta(days=7)
+
+        forecast = [
+            {"timestamp": "2026-01-31T00:00:00Z", "ph_pred": 7.0, "confidence": 0.9},
+            {"timestamp": "2026-02-09T00:00:00Z", "ph_pred": 7.1, "confidence": 0.9},
+        ]
+
+        result = _trim_forecast_to_window(forecast, window_start, window_end)
+
+        assert result == []
