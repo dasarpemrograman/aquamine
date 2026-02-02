@@ -28,6 +28,7 @@ import pandas as pd
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, delete, or_, func
+from sqlalchemy.orm import selectinload
 
 # Import CV modules
 from .schemas.cv import BoundingBox, ImageAnalysisResponse
@@ -796,8 +797,25 @@ async def analyze_image(file: Optional[UploadFile] = File(None)):
 
 @app.get("/api/v1/sensors", response_model=List[SensorResponse])
 async def list_sensors(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Sensor).order_by(Sensor.id))
-    return result.scalars().all()
+    result = await db.execute(
+        select(Sensor).options(selectinload(Sensor.alert_state)).order_by(Sensor.id)
+    )
+    sensors = result.scalars().all()
+    response_data = []
+    for sensor in sensors:
+        sensor_dict = {
+            "id": sensor.id,
+            "sensor_id": sensor.sensor_id,
+            "name": sensor.name,
+            "latitude": sensor.latitude,
+            "longitude": sensor.longitude,
+            "is_active": sensor.is_active,
+            "created_at": sensor.created_at,
+            "current_state": sensor.alert_state.current_state if sensor.alert_state else "normal",
+        }
+        response_data.append(sensor_dict)
+
+    return response_data
 
 
 @app.get("/api/v1/sensors/{sensor_id}/readings", response_model=List[ReadingResponse])

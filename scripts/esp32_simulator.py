@@ -16,13 +16,27 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
 
 from ai.db.connection import AsyncSessionLocal
-from ai.db.models import Reading, Sensor
+from ai.db.models import Reading, Sensor, SensorAlertState
+from ai.anomaly.detector import ANOMALY_THRESHOLDS
+
+
+def _determine_state_from_reading(ph: float, turbidity: float) -> str:
+    """Determine alert state based on reading values using same thresholds as anomaly detector."""
+    if ph < ANOMALY_THRESHOLDS["ph"]["critical_low"]:
+        return "critical"
+    if turbidity > ANOMALY_THRESHOLDS["turbidity"]["critical_high"]:
+        return "critical"
+    if ph < ANOMALY_THRESHOLDS["ph"]["warning_low"]:
+        return "warning"
+    if turbidity > ANOMALY_THRESHOLDS["turbidity"]["warning_high"]:
+        return "warning"
+    return "normal"
 
 
 DEFAULT_SENSOR_ID = "ESP32_AMD_001"
 DEFAULT_SENSOR_NAME = "Mining Site Alpha (Main)"
-DEFAULT_LATITUDE = -6.9175
-DEFAULT_LONGITUDE = 107.6191
+DEFAULT_LATITUDE = 46.02
+DEFAULT_LONGITUDE = -112.51
 
 
 @dataclass(frozen=True)
@@ -92,10 +106,34 @@ def _build_reading(timestamp: datetime, scenario: str) -> SimulatorReading:
     )
 
 
+async def _update_alert_state(session, sensor_id: int, new_state: str) -> None:
+    state_result = await session.execute(
+        select(SensorAlertState).where(SensorAlertState.sensor_id == sensor_id)
+    )
+    alert_state = state_result.scalar_one_or_none()
+    if alert_state:
+        alert_state.current_state = new_state
+    else:
+        alert_state = SensorAlertState(sensor_id=sensor_id, current_state=new_state)
+        session.add(alert_state)
+    await session.commit()
+
+
+async def _ensure_alert_state(session, sensor_id: int) -> None:
+    state_result = await session.execute(
+        select(SensorAlertState).where(SensorAlertState.sensor_id == sensor_id)
+    )
+    if not state_result.scalar_one_or_none():
+        alert_state = SensorAlertState(sensor_id=sensor_id, current_state="normal")
+        session.add(alert_state)
+        await session.commit()
+
+
 async def _ensure_sensor(session, sensor_id: str) -> Sensor:
     result = await session.execute(select(Sensor).where(Sensor.sensor_id == sensor_id))
     sensor = result.scalar_one_or_none()
     if sensor:
+        await _ensure_alert_state(session, sensor.id)
         return sensor
 
     sensor = Sensor(
@@ -108,6 +146,9 @@ async def _ensure_sensor(session, sensor_id: str) -> Sensor:
     session.add(sensor)
     await session.commit()
     await session.refresh(sensor)
+
+    await _ensure_alert_state(session, sensor.id)
+
     return sensor
 
 
@@ -145,6 +186,14 @@ async def run_backfill(args: argparse.Namespace) -> None:
     readings = [_build_reading(ts, args.scenario) for ts in timestamps]
     inserted = await _insert_readings(sensor.id, readings)
 
+    if readings:
+        last_reading = readings[-1]
+        final_state = _determine_state_from_reading(
+            last_reading.ph, last_reading.turbidity
+        )
+        async with AsyncSessionLocal() as session:
+            await _update_alert_state(session, sensor.id, final_state)
+
     print(
         f"Inserted {inserted} readings for {args.sensor_id} "
         f"from {start_time.isoformat()} to {end_time.isoformat()}"
@@ -171,11 +220,14 @@ async def run_realtime(args: argparse.Namespace) -> None:
                 )
             )
             await session.commit()
+
+            new_state = _determine_state_from_reading(reading.ph, reading.turbidity)
+            await _update_alert_state(session, sensor.id, new_state)
+
             count += 1
             print(
-                "Sent reading "
-                f"#{count} at {timestamp.isoformat()} "
-                f"pH={reading.ph} turbidity={reading.turbidity} temperature={reading.temperature}"
+                f"Sent reading #{count} at {timestamp.isoformat()} "
+                f"pH={reading.ph} turbidity={reading.turbidity} state={new_state}"
             )
 
             if args.count and count >= args.count:

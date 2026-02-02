@@ -113,6 +113,41 @@ Common VPS issues and fixes:
 - **WebSocket not connecting**: Check Nginx logs for `/ws/` requests. Look for mixed content warnings in browser console (using ws:// on https:// page).
 - **CV upload fails (413)**: Check Nginx error logs (`docker compose -f docker-compose.prod.yml logs nginx | grep 413`).
 - **API/simulator crash loops**: Check DB health (`docker compose -f docker-compose.prod.yml ps db` should show "healthy").
+- **Database migration errors**: If you see errors like `column chat_session_segments.created_at does not exist`, rebuild the API container to run migrations: `docker compose build --no-cache api && docker compose up -d`.
+
+## Database Migrations
+
+AquaMine uses Alembic for database schema migrations. Migrations run automatically when the API container starts.
+
+### For Team Members (Pulling Changes)
+
+When pulling changes that modify database models:
+
+```bash
+# Rebuild API container to install alembic and run migrations
+docker compose down
+docker compose build --no-cache api
+docker compose up -d
+
+# Verify migration ran successfully
+docker compose logs api | grep -i "migration"
+```
+
+### For Developers (Modifying Models)
+
+If you modify `ai/db/models.py`:
+
+```bash
+# Generate a new migration
+docker compose exec api bash
+cd /app/ai
+alembic revision --autogenerate -m "description of changes"
+
+# Review the generated file in ai/alembic/versions/
+# Commit the migration file to git
+```
+
+See `ai/MIGRATION.md` for detailed documentation.
 
 ## Notes
 

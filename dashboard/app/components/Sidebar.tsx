@@ -13,7 +13,8 @@ import {
   Shield,
   ChevronLeft,
   ChevronRight,
-  X
+  X,
+  Map
 } from "lucide-react";
 const classNames = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(" ");
 
@@ -21,6 +22,7 @@ const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/forecast', label: 'Forecast', icon: LineChart },
   { href: '/alerts', label: 'Alerts', icon: Bell },
+  { href: '/map', label: 'Map', icon: Map },
   { href: '/recipients', label: 'Recipients', icon: Users },
   { href: '/cv', label: 'CV Analysis', icon: Camera },
   { href: '/chat', label: 'AI Assistant', icon: MessageSquare },
