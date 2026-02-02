@@ -1,7 +1,8 @@
 import asyncio
 from contextlib import asynccontextmanager, suppress
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Literal, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import (
     FastAPI,
@@ -69,6 +70,40 @@ logger = logging.getLogger(__name__)
 REFRESH_INTERVAL_MIN_SECONDS = 5
 REFRESH_INTERVAL_MAX_SECONDS = 60
 QUIET_HOURS_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+# Forecast regeneration configuration
+FORECAST_REGEN_DATA_THRESHOLD_HOURS = 6  # Minimum new data hours to trigger dynamic regeneration
+FORECAST_REGEN_MIN_INTERVAL_MINUTES = 30  # Minimum interval between regenerations per sensor
+
+# In-memory rate limiting for forecast regeneration.
+# Keyed by (sensor_id, WIB date). Value is the UTC timestamp of the last successful regeneration.
+_last_forecast_regeneration: dict[tuple[int, date], datetime] = {}
+_forecast_regeneration_inflight: set[tuple[int, date]] = set()
+_forecast_regeneration_lock = asyncio.Lock()
+
+
+def _cleanup_forecast_regeneration_cache(cutoff_days: int = 7) -> None:
+    """Remove old entries from forecast regeneration cache to prevent memory leak.
+
+    Args:
+        cutoff_days: Remove entries older than this many days (default: 7)
+    """
+    global _last_forecast_regeneration
+    if not _last_forecast_regeneration:
+        return
+
+    from datetime import timedelta
+
+    today = datetime.now(timezone.utc).date()
+    cutoff_date = today - timedelta(days=cutoff_days)
+
+    keys_to_remove = [key for key in _last_forecast_regeneration.keys() if key[1] < cutoff_date]
+
+    for key in keys_to_remove:
+        del _last_forecast_regeneration[key]
+
+    if keys_to_remove:
+        logger.debug(f"Cleaned up {len(keys_to_remove)} old forecast regeneration entries")
 
 
 def verify_user_id(user_id: str, x_user_id: Optional[str] = Header(None, alias="x-user-id")) -> str:
@@ -201,6 +236,192 @@ def _format_forecast_points(
         )
 
     return points
+
+
+def compute_forecast_window(now_utc: datetime) -> tuple[datetime, datetime]:
+    """Compute the 7-day forecast window anchored to 'today' in WIB.
+
+    - window_start: today's 00:00 in Asia/Jakarta, converted to UTC
+    - window_end: window_start + 7 days
+
+    Naive datetimes are treated as UTC.
+    """
+
+    if now_utc.tzinfo is None:
+        now_utc_utc = now_utc.replace(tzinfo=timezone.utc)
+    else:
+        now_utc_utc = now_utc.astimezone(timezone.utc)
+
+    wib = ZoneInfo("Asia/Jakarta")
+    now_wib = now_utc_utc.astimezone(wib)
+    today_wib_start = datetime(now_wib.year, now_wib.month, now_wib.day, tzinfo=wib)
+    window_start = today_wib_start.astimezone(timezone.utc)
+    window_end = window_start + timedelta(days=7)
+    return window_start, window_end
+
+
+def check_forecast_staleness(
+    prediction,
+    latest_reading,
+    window_end: datetime,
+    now_utc: datetime,
+) -> dict:
+    """Determine if a forecast is stale.
+
+    Rule order:
+    1) no_prediction
+    2) forecast_end_before_window_end
+    3) newer_reading_exists
+    4) created_before_today_wib
+
+    Naive datetimes are treated as UTC.
+    """
+
+    def _as_utc_optional(value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def _as_utc_required(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    window_end_utc = _as_utc_required(window_end)
+    now_utc_utc = _as_utc_required(now_utc)
+
+    if prediction is None:
+        return {"is_stale": True, "stale_reason": "no_prediction"}
+
+    wib = ZoneInfo("Asia/Jakarta")
+    created_at_utc = _as_utc_optional(getattr(prediction, "created_at", None))
+    forecast_end_utc = _as_utc_optional(getattr(prediction, "forecast_end", None))
+
+    if forecast_end_utc is None or forecast_end_utc < window_end_utc:
+        return {"is_stale": True, "stale_reason": "forecast_end_before_window_end"}
+
+    latest_ts_utc = None
+    if latest_reading is not None:
+        latest_ts_utc = _as_utc_optional(getattr(latest_reading, "timestamp", None))
+
+    if latest_ts_utc is not None and created_at_utc is not None and latest_ts_utc > created_at_utc:
+        return {"is_stale": True, "stale_reason": "newer_reading_exists"}
+
+    if created_at_utc is None:
+        return {"is_stale": True, "stale_reason": "created_before_today_wib"}
+
+    created_date_wib = created_at_utc.astimezone(wib).date()
+    today_date_wib = now_utc_utc.astimezone(wib).date()
+    if created_date_wib < today_date_wib:
+        return {"is_stale": True, "stale_reason": "created_before_today_wib"}
+
+    return {"is_stale": False, "stale_reason": None}
+
+
+def _trim_forecast_to_window(
+    forecast: list[dict], window_start: datetime, window_end: datetime
+) -> list[dict]:
+    points_in_window = []
+    for point in forecast:
+        ts = point.get("timestamp")
+        if isinstance(ts, str):
+            try:
+                ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+        if not isinstance(ts, datetime):
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        if window_start <= ts < window_end:
+            points_in_window.append(point)
+
+    points_in_window.sort(key=lambda p: p.get("timestamp") or "")
+    return points_in_window
+
+
+async def _generate_and_store_forecast_for_sensor(sensor_id: int, db: AsyncSession) -> dict:
+    """Generate and persist a 7-day forecast (168 points) for a sensor.
+
+    Returns:
+        {"status": "success", "predictions_generated": int}
+        {"status": "error", "message": str}
+    """
+
+    try:
+        # 1) Fetch historical data (7 days)
+        start_time = datetime.now(timezone.utc) - timedelta(days=7)
+        query = (
+            select(Reading)
+            .where(Reading.sensor_id == sensor_id, Reading.timestamp >= start_time)
+            .order_by(Reading.timestamp)
+        )
+        result = await db.execute(query)
+        readings = result.scalars().all()
+
+        if not readings:
+            return {"status": "error", "message": "No data found for forecasting"}
+
+        # 2) Prepare data for TimeGPT: unique_id, ds, y
+        data: list[dict[str, object]] = []
+        sensor_str = f"sensor_{sensor_id}"
+        for r in readings:
+            if r.ph is not None:
+                data.append({"unique_id": f"{sensor_str}_ph", "ds": r.timestamp, "y": r.ph})
+            if r.turbidity is not None:
+                data.append(
+                    {
+                        "unique_id": f"{sensor_str}_turbidity",
+                        "ds": r.timestamp,
+                        "y": r.turbidity,
+                    }
+                )
+            if r.temperature is not None:
+                data.append(
+                    {
+                        "unique_id": f"{sensor_str}_temperature",
+                        "ds": r.timestamp,
+                        "y": r.temperature,
+                    }
+                )
+
+        import pandas as pd
+
+        df = pd.DataFrame(data)
+        if df.empty:
+            return {"status": "error", "message": "No data found for forecasting"}
+
+        # 3) Generate forecast
+        forecasts = timegpt.generate_forecast(df, horizon=168)
+
+        # 4) Store predictions
+        count = 0
+        for uid, points in (forecasts or {}).items():
+            if not points:
+                continue
+
+            parameter = uid.split("_")[-1]
+            forecast_values = [p.model_dump(mode="json") for p in points]
+
+            prediction = Prediction(
+                sensor_id=sensor_id,
+                forecast_start=points[0].timestamp,
+                forecast_end=points[-1].timestamp,
+                parameter=parameter,
+                forecast_values=forecast_values,
+                model_version="timegpt-1",
+            )
+            db.add(prediction)
+            count += 1
+
+        await db.commit()
+        return {"status": "success", "predictions_generated": count}
+    except Exception as e:
+        await db.rollback()
+        logger.exception("Forecast generation failed")
+        return {"status": "error", "message": str(e)}
 
 
 def _format_anomaly_label(parameter: Optional[str]) -> str:
@@ -387,6 +608,15 @@ class TimelineForecastResponse(BaseSchema):
     history_hours: Optional[int] = None
     warning: Optional[str] = None
 
+    # Forecast freshness metadata (backwards compatible)
+    forecast_generated_at: Optional[datetime] = None
+    forecast_start: Optional[datetime] = None
+    forecast_end: Optional[datetime] = None
+    forecast_timezone: str = "Asia/Jakarta"
+    forecast_is_stale: bool = False
+    forecast_stale_reason: Optional[str] = None
+    source_prediction_id: Optional[int] = None
+
 
 FAQ_ITEMS: List[FaqItem] = [
     FaqItem(
@@ -466,7 +696,7 @@ async def chat(request: ChatRequest) -> dict[str, str]:
 
 
 @app.post("/api/v1/cv/analyze")
-async def analyze_image(file: UploadFile | None = File(None)):
+async def analyze_image(file: Optional[UploadFile] = File(None)):
     if file is None:
         return error_response(
             422, "MISSING_FILE", "No file uploaded. Use 'file' field in multipart form."
@@ -739,12 +969,17 @@ async def get_forecast(sensor_id: int, db: AsyncSession = Depends(get_db)):
 async def get_forecast_compatibility(
     payload: ForecastCompatibilityRequest, db: AsyncSession = Depends(get_db)
 ):
+    now_utc = datetime.now(timezone.utc)
+    _window_start, window_end = compute_forecast_window(now_utc)
+
+    forecast_timezone = "Asia/Jakarta"
+
     latest_reading = await _get_latest_reading(db, payload.sensor_id)
     anomaly_summary = _format_current_sensor_state(latest_reading)
 
     history_hours = None
     if latest_reading:
-        history_window_start = datetime.now(timezone.utc) - timedelta(hours=168)
+        history_window_start = now_utc - timedelta(hours=168)
         earliest_result = await db.execute(
             select(Reading.timestamp)
             .where(
@@ -760,7 +995,7 @@ async def get_forecast_compatibility(
                 int((latest_reading.timestamp - earliest).total_seconds() / 3600), 1
             )
 
-    data_window_start = datetime.now(timezone.utc) - timedelta(hours=24)
+    data_window_start = now_utc - timedelta(hours=24)
     count_result = await db.execute(
         select(func.count())
         .select_from(Reading)
@@ -773,6 +1008,17 @@ async def get_forecast_compatibility(
     recent_ph_count = int(count_result.scalar_one() or 0)
     if recent_ph_count < 12:
         warning = "Insufficient data for pH forecast (need 24h of data)"
+
+        prediction_query = (
+            select(Prediction)
+            .where(Prediction.sensor_id == payload.sensor_id, Prediction.parameter == "ph")
+            .order_by(desc(Prediction.created_at))
+            .limit(1)
+        )
+        result = await db.execute(prediction_query)
+        prediction = result.scalar_one_or_none()
+        staleness = check_forecast_staleness(prediction, latest_reading, window_end, now_utc)
+
         latest_snapshot = (
             LatestReadingSnapshot(
                 timestamp=latest_reading.timestamp,
@@ -789,6 +1035,13 @@ async def get_forecast_compatibility(
             "latest_reading": latest_snapshot,
             "history_hours": history_hours,
             "warning": warning,
+            "forecast_generated_at": prediction.created_at if prediction else None,
+            "forecast_start": prediction.forecast_start if prediction else None,
+            "forecast_end": prediction.forecast_end if prediction else None,
+            "forecast_timezone": forecast_timezone,
+            "forecast_is_stale": bool(staleness.get("is_stale")),
+            "forecast_stale_reason": staleness.get("stale_reason"),
+            "source_prediction_id": prediction.id if prediction else None,
         }
 
     prediction_query = (
@@ -799,10 +1052,144 @@ async def get_forecast_compatibility(
     )
     result = await db.execute(prediction_query)
     prediction = result.scalar_one_or_none()
+
+    warning: Optional[str] = None
+    staleness = check_forecast_staleness(prediction, latest_reading, window_end, now_utc)
+    if staleness.get("is_stale"):
+        stale_reason = staleness.get("stale_reason")
+        warning = f"pH forecast may be stale ({stale_reason})"
+
+        refreshable_reasons = {
+            "no_prediction",
+            "forecast_end_before_window_end",
+            "created_before_today_wib",
+            "newer_reading_exists",
+        }
+
+        should_refresh = stale_reason in refreshable_reasons
+
+        # For dynamic regeneration (newer_reading_exists), check if significant new data exists
+        if (
+            should_refresh
+            and stale_reason == "newer_reading_exists"
+            and prediction
+            and latest_reading
+        ):
+            pred_created = getattr(prediction, "created_at", None)
+            latest_ts = getattr(latest_reading, "timestamp", None)
+            if pred_created and latest_ts:
+                new_data_hours = (latest_ts - pred_created).total_seconds() / 3600
+                if new_data_hours < FORECAST_REGEN_DATA_THRESHOLD_HOURS:
+                    should_refresh = False  # Not enough new data to justify regeneration
+
+        if should_refresh:
+            wib = ZoneInfo("Asia/Jakarta")
+            today_wib_date = now_utc.astimezone(wib).date()
+            regen_key = (payload.sensor_id, today_wib_date)
+
+            refresh_allowed = False
+            already_refreshed_today = False
+            refresh_in_progress = False
+            min_interval_exceeded = False
+            async with _forecast_regeneration_lock:
+                if regen_key in _last_forecast_regeneration:
+                    last_regen = _last_forecast_regeneration[regen_key]
+                    minutes_since_regen = (now_utc - last_regen).total_seconds() / 60
+                    if minutes_since_regen >= FORECAST_REGEN_MIN_INTERVAL_MINUTES:
+                        min_interval_exceeded = True
+                    else:
+                        already_refreshed_today = True
+                elif regen_key in _forecast_regeneration_inflight:
+                    refresh_in_progress = True
+                else:
+                    _forecast_regeneration_inflight.add(regen_key)
+                    refresh_allowed = True
+
+            if refresh_allowed:
+                generation_result = await _generate_and_store_forecast_for_sensor(
+                    payload.sensor_id, db
+                )
+
+                if generation_result.get("status") == "success":
+                    async with _forecast_regeneration_lock:
+                        _last_forecast_regeneration[regen_key] = now_utc
+                        _forecast_regeneration_inflight.discard(regen_key)
+                        # Cleanup old entries to prevent memory leak
+                        _cleanup_forecast_regeneration_cache()
+
+                    refreshed_result = await db.execute(prediction_query)
+                    prediction = refreshed_result.scalar_one_or_none()
+                    refreshed_staleness = check_forecast_staleness(
+                        prediction, latest_reading, window_end, now_utc
+                    )
+                    staleness = refreshed_staleness
+                    if refreshed_staleness.get("is_stale"):
+                        refreshed_reason = refreshed_staleness.get("stale_reason")
+                        warning = f"pH forecast may be stale ({refreshed_reason})"
+                    else:
+                        warning = None
+                else:
+                    async with _forecast_regeneration_lock:
+                        _forecast_regeneration_inflight.discard(regen_key)
+
+                    error_message = generation_result.get("message") or "Unknown error"
+                    warning = f"pH forecast may be stale ({stale_reason}); refresh failed: {error_message}"
+            elif min_interval_exceeded:
+                # Allow regeneration if minimum interval has passed (for dynamic updates)
+                async with _forecast_regeneration_lock:
+                    _forecast_regeneration_inflight.add(regen_key)
+                refresh_allowed = True
+
+            if refresh_allowed:
+                generation_result = await _generate_and_store_forecast_for_sensor(
+                    payload.sensor_id, db
+                )
+
+                if generation_result.get("status") == "success":
+                    async with _forecast_regeneration_lock:
+                        _last_forecast_regeneration[regen_key] = now_utc
+                        _forecast_regeneration_inflight.discard(regen_key)
+                        # Cleanup old entries to prevent memory leak
+                        _cleanup_forecast_regeneration_cache()
+
+                    refreshed_result = await db.execute(prediction_query)
+                    prediction = refreshed_result.scalar_one_or_none()
+                    refreshed_staleness = check_forecast_staleness(
+                        prediction, latest_reading, window_end, now_utc
+                    )
+                    staleness = refreshed_staleness
+                    if refreshed_staleness.get("is_stale"):
+                        refreshed_reason = refreshed_staleness.get("stale_reason")
+                        warning = f"pH forecast may be stale ({refreshed_reason})"
+                    else:
+                        warning = None
+                else:
+                    async with _forecast_regeneration_lock:
+                        _forecast_regeneration_inflight.discard(regen_key)
+
+                    error_message = generation_result.get("message") or "Unknown error"
+                    warning = f"pH forecast may be stale ({stale_reason}); refresh failed: {error_message}"
+            else:
+                if already_refreshed_today:
+                    warning = f"pH forecast may be stale ({stale_reason}); refresh skipped (already refreshed today)"
+                elif refresh_in_progress:
+                    warning = f"pH forecast may be stale ({stale_reason}); refresh in progress"
+                else:
+                    warning = f"pH forecast may be stale ({stale_reason}); refresh skipped"
     data_quality = min(recent_ph_count / 24.0, 1.0)
-    forecast = _format_forecast_points(
+    raw_forecast = _format_forecast_points(
         prediction.forecast_values if prediction else [], data_quality=data_quality
     )
+
+    window_start, window_end = compute_forecast_window(now_utc)
+    forecast = _trim_forecast_to_window(raw_forecast, window_start, window_end)
+
+    if not forecast and raw_forecast:
+        warning = (
+            f"{warning}; Forecast data exists but is outside the current 7-day window"
+            if warning
+            else "Forecast data exists but is outside the current 7-day window"
+        )
 
     latest_snapshot = (
         LatestReadingSnapshot(
@@ -820,7 +1207,14 @@ async def get_forecast_compatibility(
         "anomaly": anomaly_summary,
         "latest_reading": latest_snapshot,
         "history_hours": history_hours,
-        "warning": None,
+        "warning": warning,
+        "forecast_generated_at": prediction.created_at if prediction else None,
+        "forecast_start": prediction.forecast_start if prediction else None,
+        "forecast_end": prediction.forecast_end if prediction else None,
+        "forecast_timezone": forecast_timezone,
+        "forecast_is_stale": bool(staleness.get("is_stale")),
+        "forecast_stale_reason": staleness.get("stale_reason"),
+        "source_prediction_id": prediction.id if prediction else None,
     }
 
 
@@ -829,68 +1223,7 @@ async def generate_forecast_endpoint(
     sensor_id: int, _background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
 ):
     """Generate forecast for a sensor."""
-    # 1. Fetch historical data (7 days)
-    start_time = datetime.now(timezone.utc) - timedelta(days=7)
-    query = (
-        select(Reading)
-        .where(Reading.sensor_id == sensor_id, Reading.timestamp >= start_time)
-        .order_by(Reading.timestamp)
-    )
-    result = await db.execute(query)
-    readings = result.scalars().all()
-
-    if not readings:
-        return {"status": "error", "message": "No data found for forecasting"}
-
-    # 2. Prepare data for TimeGPT
-    # We need a DataFrame with unique_id, ds, y
-    data = []
-    sensor_str = f"sensor_{sensor_id}"
-    for r in readings:
-        # Flatten parameters
-        if r.ph is not None:
-            data.append({"unique_id": f"{sensor_str}_ph", "ds": r.timestamp, "y": r.ph})
-        if r.turbidity is not None:
-            data.append(
-                {"unique_id": f"{sensor_str}_turbidity", "ds": r.timestamp, "y": r.turbidity}
-            )
-        if r.temperature is not None:
-            data.append(
-                {"unique_id": f"{sensor_str}_temperature", "ds": r.timestamp, "y": r.temperature}
-            )
-
-    import pandas as pd
-
-    df = pd.DataFrame(data)
-
-    # 3. Generate Forecast (Async)
-    # We run this in background or await if fast enough. Mock is fast.
-    # For now, let's await it to return immediate status.
-    forecasts = timegpt.generate_forecast(df, horizon=168)  # 7 days
-
-    # 4. Store Predictions
-    count = 0
-    for uid, points in forecasts.items():
-        # uid: sensor_1_ph -> parameter: ph
-        parameter = uid.split("_")[-1]
-
-        # Serialize values
-        forecast_values = [p.model_dump(mode="json") for p in points]
-
-        prediction = Prediction(
-            sensor_id=sensor_id,
-            forecast_start=points[0].timestamp,
-            forecast_end=points[-1].timestamp,
-            parameter=parameter,
-            forecast_values=forecast_values,
-            model_version="timegpt-1",
-        )
-        db.add(prediction)
-        count += 1
-
-    await db.commit()
-
-    return {"status": "success", "predictions_generated": count}
+    return await _generate_and_store_forecast_for_sensor(sensor_id, db)
 
 
 @app.get("/api/v1/anomaly", response_model=TimelineAnomalySummary)
