@@ -1,0 +1,49 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e9]:
+        - heading "Sign in to My Application" [level=1] [ref=e10]
+        - paragraph [ref=e11]: Welcome back! Please sign in to continue
+      - generic [ref=e12]:
+        - button "Sign in with Google Continue with Google" [ref=e15] [cursor=pointer]:
+          - generic [ref=e16]:
+            - img "Sign in with Google" [ref=e18]
+            - generic [ref=e19]: Continue with Google
+        - paragraph [ref=e22]: or
+        - generic [ref=e24]:
+          - generic [ref=e25]:
+            - generic [ref=e28]:
+              - generic [ref=e30]: Email address
+              - textbox "Email address" [ref=e31]:
+                - /placeholder: Enter your email address
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: Password
+                  - generic:
+                    - textbox "Password":
+                      - /placeholder: Enter your password
+                    - button "Show password":
+                      - img
+          - button "Continue" [ref=e34] [cursor=pointer]:
+            - generic [ref=e35]:
+              - text: Continue
+              - img [ref=e36]
+    - generic [ref=e38]:
+      - generic [ref=e39]:
+        - generic [ref=e40]: Don’t have an account?
+        - link "Sign up" [ref=e41] [cursor=pointer]:
+          - /url: https://winning-tarpon-11.accounts.dev/sign-up#/?redirect_url=http%3A%2F%2Flocalhost%3A3000%2Fchat
+      - generic [ref=e43]:
+        - generic [ref=e45]:
+          - paragraph [ref=e46]: Secured by
+          - link "Clerk logo" [ref=e47] [cursor=pointer]:
+            - /url: https://go.clerk.com/components
+            - img [ref=e48]
+        - paragraph [ref=e53]: Development mode
+  - alert [ref=e54]
+```

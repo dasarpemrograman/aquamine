@@ -41,6 +41,7 @@ services:
       CEREBRAS_API_KEY: ${CEREBRAS_API_KEY}
       FONNTE_API_TOKEN: ${FONNTE_API_TOKEN}
       RESEND_API_KEY: ${RESEND_API_KEY}
+      CLERK_ISSUER: ${CLERK_ISSUER}
       PYTHONPATH: /app
     depends_on:
       db:

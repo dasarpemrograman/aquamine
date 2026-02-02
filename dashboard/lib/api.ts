@@ -96,13 +96,20 @@ export async function analyzeImage(file: File): Promise<AnalysisResponse> {
 
 export async function sendChatMessage(
   message: string,
-  sessionId: string
+  sessionId: string,
+  token?: string
 ): Promise<ChatResponse> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json"
+  };
+  
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_BASE}/api/v1/chat`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers,
     body: JSON.stringify({ message, session_id: sessionId })
   });
 

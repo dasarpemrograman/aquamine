@@ -7,7 +7,9 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Text,
+    UniqueConstraint,
     event,
     text,
 )
@@ -143,6 +145,102 @@ class SensorAlertState(Base):
     last_notification_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     sensor: Mapped["Sensor"] = relationship(back_populates="alert_state")
+
+
+class ChatThread(Base):
+    __tablename__ = "chat_threads"
+
+    # UUID string (generated in app)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    # Clerk user sub
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    title: Mapped[Optional[str]] = mapped_column(String(200))
+    # "auto" | "user" (enforced in app layer)
+    title_source: Mapped[str] = mapped_column(String(20), nullable=False, default="auto")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    segments: Mapped[List["ChatSessionSegment"]] = relationship(
+        back_populates="thread",
+        order_by="ChatSessionSegment.index",
+    )
+    messages: Mapped[List["ChatMessage"]] = relationship(
+        back_populates="thread",
+        order_by="ChatMessage.created_at",
+    )
+
+    __table_args__ = (
+        Index("ix_chat_threads_user_id", "user_id"),
+        Index("ix_chat_threads_created_at", "created_at"),
+    )
+
+
+class ChatSessionSegment(Base):
+    __tablename__ = "chat_session_segments"
+
+    # UUID string (generated in app)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    thread_id: Mapped[str] = mapped_column(ForeignKey("chat_threads.id"), nullable=False)
+
+    # Monotonic per thread; used for transcript ordering and compaction boundaries.
+    index: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Summary of content compacted into this segment (if any)
+    compaction_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    compacted_from_message_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "chat_messages.id",
+            use_alter=True,
+            name="fk_chat_session_segments_compacted_from_message_id",
+        ),
+        nullable=True,
+    )
+
+    thread: Mapped["ChatThread"] = relationship(back_populates="segments")
+    messages: Mapped[List["ChatMessage"]] = relationship(
+        back_populates="segment",
+        order_by="ChatMessage.created_at",
+        foreign_keys="ChatMessage.segment_id",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("thread_id", "index", name="uq_chat_session_segments_thread_id_index"),
+        Index("ix_chat_session_segments_thread_id", "thread_id"),
+        Index("ix_chat_session_segments_created_at", "created_at"),
+    )
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    thread_id: Mapped[str] = mapped_column(ForeignKey("chat_threads.id"), nullable=False)
+    segment_id: Mapped[str] = mapped_column(ForeignKey("chat_session_segments.id"), nullable=False)
+
+    # system | user | assistant | tool
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    token_estimate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # NOTE: attribute name can't be `metadata` (reserved by SQLAlchemy declarative)
+    metadata_: Mapped[Optional[Any]] = mapped_column("metadata", JSON, nullable=True)
+
+    thread: Mapped["ChatThread"] = relationship(back_populates="messages")
+    segment: Mapped["ChatSessionSegment"] = relationship(
+        back_populates="messages",
+        foreign_keys=[segment_id],
+    )
+
+    __table_args__ = (
+        Index("ix_chat_messages_thread_id", "thread_id"),
+        Index("ix_chat_messages_segment_id", "segment_id"),
+        Index("ix_chat_messages_created_at", "created_at"),
+    )
 
 
 # Event listener to convert readings table to hypertable after creation

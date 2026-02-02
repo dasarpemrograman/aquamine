@@ -34,6 +34,7 @@ from .schemas.cv import BoundingBox, ImageAnalysisResponse
 from .cv.detector import YellowBoyDetector, ImageDecodeError
 from .utils.responses import error_response
 from .chatbot.orchestrator import ChatOrchestrator, SYSTEM_PROMPT
+from .chatbot.summarizer import generate_thread_title
 
 # Import IoT/ML modules
 from .db.connection import get_db
@@ -1837,10 +1838,19 @@ async def send_message(
 
     # Generate title if this is the first exchange and title is still default
     if thread.title_source == "auto" and (thread.title == "New chat" or not thread.title):
-        # Simple heuristic: use first 30 chars of first user message
-        new_title = request.content[:30] + ("..." if len(request.content) > 30 else "")
-        thread.title = new_title
-        # TODO: In Task 5, replace with LLM-generated title
+        # Generate LLM title in parallel (non-blocking)
+        try:
+            llm_title = await generate_thread_title(
+                request.content,
+                str(response_content),
+            )
+            thread.title = llm_title
+            db.add(thread)  # Explicitly add to session to track changes
+        except Exception as e:
+            logger.warning(f"Failed to generate LLM title: {e}")
+            # Fallback: use first 30 chars of user message
+            thread.title = request.content[:30] + ("..." if len(request.content) > 30 else "")
+            db.add(thread)  # Explicitly add to session to track changes
 
     await db.commit()
     await db.refresh(assistant_message)
