@@ -130,7 +130,15 @@ function ForecastTooltip({ active, payload, label }: ForecastTooltipProps) {
   );
 }
 
-export default function ForecastChart({ sensorId }: { sensorId: string }) {
+export default function ForecastChart({ 
+  sensorId, 
+  forecastType = '7day', 
+  selectedDate 
+}: { 
+  sensorId: string;
+  forecastType?: '7day' | '14day' | 'daily';
+  selectedDate?: Date;
+}) {
   const [data, setData] = useState<ChartPoint[]>([]);
   const [anomaly, setAnomaly] = useState<AnomalyData | null>(null);
   const [latestReading, setLatestReading] = useState<LatestReading | null>(null);
@@ -150,12 +158,24 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
       if (isFetchingRef.current) return;
       isFetchingRef.current = true;
       try {
+        const requestBody: any = { sensor_id: parseInt(sensorId) };
+        
+        // Add forecast type and date for daily forecasts
+        if (forecastType === 'daily' && selectedDate) {
+          requestBody.forecast_type = 'daily';
+          requestBody.target_date = selectedDate.toISOString().split('T')[0];
+        } else if (forecastType === '14day') {
+          requestBody.forecast_type = '14day';
+        } else {
+          requestBody.forecast_type = '7day';
+        }
+
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/forecast`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ sensor_id: parseInt(sensorId) }),
+          body: JSON.stringify(requestBody),
         });
 
         if (!res.ok) {
@@ -271,11 +291,24 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
   const forecastGeneratedLabel = forecastGeneratedAt ? formatWIB(forecastGeneratedAt) : null;
   const forecastStartLabel = data.length ? formatWIB(data[0].timestamp) : null;
 
+  const getChartTitle = () => {
+    if (forecastType === 'daily' && selectedDate) {
+      return `Daily Forecast - ${selectedDate.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        month: 'short', 
+        day: 'numeric' 
+      })}`;
+    } else if (forecastType === '14day') {
+      return '14-Day Extended Forecast';
+    }
+    return '7-Day Forecast';
+  };
+
   return (
     <GlassCard className="w-full">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-white/40">
         <div>
-          <h3 className="text-lg font-bold text-slate-800">7-Day Forecast</h3>
+          <h3 className="text-lg font-bold text-slate-800">{getChartTitle()}</h3>
           {historyHours ? (
             <p className="text-xs text-slate-500">Based on: {historyHours}h of sensor data</p>
           ) : null}

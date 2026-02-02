@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Info, CheckCircle2 } from "lucide-react";
 import { formatWIB } from "@/lib/dateUtils";
-import { GlassCard } from "@/app/components/ui/GlassCard";
 import { StatusChip } from "@/app/components/ui/StatusChip";
 
 interface Alert {
@@ -94,20 +93,18 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h" }:
   return (
     <div className="space-y-4">
       {filteredAlerts.length === 0 ? (
-        <GlassCard className="flex flex-col items-center justify-center py-12 text-center" variant="flat">
+        <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl bg-white/40 border border-white/50 shadow-sm">
           <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100 shadow-inner">
             <CheckCircle2 size={32} className="text-slate-300" />
           </div>
           <h3 className="text-lg font-semibold text-slate-700">No alerts found</h3>
           <p className="text-slate-400 mt-1 max-w-xs mx-auto">System is running normally. No issues detected matching your filters.</p>
-        </GlassCard>
+        </div>
       ) : (
         filteredAlerts.map((alert) => (
-          <GlassCard 
+          <div 
             key={alert.id} 
-            className="group transition-all duration-300 hover:shadow-md hover:bg-white/60"
-            variant="flat"
-            padding="md"
+            className="group p-4 rounded-xl bg-white/40 border border-white/50 shadow-sm transition-all duration-300 hover:shadow-md hover:bg-white/60"
           >
             
             <div className="flex flex-col sm:flex-row items-start gap-4">
@@ -137,7 +134,7 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h" }:
                 </h4>
               </div>
             </div>
-          </GlassCard>
+          </div>
         ))
       )}
     </div>

@@ -32,9 +32,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
   }, [refreshInterval]);
 
   useEffect(() => {
-    if (!userId) {
-      return;
-    }
+    if (!userId) return;
 
     fetchSettings(userId)
       .then((settings) => {

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from 'next/image';
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { 
@@ -50,7 +51,19 @@ export default function Sidebar({
   const sidebarWidthClass = collapsed ? "md:w-[70px]" : "md:w-72";
 
   return (
-    <>
+    <aside className="fixed left-0 top-0 h-full w-64 z-40 hidden md:flex flex-col border-r border-white/75 bg-[#FBFCFF] backdrop-blur-xl shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-300">
+      <div className="h-20 flex items-center px-8 border-b border-white/50">
+        <Link href="/" className="flex items-center group">
+            <Image 
+              src="/aquamine.svg"
+              alt="AquaMine Logo"
+              width={952} 
+              height={360}  
+              className="h-auto w-[90px] object-contain transition-transform group-hover:scale-105"
+              priority
+            />
+        </Link>
+      </div>
       {/* Mobile Overlay */}
       <div 
         className={classNames(
@@ -217,6 +230,6 @@ export default function Sidebar({
           )}
         </div>
       </aside>
-    </>
+    </aside>
   );
 }
