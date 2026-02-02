@@ -1,7 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager, suppress
 from datetime import date, datetime, timedelta, timezone
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Any
 from zoneinfo import ZoneInfo
 
 from fastapi import (
@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import time
+import uuid
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, delete, or_, func
@@ -31,7 +32,7 @@ from sqlalchemy import select, desc, delete, or_, func
 from .schemas.cv import BoundingBox, ImageAnalysisResponse
 from .cv.detector import YellowBoyDetector, ImageDecodeError
 from .utils.responses import error_response
-from .chatbot.orchestrator import ChatOrchestrator
+from .chatbot.orchestrator import ChatOrchestrator, SYSTEM_PROMPT
 
 # Import IoT/ML modules
 from .db.connection import get_db
@@ -44,6 +45,9 @@ from .db.models import (
     NotificationRecipient,
     SensorAlertState,
     UserSettings,
+    ChatThread,
+    ChatSessionSegment,
+    ChatMessage,
 )
 from .schemas.sensor import SensorResponse, ReadingResponse, SensorDataIngest
 from .schemas.forecast import PredictionResponse
@@ -58,12 +62,30 @@ from .schemas.alert import (
 from .schemas.settings import UserSettingsResponse, UserSettingsUpdate
 from .schemas.help import FaqItem, FaqResponse
 from .schemas.base import BaseSchema
+from .schemas.chat import (
+    ThreadCreate,
+    ThreadUpdate,
+    ThreadResponse,
+    ThreadListResponse,
+    MessageCreate,
+    MessageResponse,
+    MessageListResponse,
+    SendMessageRequest,
+    SendMessageResponse,
+    CompactionPreviewRequest,
+    CompactionPreviewResponse,
+    CompactionCommitRequest,
+    CompactionCommitResponse,
+    SegmentResponse,
+)
+from .auth.clerk import get_current_user
 from .iot.mqtt_bridge import process_mqtt_message
 from .forecasting.timegpt_client import TimeGPTClient
 from .anomaly.detector import AnomalyDetector, ANOMALY_THRESHOLDS
 from .alerts.state_machine import AlertStateMachine
 from .alerts.notifications import NotificationService
 from .realtime.websocket import manager as ws_manager
+from .auth.clerk import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -687,9 +709,17 @@ def get_faq() -> FaqResponse:
 
 
 @app.post("/api/v1/chat")
-async def chat(request: ChatRequest) -> dict[str, str]:
-    response = await chat_orchestrator.process_user_message(request.message, request.session_id)
-    return {"response": response}
+async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)) -> dict[str, Any]:
+    result = await chat_orchestrator.process_user_message(request.message, request.session_id)
+
+    if isinstance(result, dict) and result.get("type") == "compaction_required":
+        return {
+            "response": result.get("message", "Compaction required"),
+            "compaction_required": True,
+            "token_usage": result.get("stats"),
+        }
+
+    return {"response": str(result), "compaction_required": False}
 
 
 # --- CV Endpoints ---
@@ -1090,13 +1120,14 @@ async def get_forecast_compatibility(
             refresh_allowed = False
             already_refreshed_today = False
             refresh_in_progress = False
-            min_interval_exceeded = False
+            # Single critical section: hold lock for entire decision-making to prevent race conditions
             async with _forecast_regeneration_lock:
                 if regen_key in _last_forecast_regeneration:
                     last_regen = _last_forecast_regeneration[regen_key]
                     minutes_since_regen = (now_utc - last_regen).total_seconds() / 60
                     if minutes_since_regen >= FORECAST_REGEN_MIN_INTERVAL_MINUTES:
-                        min_interval_exceeded = True
+                        _forecast_regeneration_inflight.add(regen_key)
+                        refresh_allowed = True
                     else:
                         already_refreshed_today = True
                 elif regen_key in _forecast_regeneration_inflight:
@@ -1105,42 +1136,35 @@ async def get_forecast_compatibility(
                     _forecast_regeneration_inflight.add(regen_key)
                     refresh_allowed = True
 
-            if refresh_allowed or min_interval_exceeded:
-                # Allow regeneration if refresh is allowed OR minimum interval has passed
-                if min_interval_exceeded and not refresh_allowed:
+            if refresh_allowed:
+                generation_result = await _generate_and_store_forecast_for_sensor(
+                    payload.sensor_id, db
+                )
+
+                if generation_result.get("status") == "success":
                     async with _forecast_regeneration_lock:
-                        _forecast_regeneration_inflight.add(regen_key)
-                    refresh_allowed = True
+                        _last_forecast_regeneration[regen_key] = now_utc
+                        _forecast_regeneration_inflight.discard(regen_key)
+                        # Cleanup old entries to prevent memory leak
+                        _cleanup_forecast_regeneration_cache()
 
-                if refresh_allowed:
-                    generation_result = await _generate_and_store_forecast_for_sensor(
-                        payload.sensor_id, db
+                    refreshed_result = await db.execute(prediction_query)
+                    prediction = refreshed_result.scalar_one_or_none()
+                    refreshed_staleness = check_forecast_staleness(
+                        prediction, latest_reading, window_end, now_utc
                     )
-
-                    if generation_result.get("status") == "success":
-                        async with _forecast_regeneration_lock:
-                            _last_forecast_regeneration[regen_key] = now_utc
-                            _forecast_regeneration_inflight.discard(regen_key)
-                            # Cleanup old entries to prevent memory leak
-                            _cleanup_forecast_regeneration_cache()
-
-                        refreshed_result = await db.execute(prediction_query)
-                        prediction = refreshed_result.scalar_one_or_none()
-                        refreshed_staleness = check_forecast_staleness(
-                            prediction, latest_reading, window_end, now_utc
-                        )
-                        staleness = refreshed_staleness
-                        if refreshed_staleness.get("is_stale"):
-                            refreshed_reason = refreshed_staleness.get("stale_reason")
-                            forecast_warning = f"pH forecast may be stale ({refreshed_reason})"
-                        else:
-                            forecast_warning = None
+                    staleness = refreshed_staleness
+                    if refreshed_staleness.get("is_stale"):
+                        refreshed_reason = refreshed_staleness.get("stale_reason")
+                        forecast_warning = f"pH forecast may be stale ({refreshed_reason})"
                     else:
-                        async with _forecast_regeneration_lock:
-                            _forecast_regeneration_inflight.discard(regen_key)
+                        forecast_warning = None
+                else:
+                    async with _forecast_regeneration_lock:
+                        _forecast_regeneration_inflight.discard(regen_key)
 
-                        error_message = generation_result.get("message") or "Unknown error"
-                        forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh failed: {error_message}"
+                    error_message = generation_result.get("message") or "Unknown error"
+                    forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh failed: {error_message}"
             else:
                 if already_refreshed_today:
                     forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh skipped (already refreshed today)"
@@ -1155,8 +1179,8 @@ async def get_forecast_compatibility(
         prediction.forecast_values if prediction else [], data_quality=data_quality
     )
 
-    window_start, window_end = compute_forecast_window(now_utc)
-    forecast = _trim_forecast_to_window(raw_forecast, window_start, window_end)
+    # Reuse window_end from line 1003 to ensure consistency between staleness check and trimming
+    forecast = _trim_forecast_to_window(raw_forecast, _window_start, window_end)
 
     if not forecast and raw_forecast:
         forecast_warning = (
@@ -1387,6 +1411,595 @@ async def acknowledge_alert(
     alert.acknowledged_by = username
     await db.commit()
     return {"status": "acknowledged"}
+
+
+# --- Chat Thread Endpoints ---
+
+
+@app.get("/api/v1/chat/threads", response_model=ThreadListResponse)
+async def list_threads(
+    query: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List user's non-deleted chat threads, ordered by recent activity."""
+    stmt = (
+        select(ChatThread)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+        .order_by(desc(ChatThread.updated_at))
+    )
+
+    if query:
+        stmt = stmt.where(ChatThread.title.ilike(f"%{query}%"))
+
+    # Get total count
+    count_stmt = (
+        select(func.count())
+        .select_from(ChatThread)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    if query:
+        count_stmt = count_stmt.where(ChatThread.title.ilike(f"%{query}%"))
+
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar() or 0
+
+    # Get threads
+    stmt = stmt.limit(limit).offset(offset)
+    result = await db.execute(stmt)
+    threads = result.scalars().all()
+
+    # Get active segment for each thread
+    thread_responses = []
+    for thread in threads:
+        # Find the most recent segment
+        segment_stmt = (
+            select(ChatSessionSegment)
+            .where(ChatSessionSegment.thread_id == thread.id)
+            .order_by(desc(ChatSessionSegment.index))
+            .limit(1)
+        )
+        segment_result = await db.execute(segment_stmt)
+        active_segment = segment_result.scalar_one_or_none()
+
+        thread_responses.append(
+            ThreadResponse(
+                id=thread.id,
+                user_id=thread.user_id,
+                title=thread.title or "New chat",
+                title_source=thread.title_source,
+                created_at=thread.created_at,
+                updated_at=thread.updated_at,
+                active_segment_id=active_segment.id if active_segment else None,
+            )
+        )
+
+    return ThreadListResponse(threads=thread_responses, total=total)
+
+
+@app.post("/api/v1/chat/threads", response_model=ThreadResponse)
+async def create_thread(
+    request: ThreadCreate,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new chat thread with an initial segment."""
+    thread_id = str(uuid.uuid4())
+    segment_id = str(uuid.uuid4())
+
+    # Create thread
+    thread = ChatThread(
+        id=thread_id,
+        user_id=user_id,
+        title=request.title or "New chat",
+        title_source="auto" if not request.title else "user",
+    )
+    db.add(thread)
+
+    # Create initial segment (index 0)
+    segment = ChatSessionSegment(
+        id=segment_id,
+        thread_id=thread_id,
+        index=0,
+    )
+    db.add(segment)
+
+    await db.commit()
+    await db.refresh(thread)
+
+    return ThreadResponse(
+        id=thread.id,
+        user_id=thread.user_id,
+        title=thread.title or "New chat",
+        title_source=thread.title_source,
+        created_at=thread.created_at,
+        updated_at=thread.updated_at,
+        active_segment_id=segment_id,
+    )
+
+
+@app.get("/api/v1/chat/threads/{thread_id}", response_model=ThreadResponse)
+async def get_thread(
+    thread_id: str,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get thread metadata."""
+    stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    result = await db.execute(stmt)
+    thread = result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Get active segment
+    segment_stmt = (
+        select(ChatSessionSegment)
+        .where(ChatSessionSegment.thread_id == thread_id)
+        .order_by(desc(ChatSessionSegment.index))
+        .limit(1)
+    )
+    segment_result = await db.execute(segment_stmt)
+    active_segment = segment_result.scalar_one_or_none()
+
+    return ThreadResponse(
+        id=thread.id,
+        user_id=thread.user_id,
+        title=thread.title or "New chat",
+        title_source=thread.title_source,
+        created_at=thread.created_at,
+        updated_at=thread.updated_at,
+        active_segment_id=active_segment.id if active_segment else None,
+    )
+
+
+@app.patch("/api/v1/chat/threads/{thread_id}", response_model=ThreadResponse)
+async def update_thread(
+    thread_id: str,
+    request: ThreadUpdate,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename a thread (marks title_source as 'user')."""
+    stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    result = await db.execute(stmt)
+    thread = result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    thread.title = request.title
+    thread.title_source = "user"
+    await db.commit()
+    await db.refresh(thread)
+
+    # Get active segment
+    segment_stmt = (
+        select(ChatSessionSegment)
+        .where(ChatSessionSegment.thread_id == thread_id)
+        .order_by(desc(ChatSessionSegment.index))
+        .limit(1)
+    )
+    segment_result = await db.execute(segment_stmt)
+    active_segment = segment_result.scalar_one_or_none()
+
+    return ThreadResponse(
+        id=thread.id,
+        user_id=thread.user_id,
+        title=thread.title or "New chat",
+        title_source=thread.title_source,
+        created_at=thread.created_at,
+        updated_at=thread.updated_at,
+        active_segment_id=active_segment.id if active_segment else None,
+    )
+
+
+@app.delete("/api/v1/chat/threads/{thread_id}")
+async def delete_thread(
+    thread_id: str,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft delete a thread."""
+    stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    result = await db.execute(stmt)
+    thread = result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    thread.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    return {"status": "deleted", "thread_id": thread_id}
+
+
+@app.get("/api/v1/chat/threads/{thread_id}/messages", response_model=MessageListResponse)
+async def get_messages(
+    thread_id: str,
+    cursor: Optional[str] = None,
+    limit: int = 50,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get messages for a thread with cursor-based pagination."""
+    # Verify thread ownership
+    thread_stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    thread_result = await db.execute(thread_stmt)
+    thread = thread_result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Build query
+    stmt = (
+        select(ChatMessage)
+        .where(ChatMessage.thread_id == thread_id)
+        .order_by(desc(ChatMessage.created_at))
+        .limit(limit + 1)  # Get one extra to check for more
+    )
+
+    if cursor:
+        # Decode cursor (message ID)
+        try:
+            cursor_id = int(cursor)
+            cursor_stmt = select(ChatMessage).where(ChatMessage.id == cursor_id)
+            cursor_result = await db.execute(cursor_stmt)
+            cursor_msg = cursor_result.scalar_one_or_none()
+            if cursor_msg:
+                stmt = stmt.where(ChatMessage.created_at < cursor_msg.created_at)
+        except (ValueError, SQLAlchemyError):
+            pass
+
+    result = await db.execute(stmt)
+    messages = result.scalars().all()
+
+    has_more = len(messages) > limit
+    if has_more:
+        messages = messages[:limit]
+
+    # Reverse to get oldest first for UI
+    messages = list(reversed(messages))
+
+    # Build response
+    message_responses = [
+        MessageResponse(
+            id=msg.id,
+            thread_id=msg.thread_id,
+            segment_id=msg.segment_id,
+            role=msg.role,
+            content=msg.content,
+            created_at=msg.created_at,
+            token_estimate=msg.token_estimate,
+            metadata=msg.metadata_,
+        )
+        for msg in messages
+    ]
+
+    next_cursor = None
+    if has_more and messages:
+        next_cursor = str(messages[0].id)
+
+    return MessageListResponse(
+        messages=message_responses,
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
+
+
+@app.post("/api/v1/chat/threads/{thread_id}/messages", response_model=SendMessageResponse)
+async def send_message(
+    thread_id: str,
+    request: SendMessageRequest,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a message in a thread."""
+    from .chatbot.token_budget import should_compact, estimate_message_tokens
+
+    # Verify thread ownership
+    thread_stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    thread_result = await db.execute(thread_stmt)
+    thread = thread_result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Get active segment
+    segment_stmt = (
+        select(ChatSessionSegment)
+        .where(ChatSessionSegment.thread_id == thread_id)
+        .order_by(desc(ChatSessionSegment.index))
+        .limit(1)
+    )
+    segment_result = await db.execute(segment_stmt)
+    active_segment = segment_result.scalar_one_or_none()
+
+    if not active_segment:
+        raise HTTPException(status_code=400, detail="No active segment found")
+
+    # Get all messages in this segment for token budget check
+    messages_stmt = (
+        select(ChatMessage)
+        .where(ChatMessage.segment_id == active_segment.id)
+        .order_by(ChatMessage.created_at)
+    )
+    messages_result = await db.execute(messages_stmt)
+    existing_messages = messages_result.scalars().all()
+
+    # Convert to dict format for token budget check
+    message_dicts = [
+        {
+            "role": msg.role,
+            "content": msg.content,
+            "token_estimate": msg.token_estimate,
+            "metadata": msg.metadata_,
+        }
+        for msg in existing_messages
+    ]
+
+    # Check if compaction is needed
+    needs_compaction, stats = should_compact(message_dicts, request.content)
+
+    if needs_compaction:
+        return SendMessageResponse(
+            message=None,
+            response=None,
+            compaction_required=True,
+            token_usage=stats,
+        )
+
+    # Store user message
+    user_message = ChatMessage(
+        thread_id=thread_id,
+        segment_id=active_segment.id,
+        role="user",
+        content=request.content,
+        token_estimate=estimate_message_tokens({"role": "user", "content": request.content}),
+    )
+    db.add(user_message)
+    await db.commit()
+    await db.refresh(user_message)
+
+    # Get response from LLM
+    # Build conversation history
+    conversation = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for msg in existing_messages:
+        conversation.append({"role": msg.role, "content": msg.content})
+    conversation.append({"role": "user", "content": request.content})
+
+    # Call orchestrator
+    response_content = await chat_orchestrator.process_user_message(
+        request.content, f"thread-{thread_id}-{active_segment.id}"
+    )
+
+    # Check if compaction was triggered during processing
+    if isinstance(response_content, dict) and response_content.get("type") == "compaction_required":
+        return SendMessageResponse(
+            message=MessageResponse(
+                id=user_message.id,
+                thread_id=user_message.thread_id,
+                segment_id=user_message.segment_id,
+                role=user_message.role,
+                content=user_message.content,
+                created_at=user_message.created_at,
+                token_estimate=user_message.token_estimate,
+                metadata=user_message.metadata_,
+            ),
+            response=None,
+            compaction_required=True,
+            token_usage=response_content.get("stats"),
+        )
+
+    # Store assistant response
+    assistant_message = ChatMessage(
+        thread_id=thread_id,
+        segment_id=active_segment.id,
+        role="assistant",
+        content=str(response_content),
+        token_estimate=estimate_message_tokens(
+            {"role": "assistant", "content": str(response_content)}
+        ),
+    )
+    db.add(assistant_message)
+
+    # Generate title if this is the first exchange and title is still default
+    if thread.title_source == "auto" and (thread.title == "New chat" or not thread.title):
+        # Simple heuristic: use first 30 chars of first user message
+        new_title = request.content[:30] + ("..." if len(request.content) > 30 else "")
+        thread.title = new_title
+        # TODO: In Task 5, replace with LLM-generated title
+
+    await db.commit()
+    await db.refresh(assistant_message)
+
+    return SendMessageResponse(
+        message=MessageResponse(
+            id=assistant_message.id,
+            thread_id=assistant_message.thread_id,
+            segment_id=assistant_message.segment_id,
+            role=assistant_message.role,
+            content=assistant_message.content,
+            created_at=assistant_message.created_at,
+            token_estimate=assistant_message.token_estimate,
+            metadata=assistant_message.metadata_,
+        ),
+        response=assistant_message.content,
+        compaction_required=False,
+        token_usage=stats,
+    )
+
+
+@app.post(
+    "/api/v1/chat/threads/{thread_id}/compaction/preview", response_model=CompactionPreviewResponse
+)
+async def preview_compaction(
+    thread_id: str,
+    request: CompactionPreviewRequest,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a summary preview for compaction."""
+    from .chatbot.token_budget import calculate_context_stats, estimate_message_tokens
+
+    # Verify thread ownership
+    thread_stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    thread_result = await db.execute(thread_stmt)
+    thread = thread_result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Get active segment
+    segment_stmt = (
+        select(ChatSessionSegment)
+        .where(ChatSessionSegment.thread_id == thread_id)
+        .order_by(desc(ChatSessionSegment.index))
+        .limit(1)
+    )
+    segment_result = await db.execute(segment_stmt)
+    active_segment = segment_result.scalar_one_or_none()
+
+    if not active_segment:
+        raise HTTPException(status_code=400, detail="No active segment found")
+
+    # Get messages
+    messages_stmt = (
+        select(ChatMessage)
+        .where(ChatMessage.segment_id == active_segment.id)
+        .order_by(ChatMessage.created_at)
+    )
+    messages_result = await db.execute(messages_stmt)
+    messages = messages_result.scalars().all()
+
+    # Calculate stats
+    message_dicts = [
+        {"role": msg.role, "content": msg.content, "token_estimate": msg.token_estimate}
+        for msg in messages
+    ]
+    stats = calculate_context_stats(message_dicts, request.pending_message or "")
+
+    # Generate summary (simple implementation - Task 5 will improve this)
+    # For now, create a simple summary from the conversation
+    summary_parts = []
+    for msg in messages:
+        if msg.role == "user":
+            summary_parts.append(f"User asked: {msg.content[:50]}...")
+        elif msg.role == "assistant":
+            summary_parts.append(f"Assistant responded about: {msg.content[:50]}...")
+
+    summary_draft = "\n".join(summary_parts[:5])  # Limit to first 5 exchanges
+    if not summary_draft:
+        summary_draft = "Conversation about AquaMine water quality monitoring."
+
+    return CompactionPreviewResponse(
+        summary_draft=summary_draft,
+        token_stats=stats,
+        can_compact=True,
+    )
+
+
+@app.post(
+    "/api/v1/chat/threads/{thread_id}/compaction/commit", response_model=CompactionCommitResponse
+)
+async def commit_compaction(
+    thread_id: str,
+    request: CompactionCommitRequest,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Commit compaction by creating a new segment with the summary."""
+    # Verify thread ownership
+    thread_stmt = (
+        select(ChatThread)
+        .where(ChatThread.id == thread_id)
+        .where(ChatThread.user_id == user_id)
+        .where(ChatThread.deleted_at.is_(None))
+    )
+    thread_result = await db.execute(thread_stmt)
+    thread = thread_result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Get current active segment
+    segment_stmt = (
+        select(ChatSessionSegment)
+        .where(ChatSessionSegment.thread_id == thread_id)
+        .order_by(desc(ChatSessionSegment.index))
+        .limit(1)
+    )
+    segment_result = await db.execute(segment_stmt)
+    current_segment = segment_result.scalar_one_or_none()
+
+    if not current_segment:
+        raise HTTPException(status_code=400, detail="No active segment found")
+
+    # Get the last message in the current segment to mark compaction point
+    last_msg_stmt = (
+        select(ChatMessage)
+        .where(ChatMessage.segment_id == current_segment.id)
+        .order_by(desc(ChatMessage.created_at))
+        .limit(1)
+    )
+    last_msg_result = await db.execute(last_msg_stmt)
+    last_message = last_msg_result.scalar_one_or_none()
+
+    # Update current segment with summary
+    current_segment.compaction_summary = request.summary
+    if last_message:
+        current_segment.compacted_from_message_id = last_message.id
+
+    # Create new segment
+    new_segment_id = str(uuid.uuid4())
+    new_segment = ChatSessionSegment(
+        id=new_segment_id,
+        thread_id=thread_id,
+        index=current_segment.index + 1,
+    )
+    db.add(new_segment)
+
+    await db.commit()
+
+    return CompactionCommitResponse(
+        success=True,
+        new_segment_id=new_segment_id,
+        message="Compaction successful. New segment created.",
+    )
 
 
 # --- WebSocket ---

@@ -227,15 +227,24 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
     : null;
 
   const chartDomain = useMemo(() => {
-    if (forecastStart && forecastEnd) {
-      return [new Date(forecastStart).getTime(), new Date(forecastEnd).getTime()] as [number, number];
-    }
-    if (!data.length) {
+    if (!data.length && !forecastStart && !forecastEnd) {
       return undefined;
     }
+    // Always include data points, current time, and last reading in domain calculation
+    // to ensure all indicators are visible even if forecast metadata differs
     const timestamps = data.map((point) => point.timestamp);
-    let min = Math.min(...timestamps, nowTimestamp);
-    let max = Math.max(...timestamps, nowTimestamp);
+    let min = nowTimestamp;
+    let max = nowTimestamp;
+    if (timestamps.length > 0) {
+      min = Math.min(min, ...timestamps);
+      max = Math.max(max, ...timestamps);
+    }
+    if (forecastStart) {
+      min = Math.min(min, new Date(forecastStart).getTime());
+    }
+    if (forecastEnd) {
+      max = Math.max(max, new Date(forecastEnd).getTime());
+    }
     if (lastReadingTimestamp !== null) {
       min = Math.min(min, lastReadingTimestamp);
       max = Math.max(max, lastReadingTimestamp);
