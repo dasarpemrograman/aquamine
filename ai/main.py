@@ -1155,7 +1155,7 @@ async def get_forecast_compatibility(
         wib = ZoneInfo("Asia/Jakarta")
         today_wib_date = now_utc.astimezone(wib).date()
 
-        created_at = getattr(prediction, "created_at", None)
+        created_at = getattr(prediction, "created_at", None) if prediction else None
         if prediction is None:
             should_refresh = True
         elif created_at is None or created_at.astimezone(wib).date() < today_wib_date:
