@@ -23,13 +23,6 @@ import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { StatusChip } from "@/app/components/ui/StatusChip";
 import { IconBadge } from "@/app/components/ui/IconBadge";
 import { fetchAlerts, fetchSensors, Sensor } from "@/lib/api";
-  sensor_id: string;
-  name: string;
-  latitude?: number | null;
-  longitude?: number | null;
-  is_active: boolean;
-  current_state?: string | null;
-}
 
 export default function Home() {
   const { getToken } = useAuth();
