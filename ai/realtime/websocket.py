@@ -58,10 +58,15 @@ class ConnectionManager:
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(retry_delay * 2, max_retry_delay)
 
-    async def publish_update(self, type: str, data: Dict):
-        """Publish update to Redis."""
+    async def get_redis_client(self) -> redis.Redis:
+        """Get or create a Redis client instance."""
         if not self.redis:
             self.redis = redis.from_url(self.redis_url)
+        return self.redis
+
+    async def publish_update(self, type: str, data: Dict):
+        """Publish update to Redis."""
+        client = await self.get_redis_client()
 
         message = json.dumps(
             {
@@ -70,7 +75,7 @@ class ConnectionManager:
                 "data": data,
             }
         )
-        await self.redis.publish("aquamine:updates", message)
+        await client.publish("aquamine:updates", message)
 
 
 manager = ConnectionManager()
