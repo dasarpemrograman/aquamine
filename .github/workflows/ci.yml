@@ -87,5 +87,5 @@ jobs:
       env:
         NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
         NEXT_PUBLIC_WS_BASE_URL: ws://localhost:8000
-        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_placeholder
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_12345678901234567890123456789012345678901234567890
       run: npm run build
