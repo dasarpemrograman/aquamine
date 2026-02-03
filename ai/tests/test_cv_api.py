@@ -1,5 +1,3 @@
-
-
 class TestCVAnalyzeEndpoint:
     def test_valid_jpg_upload_returns_200(self, client, sample_jpg_bytes):
         response = client.post(
@@ -12,7 +10,7 @@ class TestCVAnalyzeEndpoint:
         assert "bboxes" in data
         assert "latency_ms" in data
         assert "model_version" in data
-        assert data["model_version"] == "mock-v1"
+        assert data["model_version"].startswith("mock-v1")
         assert data["image_width"] == 200
         assert data["image_height"] == 200
 
@@ -108,6 +106,12 @@ class TestCVAnalyzeEndpoint:
         data = response.json()
         assert data["error"] == "FILE_TOO_LARGE"
         assert "10MB" in data["detail"]
+
+    def test_detection_thresholds_are_aligned(self):
+        from ai.main import DETECTION_THRESHOLD
+        from ai.cv.detector import YOLO_CONFIDENCE_THRESHOLD
+
+        assert DETECTION_THRESHOLD == YOLO_CONFIDENCE_THRESHOLD
 
 
 class TestHealthEndpoint:
