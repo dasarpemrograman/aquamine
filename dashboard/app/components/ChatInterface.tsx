@@ -41,12 +41,35 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
         });
         
         if (response.ok) {
-          const data = await response.json();
-          const formattedMessages = data.messages.map((m: any) => ({
-            role: m.role,
-            content: m.content,
-          }));
-          setMessages(formattedMessages);
+          const data: unknown = await response.json();
+          const messagesValue =
+            typeof data === "object" && data !== null && "messages" in data
+              ? (data as { messages?: unknown }).messages
+              : undefined;
+
+          if (Array.isArray(messagesValue)) {
+            const formattedMessages: ChatMessage[] = messagesValue
+              .map((message) => {
+                if (typeof message !== "object" || message === null) {
+                  return null;
+                }
+
+                const role = "role" in message ? (message as { role?: unknown }).role : undefined;
+                const content = "content" in message ? (message as { content?: unknown }).content : undefined;
+                if (typeof role !== "string" || typeof content !== "string") {
+                  return null;
+                }
+
+                if (role !== "user" && role !== "assistant") {
+                  return null;
+                }
+
+                return { role, content };
+              })
+              .filter((message): message is ChatMessage => message !== null);
+
+            setMessages(formattedMessages);
+          }
         }
       } catch (error) {
         console.error("Failed to fetch messages:", error);

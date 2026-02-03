@@ -23,7 +23,7 @@ import { GlassCard } from "@/app/components/ui/GlassCard";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { StatusChip } from "@/app/components/ui/StatusChip";
 import { IconBadge } from "@/app/components/ui/IconBadge";
-import { fetchAlerts, fetchSensors, Sensor } from "@/lib/api";
+import { fetchSensors, Sensor } from "@/lib/api";
 
 export default function Home() {
   const { getToken } = useAuth();
@@ -41,11 +41,7 @@ export default function Home() {
     async function fetchStats() {
       try {
         const token = await getToken();
-        // Parallel fetch with API helpers
-        const [sensorsData, alerts] = await Promise.all([
-            fetchSensors(token),
-            fetchAlerts(token)
-        ]);
+        const sensorsData = await fetchSensors(token);
 
         setSensors(Array.isArray(sensorsData) ? sensorsData : []);
 
@@ -53,11 +49,6 @@ export default function Home() {
         const active = activeSensors.length;
         const total = Array.isArray(sensorsData) ? sensorsData.length : 0;
         
-        const criticalAlerts = Array.isArray(alerts) ? alerts.filter((a: any) => a.severity === 'critical').length : 0;
-        const warningAlerts = Array.isArray(alerts) ? alerts.filter((a: any) => a.severity === 'warning').length : 0;
-        const inactiveSensors = total - active;
-        
-        // Sensor Availability: % of sensors that are online (easy to understand)
         const sensorAvailability = total > 0 ? Math.round((active / total) * 100) : 0;
 
         const getMostCriticalSensor = (): { status: string; name: string } => {

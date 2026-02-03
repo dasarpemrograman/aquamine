@@ -25,6 +25,35 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
 
   const refreshInterval = isDemoMode ? DEMO_REFRESH_INTERVAL : userRefreshInterval;
 
+  const checkSystemStatus = async () => {
+    try {
+      const healthRes = await fetchHealth();
+      const healthOk = healthRes.status === "ok";
+
+      let activeSensors = 0;
+      try {
+        const sensors: Sensor[] = await fetchSensors();
+        activeSensors = sensors.filter((sensor) => sensor.is_active).length;
+      } catch {
+        activeSensors = 0;
+      }
+
+      if (!healthOk) {
+        setStatus("critical");
+        setStatusLabel("System Offline");
+      } else if (activeSensors === 0) {
+        setStatus("warning");
+        setStatusLabel("No Active Sensors");
+      } else {
+        setStatus("active");
+        setStatusLabel("System Active");
+      }
+    } catch {
+      setStatus("critical");
+      setStatusLabel("System Offline");
+    }
+  };
+
   useEffect(() => {
     const checkDemoMode = () => {
       const enabled = localStorage.getItem(DEMO_MODE_STORAGE_KEY) === "true";
@@ -61,35 +90,6 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
       })
       .catch(() => {});
   }, [userId]);
-
-  const checkSystemStatus = async () => {
-    try {
-      const healthRes = await fetchHealth();
-      const healthOk = healthRes.status === "ok";
-
-      let activeSensors = 0;
-      try {
-        const sensors: Sensor[] = await fetchSensors();
-        activeSensors = sensors.filter((sensor) => sensor.is_active).length;
-      } catch {
-        activeSensors = 0;
-      }
-
-      if (!healthOk) {
-        setStatus("critical");
-        setStatusLabel("System Offline");
-      } else if (activeSensors === 0) {
-        setStatus("warning");
-        setStatusLabel("No Active Sensors");
-      } else {
-        setStatus("active");
-        setStatusLabel("System Active");
-      }
-    } catch {
-      setStatus("critical");
-      setStatusLabel("System Offline");
-    }
-  };
 
   return (
     <header className="sticky top-0 z-30 flex h-20 items-center justify-between px-4 md:px-8 backdrop-blur-md bg-white/40 border-b border-white/50 transition-all duration-300">

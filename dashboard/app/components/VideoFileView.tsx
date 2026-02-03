@@ -147,9 +147,10 @@ const VideoFileView = React.forwardRef<VideoFileViewHandle, VideoFileViewProps>(
       const result = await analyzeImage(frame);
       setAnalysisResult(result);
       setLastAnalyzedAt(new Date());
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Video inference error:", err);
-      setInferenceError(err?.message || "Analysis failed");
+      const error = err as Error;
+      setInferenceError(error?.message || "Analysis failed");
     } finally {
       isAnalyzingRef.current = false;
       setIsAnalyzing(false);

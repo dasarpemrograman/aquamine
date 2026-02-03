@@ -121,22 +121,23 @@ export default function LiveCameraView({
       if (onStreamReady) {
         onStreamReady(mediaStream);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to start camera:", err);
 
-      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+      const error = err as Error & { name?: string };
+      if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
         setPermissionDenied(true);
         setError("Camera permission denied. Please allow camera access and try again.");
-      } else if (err.name === "NotFoundError") {
+      } else if (error.name === "NotFoundError") {
         setError("No camera device found. Please connect a camera or use another mode.");
-      } else if (err.name === "NotReadableError") {
+      } else if (error.name === "NotReadableError") {
         setError("Camera is already in use by another application.");
       } else {
-        setError(`Camera error: ${err.message || "Unknown error"}`);
+        setError(`Camera error: ${error.message || "Unknown error"}`);
       }
 
       if (onError) {
-        onError(err);
+        onError(error);
       }
     } finally {
       setIsStarting(false);
@@ -224,9 +225,10 @@ export default function LiveCameraView({
       const result = await analyzeImage(frame);
       setAnalysisResult(result);
       setLastAnalyzedAt(new Date());
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Inference error:", err);
-      setInferenceError(err.message || "Analysis failed");
+      const error = err as Error;
+      setInferenceError(error.message || "Analysis failed");
     } finally {
       isAnalyzingRef.current = false;
       setIsAnalyzing(false);
