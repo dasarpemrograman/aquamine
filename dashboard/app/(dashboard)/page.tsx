@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import { 
   LayoutDashboard, 
   Activity, 
@@ -21,9 +22,7 @@ import { GlassCard } from "@/app/components/ui/GlassCard";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { StatusChip } from "@/app/components/ui/StatusChip";
 import { IconBadge } from "@/app/components/ui/IconBadge";
-
-interface Sensor {
-  id: number;
+import { fetchAlerts, fetchSensors, Sensor } from "@/lib/api";
   sensor_id: string;
   name: string;
   latitude?: number | null;
@@ -33,6 +32,7 @@ interface Sensor {
 }
 
 export default function Home() {
+  const { getToken } = useAuth();
   const [stats, setStats] = useState({
     healthScore: 100,
     activeSensors: 0,
@@ -46,13 +46,12 @@ export default function Home() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const [sensorsRes, alertsRes] = await Promise.all([
-            fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sensors`),
-            fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/alerts`)
+        const token = await getToken();
+        // Parallel fetch with API helpers
+        const [sensorsData, alerts] = await Promise.all([
+            fetchSensors(token),
+            fetchAlerts(token)
         ]);
-
-        const sensorsData = await sensorsRes.json();
-        const alerts = await alertsRes.json();
 
         setSensors(Array.isArray(sensorsData) ? sensorsData : []);
 
@@ -101,7 +100,7 @@ export default function Home() {
     fetchStats();
     const interval = setInterval(fetchStats, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [getToken]);
 
   return (
     <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">

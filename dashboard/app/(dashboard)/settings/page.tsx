@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Settings, Bell, Clock, RefreshCw, Check, AlertCircle, Globe } from "lucide-react";
-import { useUser } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
@@ -10,6 +10,7 @@ import { fetchSettings, updateSettings, UserSettings, UserSettingsUpdate } from 
 
 export default function SettingsPage() {
   const { user } = useUser();
+  const { getToken } = useAuth();
   const userId = user?.id || "anonymous";
   
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -39,7 +40,8 @@ export default function SettingsPage() {
   async function loadSettings() {
     setLoading(true);
     try {
-      const data = await fetchSettings(userId);
+      const token = await getToken();
+      const data = await fetchSettings(userId, token);
       setSettings(data);
       
       setFormData({
@@ -75,7 +77,8 @@ export default function SettingsPage() {
         payload.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       }
       
-      const updated = await updateSettings(userId, payload);
+      const token = await getToken();
+      const updated = await updateSettings(userId, payload, token);
       setSettings(updated);
       showToast("Settings saved successfully", "success");
     } catch (err) {

@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Volume2, VolumeX, Send } from "lucide-react";
 import { GlassPanel } from "@/app/components/ui/GlassPanel";
+import { sendChatMessage } from "@/lib/api";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -55,7 +56,7 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
     if (threadId) {
       fetchMessages();
     }
-  }, [threadId, getToken]);
+  }, [threadId, getToken, API_BASE]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -126,6 +127,11 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
 
     try {
       const token = await getToken();
+      // Using sendChatMessage from API library if possible, but it takes sessionId which might be threadId?
+      // Looking at lib/api.ts: sendChatMessage(message, sessionId, token) -> POST /api/v1/chat
+      // But here we are posting to /api/v1/chat/threads/${threadId}/messages
+      // So we should keep using fetch here for now as it's a different endpoint.
+      
       const response = await fetch(`${API_BASE}/api/v1/chat/threads/${threadId}/messages`, {
         method: "POST",
         headers: {
