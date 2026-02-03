@@ -39,7 +39,8 @@ DEFAULT_SENSOR_ID = "ESP32_AMD_001"
 DEFAULT_SENSOR_NAME = "Mining Site Alpha (Main)"
 DEFAULT_LATITUDE = 46.02
 DEFAULT_LONGITUDE = -112.51
-DEFAULT_API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000")
+DEFAULT_API_BASE = os.getenv("API_BASE_URL", "http://localhost:8181")
+INGEST_API_KEY = os.getenv("INGEST_API_KEY", "")
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,7 @@ async def _send_reading_http(
     api_base: str,
     sensor_id: str,
     reading: SimulatorReading,
+    ingest_key: str = "",
 ) -> bool:
     url = f"{api_base}/api/v1/sensors/ingest"
     payload = {
@@ -73,8 +75,11 @@ async def _send_reading_http(
             "signal_strength": reading.signal_strength,
         },
     }
+    headers = {}
+    if ingest_key:
+        headers["X-Ingest-Key"] = ingest_key
     try:
-        resp = await client.post(url, json=payload, timeout=10.0)
+        resp = await client.post(url, json=payload, headers=headers, timeout=10.0)
         resp.raise_for_status()
         return True
     except httpx.HTTPError as e:
@@ -240,7 +245,7 @@ async def run_backfill(args: argparse.Namespace) -> None:
         async with httpx.AsyncClient() as client:
             for i, reading in enumerate(readings):
                 if await _send_reading_http(
-                    client, args.api_base, args.sensor_id, reading
+                    client, args.api_base, args.sensor_id, reading, args.ingest_key
                 ):
                     success_count += 1
                 if (i + 1) % 10 == 0:
@@ -298,7 +303,7 @@ async def run_realtime(args: argparse.Namespace) -> None:
                 reading = _build_reading(timestamp, args.scenario)
 
                 success = await _send_reading_http(
-                    client, args.api_base, args.sensor_id, reading
+                    client, args.api_base, args.sensor_id, reading, args.ingest_key
                 )
 
                 count += 1
@@ -334,6 +339,11 @@ def parse_args() -> argparse.Namespace:
         "--interval-minutes", type=int, default=60, help="Backfill interval in minutes"
     )
     parser.add_argument("--api-base", default=DEFAULT_API_BASE, help="API Base URL")
+    parser.add_argument(
+        "--ingest-key",
+        default=INGEST_API_KEY,
+        help="API ingest key for X-Ingest-Key header (defaults to INGEST_API_KEY env var)",
+    )
     parser.add_argument(
         "--db-direct",
         action="store_true",

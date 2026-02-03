@@ -11,8 +11,8 @@ Backend:
 - Redis (cache + pub/sub)
 
 ML/AI:
-- Forecasting: TimeGPT (primary) + XGBoost (fallback)
-- Anomaly: Isolation Forest / robust z-score
+- Forecasting: TimeGPT
+- Anomaly: Threshold-based / robust z-score
 - CV: OpenCV (YOLOv8 optional)
 
 Frontend:
@@ -62,7 +62,7 @@ docker compose up -d
 ```
 
 3) Verify:
-- API: `http://localhost:8000/health`
+- API: `http://localhost:8181/health`
 - Dashboard: `http://localhost:3000`
 
 ## VPS Deployment (Ubuntu 22.04)
@@ -119,6 +119,28 @@ Common VPS issues and fixes:
 
 AquaMine uses Alembic for database schema migrations. Migrations run automatically when the API container starts.
 
+### Ingestion Authentication
+
+The ingestion endpoint (`/api/v1/sensors/ingest`) requires an API key for security.
+- **Environment Variable:** `INGEST_API_KEY`
+- **Header:** `X-Ingest-Key: <your-key>`
+
+### CI/CD and Testing
+
+A GitHub Actions CI workflow exists in `.github/workflows/ci.yml` that runs on every push to `main` and `develop`.
+
+To run tests locally:
+
+```bash
+# Backend tests
+cd ai
+pytest
+
+# Frontend build check
+cd dashboard
+npm run build
+```
+
 ### For Team Members (Pulling Changes)
 
 When pulling changes that modify database models:
@@ -152,4 +174,4 @@ See `ai/MIGRATION.md` for detailed documentation.
 ## Notes
 
 - TimescaleDB is optional. Start with Postgres + PostGIS, add TimescaleDB if time-series queries become heavy.
-- TimeGPT is primary for fast forecasting; keep XGBoost as fallback if the API is unavailable.
+- TimeGPT is primary for fast forecasting.

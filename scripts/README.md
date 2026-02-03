@@ -4,12 +4,13 @@ Use the ESP32 simulator to generate realistic water quality readings for the das
 
 ## Prerequisites
 
-- Start the backend stack (`docker compose up -d`) so the API is reachable at `http://localhost:8000`.
+- Start the backend stack (`docker compose up -d`) so the API is reachable at `http://localhost:8181`.
 - Install dependencies: `pip install httpx` (if running locally outside the container).
+- Ensure `INGEST_API_KEY` is set in your `.env` file.
 
 ## Usage
 
-By default, the simulator sends data to the API ingest endpoint (`/api/v1/sensors/ingest`).
+By default, the simulator sends data to the API ingest endpoint (`/api/v1/sensors/ingest`). It uses the `X-Ingest-Key` header for authentication.
 
 ### Backfill
 
@@ -43,10 +44,10 @@ python scripts/esp32_simulator.py --realtime --count=5
 
 **Custom API URL:**
 
-Override the default `http://localhost:8000`:
+Override the default `http://localhost:8181`:
 
 ```bash
-python scripts/esp32_simulator.py --realtime --api-base http://your-vps-ip:8000
+python scripts/esp32_simulator.py --realtime --api-base http://your-vps-ip:8181
 ```
 
 **Direct Database Access (Legacy/Debug):**
