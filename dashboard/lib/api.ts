@@ -71,8 +71,28 @@ export interface Alert {
 export interface Sensor {
   id: number;
   sensor_id: string;
+  name: string;
+  latitude?: number | null;
+  longitude?: number | null;
   is_active: boolean;
+  created_at?: string;
+  current_state?: string | null;
 }
+
+export interface RecipientBase {
+  name: string;
+  phone: string | null;
+  email: string | null;
+  is_active: boolean;
+  notify_warning: boolean;
+  notify_critical: boolean;
+}
+
+export interface Recipient extends RecipientBase {
+  id: number;
+}
+
+export interface RecipientCreate extends RecipientBase {}
 
 export async function analyzeImage(file: File): Promise<AnalysisResponse> {
   const formData = new FormData();
@@ -97,7 +117,7 @@ export async function analyzeImage(file: File): Promise<AnalysisResponse> {
 export async function sendChatMessage(
   message: string,
   sessionId: string,
-  token?: string
+  token?: string | null
 ): Promise<ChatResponse> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json"
@@ -124,11 +144,16 @@ export async function sendChatMessage(
   return response.json();
 }
 
-export async function fetchSettings(userId: string): Promise<UserSettings> {
+export async function fetchSettings(userId: string, token?: string | null): Promise<UserSettings> {
+  const headers: Record<string, string> = {
+    "x-user-id": userId,
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_BASE}/api/v1/settings/${userId}`, {
-      headers: {
-        "x-user-id": userId,
-      },
+      headers,
   });
 
   if (!response.ok) {
@@ -144,14 +169,20 @@ export async function fetchSettings(userId: string): Promise<UserSettings> {
 
 export async function updateSettings(
   userId: string,
-  payload: UserSettingsUpdate
+  payload: UserSettingsUpdate,
+  token?: string | null
 ): Promise<UserSettings> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-user-id": userId,
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_BASE}/api/v1/settings/${userId}`, {
     method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      "x-user-id": userId,
-    },
+    headers,
     body: JSON.stringify(payload)
   });
 
@@ -166,8 +197,13 @@ export async function updateSettings(
   return response.json();
 }
 
-export async function fetchAlerts(): Promise<Alert[]> {
-  const response = await fetch(`${API_BASE}/api/v1/alerts`);
+export async function fetchAlerts(token?: string | null): Promise<Alert[]> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  
+  const response = await fetch(`${API_BASE}/api/v1/alerts`, { headers });
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({
@@ -180,8 +216,13 @@ export async function fetchAlerts(): Promise<Alert[]> {
   return response.json();
 }
 
-export async function fetchSensors(): Promise<Sensor[]> {
-  const response = await fetch(`${API_BASE}/api/v1/sensors`);
+export async function fetchSensors(token?: string | null): Promise<Sensor[]> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/sensors`, { headers });
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({
@@ -194,9 +235,15 @@ export async function fetchSensors(): Promise<Sensor[]> {
   return response.json();
 }
 
-export async function acknowledgeAlert(alertId: number): Promise<Alert> {
+export async function acknowledgeAlert(alertId: number, token?: string | null): Promise<Alert> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_BASE}/api/v1/alerts/${alertId}/acknowledge`, {
-    method: "POST"
+    method: "POST",
+    headers,
   });
 
   if (!response.ok) {
@@ -208,6 +255,91 @@ export async function acknowledgeAlert(alertId: number): Promise<Alert> {
   }
 
   return response.json();
+}
+
+export async function fetchRecipients(token?: string | null): Promise<Recipient[]> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/recipients`, { headers });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+        error: "Unknown error",
+        detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function createRecipient(payload: RecipientCreate, token?: string | null): Promise<Recipient> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/recipients`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+        error: "Unknown error",
+        detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function updateRecipient(id: number, payload: Partial<RecipientBase>, token?: string | null): Promise<Recipient> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/recipients/${id}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+        error: "Unknown error",
+        detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function deleteRecipient(id: number, token?: string | null): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/recipients/${id}`, {
+    method: "DELETE",
+    headers,
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+        error: "Unknown error",
+        detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
 }
 
 export async function fetchHealth(): Promise<{ status: string }> {
