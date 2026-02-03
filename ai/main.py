@@ -841,7 +841,7 @@ async def ingest_sensor_data(
     payload: SensorDataIngest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
 ):
     try:
-        await process_mqtt_message(payload)
+        await process_mqtt_message(payload, session=db)
 
         result = await db.execute(select(Sensor).where(Sensor.sensor_id == payload.sensor_id))
         sensor = result.scalar_one_or_none()
