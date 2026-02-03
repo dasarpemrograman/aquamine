@@ -1,8 +1,13 @@
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool, create_engine
-from alembic import context
 import os
 import sys
+import importlib
+from typing import Any
+
+from sqlalchemy import engine_from_config, pool
+
+
+context: Any = importlib.import_module("alembic.context")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -20,10 +25,15 @@ def get_url():
     url = os.getenv(
         "DATABASE_URL", "postgresql+psycopg://aquamine:changeme@localhost:5432/aquamine_db"
     )
+
+    # Alembic runs migrations via a synchronous SQLAlchemy engine.
+    # This project uses psycopg (v3) rather than psycopg2, so normalize URLs to psycopg.
     if url.startswith("postgresql+asyncpg://"):
-        url = url.replace("postgresql+asyncpg://", "postgresql://")
-    if url.startswith("postgresql+psycopg://"):
-        url = url.replace("postgresql+psycopg://", "postgresql://")
+        url = url.replace("postgresql+asyncpg://", "postgresql+psycopg://")
+    if url.startswith("postgresql+psycopg2://"):
+        url = url.replace("postgresql+psycopg2://", "postgresql+psycopg://")
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
     return url
 
 

@@ -1,7 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager, suppress
-from datetime import date, datetime, timedelta, timezone
-from typing import List, Literal, Optional, Any
+from datetime import datetime, timedelta, timezone
+from typing import List, Literal, Optional, Any, cast
 from zoneinfo import ZoneInfo
 
 from fastapi import (
@@ -22,6 +22,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from starlette.responses import Response
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError
 import io
@@ -38,7 +39,7 @@ from sqlalchemy.orm import selectinload
 
 # Import CV modules
 from .schemas.cv import BoundingBox, ImageAnalysisResponse
-from .cv.detector import YellowBoyDetector, ImageDecodeError
+from .cv.detector import YellowBoyDetector, ImageDecodeError, YOLO_CONFIDENCE_THRESHOLD
 from .utils.responses import error_response
 from .chatbot.orchestrator import ChatOrchestrator, SYSTEM_PROMPT
 from .chatbot.summarizer import generate_thread_title
@@ -95,8 +96,16 @@ from .anomaly.detector import AnomalyDetector, ANOMALY_THRESHOLDS
 from .alerts.state_machine import AlertStateMachine
 from .alerts.notifications import NotificationService
 from .realtime.websocket import manager as ws_manager
+from .routers.analytics import router as analytics_router
 
 logger = logging.getLogger(__name__)
+
+# Keep API upload limit aligned with Nginx `client_max_body_size 10m`.
+CV_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+# Detection confidence threshold for yellow boy.
+# Keep aligned with YOLO's `conf` filtering in `ai/cv/detector.py`.
+DETECTION_THRESHOLD = YOLO_CONFIDENCE_THRESHOLD
 
 # Rate limiting setup
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
@@ -116,35 +125,10 @@ QUIET_HOURS_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 FORECAST_REGEN_DATA_THRESHOLD_HOURS = 6  # Minimum new data hours to trigger dynamic regeneration
 FORECAST_REGEN_MIN_INTERVAL_MINUTES = 30  # Minimum interval between regenerations per sensor
 
-# In-memory rate limiting for forecast regeneration.
-# Keyed by (sensor_id, WIB date). Value is the UTC timestamp of the last successful regeneration.
-_last_forecast_regeneration: dict[tuple[int, date], datetime] = {}
-# Keyed by sensor_id. Value is the UTC timestamp of the last failed regeneration attempt.
-_last_forecast_failure: dict[int, datetime] = {}
-
-
-def _cleanup_forecast_regeneration_cache(cutoff_days: int = 7) -> None:
-    """Remove old entries from forecast regeneration cache to prevent memory leak.
-
-    Args:
-        cutoff_days: Remove entries older than this many days (default: 7)
-    """
-    global _last_forecast_regeneration
-    if not _last_forecast_regeneration:
-        return
-
-    from datetime import timedelta
-
-    today = datetime.now(timezone.utc).date()
-    cutoff_date = today - timedelta(days=cutoff_days)
-
-    keys_to_remove = [key for key in _last_forecast_regeneration.keys() if key[1] < cutoff_date]
-
-    for key in keys_to_remove:
-        del _last_forecast_regeneration[key]
-
-    if keys_to_remove:
-        logger.debug(f"Cleaned up {len(keys_to_remove)} old forecast regeneration entries")
+# Redis-based gating/locking TTLs for forecast regeneration.
+FORECAST_REGEN_LOCK_TTL_SECONDS = 300
+FORECAST_REGEN_TS_TTL_SECONDS = 7 * 24 * 60 * 60
+FORECAST_REGEN_FAILURE_TTL_SECONDS = FORECAST_REGEN_MIN_INTERVAL_MINUTES * 60
 
 
 INGEST_API_KEY = settings.INGEST_API_KEY
@@ -153,7 +137,7 @@ INGEST_API_KEY = settings.INGEST_API_KEY
 def verify_ingest_token(x_ingest_key: Optional[str] = Header(None, alias="X-Ingest-Key")) -> str:
     """Verify the request has a valid ingest key."""
     # INGEST_API_KEY is guaranteed by settings validation
-    if x_ingest_key != INGEST_API_KEY:
+    if not x_ingest_key or x_ingest_key != INGEST_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing ingest key")
     return x_ingest_key
 
@@ -190,9 +174,15 @@ async def lifespan(app: FastAPI):
             await task
 
 
+def rate_limit_exceeded_handler(request: Request, exc: Exception) -> Response:
+    if not isinstance(exc, RateLimitExceeded):
+        raise exc
+    return _rate_limit_exceeded_handler(request, exc)
+
+
 app = FastAPI(title="AquaMine AI API", lifespan=lifespan)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # Setup services
 cors_origins = settings.CORS_ORIGINS
@@ -203,6 +193,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Routers
+app.include_router(analytics_router)
 
 # Proxy headers middleware for correct client IP/protocol behind Nginx
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
@@ -774,10 +767,13 @@ async def analyze_image(request: Request, file: Optional[UploadFile] = File(None
 
     content = await file.read()
 
-    if len(content) > 5 * 1024 * 1024:
+    if len(content) > CV_MAX_UPLOAD_BYTES:
         size_mb = len(content) / (1024 * 1024)
+        limit_mb = CV_MAX_UPLOAD_BYTES / (1024 * 1024)
         return error_response(
-            413, "FILE_TOO_LARGE", f"File exceeds 5MB limit. Received: {size_mb:.1f}MB"
+            413,
+            "FILE_TOO_LARGE",
+            f"File exceeds {limit_mb:.0f}MB limit. Received: {size_mb:.1f}MB",
         )
 
     if file.content_type not in ["image/jpeg", "image/png"]:
@@ -801,9 +797,6 @@ async def analyze_image(request: Request, file: Optional[UploadFile] = File(None
     except Exception as e:
         return error_response(500, "INFERENCE_FAILED", f"Model inference failed: {str(e)}")
     elapsed_ms = int((time.perf_counter() - start_time) * 1000)
-
-    # Detection confidence threshold for yellow boy
-    DETECTION_THRESHOLD = 0.65
 
     # Filter detections by threshold
     valid_detections = [d for d in detections if d.confidence >= DETECTION_THRESHOLD]
@@ -888,8 +881,8 @@ async def ingest_sensor_data(
         if not sensor:
             raise HTTPException(status_code=404, detail="Sensor not found after ingestion")
 
-        # --- Alert State Management (Persistence) ---
-        # 1. Fetch current state from DB
+        # --- Alert State Management (DB source of truth) ---
+        # Fetch current state from DB
         stmt = select(SensorAlertState).where(SensorAlertState.sensor_id == sensor.id)
         result = await db.execute(stmt)
         db_state = result.scalar_one_or_none()
@@ -897,16 +890,12 @@ async def ingest_sensor_data(
         if not db_state:
             db_state = SensorAlertState(sensor_id=sensor.id, current_state="normal")
             db.add(db_state)
-            await db.commit()
-            await db.refresh(db_state)
 
         anomalies = anomaly_detector.detect_threshold_anomalies(
             sensor.id,
             {key: value for key, value in payload.readings.items() if value is not None},
             payload.timestamp,
         )
-
-        alert_triggered = None  # Track if any alert happened to update DB
 
         if anomalies:
             for anom in anomalies:
@@ -923,9 +912,14 @@ async def ingest_sensor_data(
                 severity = "critical" if "critical" in (anom.detection_method or "") else "warning"
                 message = f"{anom.parameter.upper()} {severity}: {anom.value:.2f}"
 
-                alert = await alert_sm.process_anomaly(sensor.id, severity, message)
+                alert, new_state, new_last_alert_at = alert_sm.process_anomaly(
+                    sensor_id=sensor.id,
+                    severity=severity,
+                    message=message,
+                    current_state=db_state.current_state,
+                    last_alert_at=db_state.last_alert_at,
+                )
                 if alert:
-                    alert_triggered = alert  # Keep track
                     db_alert = Alert(
                         sensor_id=alert.sensor_id,
                         severity=alert.severity,
@@ -933,8 +927,9 @@ async def ingest_sensor_data(
                         message=alert.message,
                     )
                     db.add(db_alert)
-                    await db.commit()
-                    await db.refresh(db_alert)
+
+                    db_state.current_state = new_state
+                    db_state.last_alert_at = new_last_alert_at
 
                     # Fetch recipients
                     recipients_result = await db.execute(
@@ -972,9 +967,12 @@ async def ingest_sensor_data(
                     )
         else:
             # Check for recovery
-            alert = await alert_sm.process_recovery(sensor.id)
+            alert, new_state, new_last_alert_at = alert_sm.process_recovery(
+                sensor_id=sensor.id,
+                current_state=db_state.current_state,
+                last_alert_at=db_state.last_alert_at,
+            )
             if alert:
-                alert_triggered = alert  # Keep track
                 db_alert = Alert(
                     sensor_id=alert.sensor_id,
                     severity=alert.severity,
@@ -982,8 +980,9 @@ async def ingest_sensor_data(
                     message=alert.message,
                 )
                 db.add(db_alert)
-                await db.commit()
-                await db.refresh(db_alert)
+
+                db_state.current_state = new_state
+                db_state.last_alert_at = new_last_alert_at
 
                 # Fetch recipients
                 recipients_result = await db.execute(
@@ -1013,18 +1012,6 @@ async def ingest_sensor_data(
                     "alert",
                     {"severity": alert.severity, "message": alert.message, "sensor_id": sensor.id},
                 )
-
-        # 3. Update Alert State in DB if changed
-        if alert_triggered:
-            # If severity is 'info' (recovery), new state is normal
-            new_state = "normal" if alert_triggered.severity == "info" else alert_triggered.severity
-            db_state.current_state = new_state
-            # We use DB timestamp for consistency, but alert_triggered doesn't have it (it's Pydantic)
-            # Use current time or db_alert.created_at if available.
-            # db_alert is local in loop, not available here easily. Use datetime.now()
-            db_state.last_alert_at = datetime.now(timezone.utc)
-            db.add(db_state)
-            await db.commit()
 
         await db.commit()
 
@@ -1184,12 +1171,6 @@ async def get_forecast_compatibility(
         stale_reason = staleness.get("stale_reason")
         forecast_warning = f"pH forecast may be stale ({stale_reason})"
 
-        refreshable_reasons = {
-            "no_prediction",
-            "forecast_end_before_window_end",
-            "created_before_today_wib",
-        }
-
         # Explicit precedence checks for refresh
         should_refresh = False
         wib = ZoneInfo("Asia/Jakarta")
@@ -1204,31 +1185,27 @@ async def get_forecast_compatibility(
             should_refresh = True
 
         if should_refresh:
-            regen_key = (payload.sensor_id, today_wib_date)
-
             refresh_allowed = False
             already_refreshed_today = False
             refresh_in_progress = False
             refresh_cooldown = False
 
             # Distributed locking with Redis
-            redis_client = await ws_manager.get_redis_client()
+            redis_client: Any = await ws_manager.get_redis_client()
             regen_lock_key = f"forecast:regen:lock:{payload.sensor_id}:{today_wib_date}"
             regen_ts_key = f"forecast:regen:ts:{payload.sensor_id}:{today_wib_date}"
             regen_fail_key = f"forecast:regen:failure:{payload.sensor_id}"
 
-            # 1. Check Local & Redis Success Cache
-            last_regen = _last_forecast_regeneration.get(regen_key)
-            if not last_regen:
-                try:
-                    ts_val = await redis_client.get(regen_ts_key)
-                    if ts_val:
-                        last_regen = datetime.fromisoformat(ts_val.decode("utf-8"))
-                        _last_forecast_regeneration[regen_key] = last_regen
-                except Exception:
-                    logger.warning(
-                        "Failed to check Redis for forecast regeneration timestamp", exc_info=True
-                    )
+            # 1. Check Redis Success Timestamp
+            last_regen = None
+            try:
+                ts_val = await redis_client.get(regen_ts_key)
+                if ts_val:
+                    last_regen = datetime.fromisoformat(ts_val.decode("utf-8"))
+            except Exception:
+                logger.warning(
+                    "Failed to check Redis for forecast regeneration timestamp", exc_info=True
+                )
 
             if last_regen:
                 minutes_since = (now_utc - last_regen).total_seconds() / 60
@@ -1244,8 +1221,6 @@ async def get_forecast_compatibility(
                         minutes_since_fail = (now_utc - last_fail).total_seconds() / 60
                         if minutes_since_fail < FORECAST_REGEN_MIN_INTERVAL_MINUTES:
                             refresh_cooldown = True
-                            # Sync local cache
-                            _last_forecast_failure[payload.sensor_id] = last_fail
                 except Exception:
                     logger.warning(
                         "Failed to check Redis for forecast failure timestamp", exc_info=True
@@ -1254,10 +1229,14 @@ async def get_forecast_compatibility(
             # 3. Attempt Lock & Regenerate
             if not already_refreshed_today and not refresh_cooldown:
                 lock_acquired = False
+                lock_token = None
                 try:
-                    # TTL 300s (5 mins)
+                    lock_token = str(uuid.uuid4())
                     lock_acquired = await redis_client.set(
-                        regen_lock_key, "locked", nx=True, ex=300
+                        regen_lock_key,
+                        lock_token,
+                        nx=True,
+                        ex=FORECAST_REGEN_LOCK_TTL_SECONDS,
                     )
                 except Exception:
                     logger.warning("Failed to acquire Redis lock", exc_info=True)
@@ -1281,23 +1260,40 @@ async def get_forecast_compatibility(
                 finally:
                     # Release lock
                     try:
-                        await redis_client.delete(regen_lock_key)
+                        if lock_token is not None:
+                            await redis_client.eval(
+                                """
+                                if redis.call('get', KEYS[1]) == ARGV[1] then
+                                    return redis.call('del', KEYS[1])
+                                else
+                                    return 0
+                                end
+                                """,
+                                1,
+                                regen_lock_key,
+                                lock_token,
+                            )
                     except Exception:
                         logger.warning("Failed to release Redis lock", exc_info=True)
 
                     if generation_success:
-                        _last_forecast_regeneration[regen_key] = now_utc
-                        _cleanup_forecast_regeneration_cache()
                         # Store in Redis
                         try:
-                            await redis_client.set(regen_ts_key, now_utc.isoformat())
+                            await redis_client.set(
+                                regen_ts_key,
+                                now_utc.isoformat(),
+                                ex=FORECAST_REGEN_TS_TTL_SECONDS,
+                            )
                         except Exception:
                             logger.error("Failed to store forecast regeneration timestamp in Redis")
                     else:
-                        _last_forecast_failure[payload.sensor_id] = now_utc
                         # Store in Redis
                         try:
-                            await redis_client.set(regen_fail_key, now_utc.isoformat())
+                            await redis_client.set(
+                                regen_fail_key,
+                                now_utc.isoformat(),
+                                ex=FORECAST_REGEN_FAILURE_TTL_SECONDS,
+                            )
                         except Exception:
                             logger.error("Failed to store forecast failure timestamp in Redis")
 
@@ -1555,6 +1551,9 @@ async def delete_recipient(
 
 @app.delete("/api/v1/test-data")
 async def clear_test_data(db: AsyncSession = Depends(get_db)):
+    if settings.ENVIRONMENT != "test":
+        raise HTTPException(status_code=404, detail="Not found")
+
     anomalies_stmt = delete(Anomaly).where(
         Anomaly.detection_method == "threshold_critical", Anomaly.value.in_([1.5, 2.0])
     )
@@ -1972,7 +1971,10 @@ async def send_message(
 
     # Get response from LLM
     # Build conversation history
-    conversation = [{"role": "system", "content": SYSTEM_PROMPT}]
+    conversation = cast(
+        list[dict[str, Any]],
+        [{"role": "system", "content": SYSTEM_PROMPT}],
+    )
     for msg in existing_messages:
         conversation.append(
             {"role": msg.role, "content": msg.content, "token_estimate": msg.token_estimate}

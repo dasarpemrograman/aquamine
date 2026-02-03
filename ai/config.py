@@ -33,6 +33,13 @@ class Settings(BaseModel):
     FONNTE_API_TOKEN: Optional[str] = None
     CEREBRAS_API_KEY: Optional[str] = None
 
+    # Compliance standards (separate from alert/anomaly thresholds)
+    COMPLIANCE_PH_MIN: float = 6.5
+    COMPLIANCE_PH_MAX: float = 8.5
+    COMPLIANCE_TURBIDITY_MAX_NTU: float = 50
+    COMPLIANCE_TEMPERATURE_MAX_C: float = 35
+    COMPLIANCE_STANDARD_SOURCE: str = "Kepmenkes/PROPER"
+
     # IoT / MQTT Configuration (With Defaults)
     MQTT_BROKER: str = "broker.hivemq.com"
     MQTT_PORT: int = 1883
