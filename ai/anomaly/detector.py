@@ -66,6 +66,32 @@ class AnomalyDetector:
                     )
                 )
 
+        # Check Temperature
+        if "temperature" in reading and reading["temperature"] is not None:
+            val = reading["temperature"]
+            if val > self.thresholds["temperature"]["critical_high"]:
+                anomalies.append(
+                    self._create_anomaly(
+                        sensor_id,
+                        timestamp,
+                        "temperature",
+                        val,
+                        10.0,
+                        "threshold_critical",
+                    )
+                )
+            elif val > self.thresholds["temperature"]["warning_high"]:
+                anomalies.append(
+                    self._create_anomaly(
+                        sensor_id,
+                        timestamp,
+                        "temperature",
+                        val,
+                        5.0,
+                        "threshold_warning",
+                    )
+                )
+
         return anomalies
 
     def _create_anomaly(

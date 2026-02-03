@@ -47,3 +47,25 @@ def test_turbidity_thresholds():
     assert len(anomalies) == 1
     assert anomalies[0].parameter == "turbidity"
     assert anomalies[0].detection_method == "threshold_critical"
+
+
+def test_temperature_thresholds():
+    detector = AnomalyDetector()
+    sensor_id = 1
+    ts = datetime.now(timezone.utc)
+
+    # Normal
+    anomalies = detector.detect_threshold_anomalies(sensor_id, {"temperature": 30.0}, ts)
+    assert len(anomalies) == 0
+
+    # Warning
+    anomalies = detector.detect_threshold_anomalies(sensor_id, {"temperature": 36.0}, ts)
+    assert len(anomalies) == 1
+    assert anomalies[0].parameter == "temperature"
+    assert anomalies[0].detection_method == "threshold_warning"
+
+    # Critical
+    anomalies = detector.detect_threshold_anomalies(sensor_id, {"temperature": 41.0}, ts)
+    assert len(anomalies) == 1
+    assert anomalies[0].parameter == "temperature"
+    assert anomalies[0].detection_method == "threshold_critical"

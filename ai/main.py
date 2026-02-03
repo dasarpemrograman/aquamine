@@ -104,8 +104,6 @@ FORECAST_REGEN_MIN_INTERVAL_MINUTES = 30  # Minimum interval between regeneratio
 _last_forecast_regeneration: dict[tuple[int, date], datetime] = {}
 # Keyed by sensor_id. Value is the UTC timestamp of the last failed regeneration attempt.
 _last_forecast_failure: dict[int, datetime] = {}
-_forecast_regeneration_inflight: set[tuple[int, date]] = set()
-_forecast_regeneration_lock = asyncio.Lock()
 
 
 def _cleanup_forecast_regeneration_cache(cutoff_days: int = 7) -> None:
@@ -132,23 +130,34 @@ def _cleanup_forecast_regeneration_cache(cutoff_days: int = 7) -> None:
         logger.debug(f"Cleaned up {len(keys_to_remove)} old forecast regeneration entries")
 
 
-def verify_user_id(user_id: str, x_user_id: Optional[str] = Header(None, alias="x-user-id")) -> str:
-    """Verify the path user_id matches the authenticated user from the X-User-Id header.
+INGEST_API_KEY = os.getenv("INGEST_API_KEY")
 
-    The frontend must send the authenticated user's ID in the X-User-Id header.
+
+def verify_ingest_token(x_ingest_key: Optional[str] = Header(None, alias="X-Ingest-Key")) -> str:
+    """Verify the request has a valid ingest key."""
+    if not INGEST_API_KEY:
+        # Log warning but allow if not configured? No, deny by default for security.
+        logger.warning("INGEST_API_KEY not set in environment")
+        raise HTTPException(
+            status_code=500, detail="Server configuration error: Ingest key not set"
+        )
+
+    if x_ingest_key != INGEST_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing ingest key")
+    return x_ingest_key
+
+
+def verify_user_id(user_id: str, token_user: str = Depends(get_current_user)) -> str:
+    """Verify the path user_id matches the authenticated user from the Clerk token.
+
     This prevents users from accessing other users' settings by manipulating the URL.
     """
-    if not x_user_id:
-        raise HTTPException(
-            status_code=401,
-            detail="Missing X-User-Id header - authentication required",
-        )
-    if x_user_id != user_id:
+    if user_id != token_user:
         raise HTTPException(
             status_code=403,
             detail="Access denied - cannot access another user's settings",
         )
-    return user_id
+    return token_user
 
 
 @asynccontextmanager
@@ -838,7 +847,10 @@ async def get_sensor_readings(sensor_id: int, hours: int = 24, db: AsyncSession 
 
 @app.post("/api/v1/sensors/ingest")
 async def ingest_sensor_data(
-    payload: SensorDataIngest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
+    payload: SensorDataIngest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    token: str = Depends(verify_ingest_token),
 ):
     try:
         await process_mqtt_message(payload, session=db)
@@ -1171,30 +1183,61 @@ async def get_forecast_compatibility(
             refresh_in_progress = False
             refresh_cooldown = False
 
-            # Single critical section: hold lock for entire decision-making to prevent race conditions
-            async with _forecast_regeneration_lock:
-                if regen_key in _last_forecast_regeneration:
-                    last_regen = _last_forecast_regeneration[regen_key]
-                    minutes_since = (now_utc - last_regen).total_seconds() / 60
-                    if minutes_since < FORECAST_REGEN_MIN_INTERVAL_MINUTES:
-                        already_refreshed_today = True
-                    else:
-                        _forecast_regeneration_inflight.add(regen_key)
-                        refresh_allowed = True
-                elif regen_key in _forecast_regeneration_inflight:
-                    refresh_in_progress = True
-                elif payload.sensor_id in _last_forecast_failure:
-                    # Check failure cooldown (30 min)
-                    last_fail = _last_forecast_failure[payload.sensor_id]
-                    minutes_since_fail = (now_utc - last_fail).total_seconds() / 60
-                    if minutes_since_fail < FORECAST_REGEN_MIN_INTERVAL_MINUTES:
-                        refresh_cooldown = True
-                    else:
-                        _forecast_regeneration_inflight.add(regen_key)
-                        refresh_allowed = True
-                else:
-                    _forecast_regeneration_inflight.add(regen_key)
+            # Distributed locking with Redis
+            redis_client = await ws_manager.get_redis_client()
+            regen_lock_key = f"forecast:regen:lock:{payload.sensor_id}:{today_wib_date}"
+            regen_ts_key = f"forecast:regen:ts:{payload.sensor_id}:{today_wib_date}"
+            regen_fail_key = f"forecast:regen:failure:{payload.sensor_id}"
+
+            # 1. Check Local & Redis Success Cache
+            last_regen = _last_forecast_regeneration.get(regen_key)
+            if not last_regen:
+                try:
+                    ts_val = await redis_client.get(regen_ts_key)
+                    if ts_val:
+                        last_regen = datetime.fromisoformat(ts_val.decode("utf-8"))
+                        _last_forecast_regeneration[regen_key] = last_regen
+                except Exception:
+                    logger.warning(
+                        "Failed to check Redis for forecast regeneration timestamp", exc_info=True
+                    )
+
+            if last_regen:
+                minutes_since = (now_utc - last_regen).total_seconds() / 60
+                if minutes_since < FORECAST_REGEN_MIN_INTERVAL_MINUTES:
+                    already_refreshed_today = True
+
+            # 2. Check Redis Failure Cache
+            if not already_refreshed_today:
+                try:
+                    fail_val = await redis_client.get(regen_fail_key)
+                    if fail_val:
+                        last_fail = datetime.fromisoformat(fail_val.decode("utf-8"))
+                        minutes_since_fail = (now_utc - last_fail).total_seconds() / 60
+                        if minutes_since_fail < FORECAST_REGEN_MIN_INTERVAL_MINUTES:
+                            refresh_cooldown = True
+                            # Sync local cache
+                            _last_forecast_failure[payload.sensor_id] = last_fail
+                except Exception:
+                    logger.warning(
+                        "Failed to check Redis for forecast failure timestamp", exc_info=True
+                    )
+
+            # 3. Attempt Lock & Regenerate
+            if not already_refreshed_today and not refresh_cooldown:
+                lock_acquired = False
+                try:
+                    # TTL 300s (5 mins)
+                    lock_acquired = await redis_client.set(
+                        regen_lock_key, "locked", nx=True, ex=300
+                    )
+                except Exception:
+                    logger.warning("Failed to acquire Redis lock", exc_info=True)
+
+                if lock_acquired:
                     refresh_allowed = True
+                else:
+                    refresh_in_progress = True
 
             if refresh_allowed:
                 generation_success = False
@@ -1208,16 +1251,27 @@ async def get_forecast_compatibility(
                 except Exception as e:
                     generation_result = {"status": "error", "message": str(e)}
                 finally:
-                    async with _forecast_regeneration_lock:
-                        if generation_success:
-                            _last_forecast_regeneration[regen_key] = now_utc
-                            # Cleanup old entries to prevent memory leak
-                            _cleanup_forecast_regeneration_cache()
-                        else:
-                            # Record failure timestamp for cooldown
-                            _last_forecast_failure[payload.sensor_id] = now_utc
+                    # Release lock
+                    try:
+                        await redis_client.delete(regen_lock_key)
+                    except Exception:
+                        logger.warning("Failed to release Redis lock", exc_info=True)
 
-                        _forecast_regeneration_inflight.discard(regen_key)
+                    if generation_success:
+                        _last_forecast_regeneration[regen_key] = now_utc
+                        _cleanup_forecast_regeneration_cache()
+                        # Store in Redis
+                        try:
+                            await redis_client.set(regen_ts_key, now_utc.isoformat())
+                        except Exception:
+                            logger.error("Failed to store forecast regeneration timestamp in Redis")
+                    else:
+                        _last_forecast_failure[payload.sensor_id] = now_utc
+                        # Store in Redis
+                        try:
+                            await redis_client.set(regen_fail_key, now_utc.isoformat())
+                        except Exception:
+                            logger.error("Failed to store forecast failure timestamp in Redis")
 
                 if generation_success:
                     refreshed_result = await db.execute(prediction_query)
@@ -1329,7 +1383,10 @@ async def list_anomalies(
 
 @app.get("/api/v1/alerts", response_model=List[AlertResponse])
 async def list_alerts(
-    severity: Optional[str] = None, limit: int = 50, db: AsyncSession = Depends(get_db)
+    severity: Optional[str] = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
 ):
     query = select(Alert).order_by(desc(Alert.created_at)).limit(limit)
     if severity:
@@ -1406,7 +1463,11 @@ async def update_user_settings(
 
 
 @app.post("/api/v1/recipients", response_model=RecipientResponse)
-async def create_recipient(recipient: RecipientCreate, db: AsyncSession = Depends(get_db)):
+async def create_recipient(
+    recipient: RecipientCreate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
     db_recipient = NotificationRecipient(**recipient.model_dump())
     db.add(db_recipient)
     await db.commit()
@@ -1415,7 +1476,9 @@ async def create_recipient(recipient: RecipientCreate, db: AsyncSession = Depend
 
 
 @app.get("/api/v1/recipients", response_model=List[RecipientResponse])
-async def list_recipients(db: AsyncSession = Depends(get_db)):
+async def list_recipients(
+    db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user)
+):
     result = await db.execute(select(NotificationRecipient).order_by(NotificationRecipient.id))
     recipients = result.scalars().all()
     return [RecipientResponse.model_validate(r) for r in recipients]
@@ -1423,7 +1486,10 @@ async def list_recipients(db: AsyncSession = Depends(get_db)):
 
 @app.patch("/api/v1/recipients/{recipient_id}", response_model=RecipientResponse)
 async def update_recipient(
-    recipient_id: int, updates: RecipientBase, db: AsyncSession = Depends(get_db)
+    recipient_id: int,
+    updates: RecipientBase,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
 ):
     result = await db.execute(
         select(NotificationRecipient).where(NotificationRecipient.id == recipient_id)
@@ -1442,7 +1508,11 @@ async def update_recipient(
 
 
 @app.delete("/api/v1/recipients/{recipient_id}")
-async def delete_recipient(recipient_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_recipient(
+    recipient_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
     result = await db.execute(
         select(NotificationRecipient).where(NotificationRecipient.id == recipient_id)
     )
@@ -1479,7 +1549,9 @@ async def clear_test_data(db: AsyncSession = Depends(get_db)):
 
 @app.post("/api/v1/alerts/{alert_id}/acknowledge")
 async def acknowledge_alert(
-    alert_id: int, username: str = "admin", db: AsyncSession = Depends(get_db)
+    alert_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
 ):
     result = await db.execute(select(Alert).where(Alert.id == alert_id))
     alert = result.scalar_one_or_none()
@@ -1488,7 +1560,7 @@ async def acknowledge_alert(
         raise HTTPException(status_code=404, detail="Alert not found")
 
     alert.acknowledged_at = datetime.now(timezone.utc)
-    alert.acknowledged_by = username
+    alert.acknowledged_by = user_id
     await db.commit()
     return {"status": "acknowledged"}
 
