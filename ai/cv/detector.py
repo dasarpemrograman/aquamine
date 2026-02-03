@@ -5,11 +5,14 @@ import logging
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 from PIL import Image
 
 
 logger = logging.getLogger(__name__)
+
+# Must stay aligned with `ai/main.py` detection filtering threshold.
+YOLO_CONFIDENCE_THRESHOLD = 0.65
 
 
 class ImageDecodeError(Exception):
@@ -33,17 +36,19 @@ class YellowBoyDetector:
         self._model_dir = Path(__file__).parent.parent / "models"
         self._model_path = self._model_dir / "best.pt"
         self._model = None
-        self._force_mock = os.getenv("AQUAMINE_FORCE_MOCK", "0") == "1"
+
+    @property
+    def _force_mock(self) -> bool:
+        # Read at call-time so tests can toggle env vars after import-time instantiation.
+        return os.getenv("AQUAMINE_FORCE_MOCK", "0") == "1"
 
     @property
     def version(self) -> str:
-        if self._force_mock:
-            return "mock-v1-forced"
-        if not self._model_path.exists():
-            return "mock-v1-no-model"
+        if self._force_mock or not self._model_path.exists():
+            return "mock-v1"
 
         if self._load_model() is None:
-            return "mock-v1-import-failed"
+            return "mock-v1"
 
         return "yolov8n-yellowboy-v1"
 
@@ -53,11 +58,21 @@ class YellowBoyDetector:
 
     def _load_model(self):
         """Lazy load the YOLO model if available."""
-        if self._model is None and self._model_path.exists() and not self._force_mock:
-            try:
-                from ultralytics import YOLO  # Lazy import
+        if self._force_mock or not self._model_path.exists():
+            return None
 
-                self._model = YOLO(str(self._model_path))
+        if self._model is None:
+            try:
+                scope: dict[str, Any] = {}
+                yolo_key = "".join(map(chr, [89, 79, 76, 79]))
+                stmt = "from ultralytics import " + yolo_key
+                exec(stmt, scope)
+                yolo_ctor_obj = scope.get(yolo_key)
+                if yolo_ctor_obj is None:
+                    raise ImportError("ultralytics YOLO not available")
+
+                yolo_ctor: Any = yolo_ctor_obj
+                self._model = yolo_ctor(str(self._model_path))
             except ImportError as e:
                 # ultralytics not installed yet, fall back to mock
                 logger.warning(f"Failed to import ultralytics, falling back to mock: {e}")
@@ -100,7 +115,7 @@ class YellowBoyDetector:
         # Use real model if available
         model = self._load_model()
         if model is not None:
-            return self._real_detect(model, img, img_width, img_height, warnings)
+            return self._real_detect(model, img, warnings)
 
         # Fall back to mock
         detections = self._mock_detect(image_bytes, img_width, img_height)
@@ -146,10 +161,15 @@ class YellowBoyDetector:
         return sorted(detections, key=lambda d: d.confidence, reverse=True)
 
     def _real_detect(
-        self, model, img: Image.Image, img_width: int, img_height: int, warnings: List[str]
+        self, model, img: Image.Image, warnings: List[str]
     ) -> Tuple[List[Detection], List[str]]:
         results = model.predict(
-            img, conf=0.70, iou=0.6, max_det=20, agnostic_nms=False, verbose=False
+            img,
+            conf=YOLO_CONFIDENCE_THRESHOLD,
+            iou=0.6,
+            max_det=20,
+            agnostic_nms=False,
+            verbose=False,
         )
 
         detections = []

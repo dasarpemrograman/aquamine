@@ -88,6 +88,7 @@ from .anomaly.detector import AnomalyDetector, ANOMALY_THRESHOLDS
 from .alerts.state_machine import AlertStateMachine
 from .alerts.notifications import NotificationService
 from .realtime.websocket import manager as ws_manager
+from .routers.analytics import router as analytics_router
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +182,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(analytics_router)
 
 cv_detector = YellowBoyDetector()
 timegpt = TimeGPTClient()
