@@ -81,7 +81,7 @@ class Settings(BaseModel):
             print("\n❌ Startup Failed: Invalid or missing environment variables", file=sys.stderr)
             print("-----------------------------------------------------------", file=sys.stderr)
             for error in e.errors():
-                loc = ".".join(str(l) for l in error["loc"])
+                loc = ".".join(str(loc_part) for loc_part in error["loc"])
                 msg = error["msg"]
                 # Provide hints for common errors
                 hint = ""
