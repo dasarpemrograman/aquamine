@@ -83,7 +83,7 @@ class TestComputeForecastWindow:
 
         # Window start should be Feb 1, 2026 00:00 WIB = Jan 31, 2026 17:00 UTC
         expected_start = datetime(2026, 1, 31, 17, 0, 0, tzinfo=timezone.utc)
-        expected_end = expected_start + timedelta(days=7)
+        expected_end = expected_start + timedelta(hours=168)  # Default 7 days
 
         assert window_start == expected_start
         assert window_end == expected_end
@@ -97,11 +97,25 @@ class TestComputeForecastWindow:
         assert window_start == expected_start
 
     def test_window_span_is_7_days(self):
-        """Test that window is exactly 7 days"""
+        """Test that default window is exactly 7 days (168 hours)"""
         now_utc = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
         window_start, window_end = compute_forecast_window(now_utc)
 
-        assert (window_end - window_start) == timedelta(days=7)
+        assert (window_end - window_start) == timedelta(hours=168)
+
+    def test_window_span_24_hours(self):
+        """Test that 24h window is exactly 24 hours"""
+        now_utc = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+        window_start, window_end = compute_forecast_window(now_utc, horizon_hours=24)
+
+        assert (window_end - window_start) == timedelta(hours=24)
+
+    def test_window_span_30_days(self):
+        """Test that 30d window is exactly 720 hours"""
+        now_utc = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+        window_start, window_end = compute_forecast_window(now_utc, horizon_hours=720)
+
+        assert (window_end - window_start) == timedelta(hours=720)
 
 
 class TestCheckForecastStaleness:
@@ -178,6 +192,27 @@ class TestCheckForecastStaleness:
         assert result["is_stale"] is False
         assert result["stale_reason"] is None
 
+    def test_daily_refresh_precedence_over_newer_reading(self):
+        """Test that created_before_today_wib takes precedence over newer_reading_exists"""
+        # Feb 2, 2026 00:00 UTC = Feb 2, 2026 07:00 WIB (today)
+        now_utc = datetime(2026, 2, 2, 0, 0, 0, tzinfo=timezone.utc)
+        window_end = now_utc + timedelta(hours=168)
+
+        # Prediction created Feb 1, 2026 12:00 UTC = Feb 1, 2026 19:00 WIB (yesterday)
+        prediction = MagicMock()
+        prediction.created_at = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+        prediction.forecast_end = window_end + timedelta(days=1)
+
+        # Latest reading today (newer than prediction)
+        latest_reading = MagicMock()
+        latest_reading.timestamp = datetime(2026, 2, 1, 23, 0, 0, tzinfo=timezone.utc)
+
+        result = check_forecast_staleness(prediction, latest_reading, window_end, now_utc)
+
+        # Should be stale due to created_before_today_wib, not newer_reading_exists
+        assert result["is_stale"] is True
+        assert result["stale_reason"] == "created_before_today_wib"
+
 
 class TestTrimForecastToWindow:
     """Tests for _trim_forecast_to_window helper"""
@@ -208,8 +243,8 @@ class TestTrimForecastToWindow:
 
         result = _trim_forecast_to_window(forecast, window_start, window_end)
 
-        assert len(result) == 1
-        assert result[0]["ph_pred"] == 7.1
+        assert len(result) == 2
+        assert [p["ph_pred"] for p in result] == [7.1, 7.2]
 
     def test_sorts_points_by_timestamp(self):
         """Test that points are sorted by timestamp ascending"""

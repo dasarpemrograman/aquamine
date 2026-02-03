@@ -102,6 +102,8 @@ FORECAST_REGEN_MIN_INTERVAL_MINUTES = 30  # Minimum interval between regeneratio
 # In-memory rate limiting for forecast regeneration.
 # Keyed by (sensor_id, WIB date). Value is the UTC timestamp of the last successful regeneration.
 _last_forecast_regeneration: dict[tuple[int, date], datetime] = {}
+# Keyed by sensor_id. Value is the UTC timestamp of the last failed regeneration attempt.
+_last_forecast_failure: dict[int, datetime] = {}
 _forecast_regeneration_inflight: set[tuple[int, date]] = set()
 _forecast_regeneration_lock = asyncio.Lock()
 
@@ -262,11 +264,13 @@ def _format_forecast_points(
     return points
 
 
-def compute_forecast_window(now_utc: datetime) -> tuple[datetime, datetime]:
-    """Compute the 7-day forecast window anchored to 'today' in WIB.
+def compute_forecast_window(
+    now_utc: datetime, horizon_hours: int = 168
+) -> tuple[datetime, datetime]:
+    """Compute the forecast window anchored to 'today' in WIB.
 
     - window_start: today's 00:00 in Asia/Jakarta, converted to UTC
-    - window_end: window_start + 7 days
+    - window_end: window_start + horizon_hours
 
     Naive datetimes are treated as UTC.
     """
@@ -280,7 +284,7 @@ def compute_forecast_window(now_utc: datetime) -> tuple[datetime, datetime]:
     now_wib = now_utc_utc.astimezone(wib)
     today_wib_start = datetime(now_wib.year, now_wib.month, now_wib.day, tzinfo=wib)
     window_start = today_wib_start.astimezone(timezone.utc)
-    window_end = window_start + timedelta(days=7)
+    window_end = window_start + timedelta(hours=horizon_hours)
     return window_start, window_end
 
 
@@ -359,7 +363,7 @@ def _trim_forecast_to_window(
             continue
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        if window_start <= ts < window_end:
+        if window_start <= ts <= window_end:
             points_in_window.append(point)
 
     points_in_window.sort(key=lambda p: p.get("timestamp") or "")
@@ -367,7 +371,7 @@ def _trim_forecast_to_window(
 
 
 async def _generate_and_store_forecast_for_sensor(sensor_id: int, db: AsyncSession) -> dict:
-    """Generate and persist a 7-day forecast (168 points) for a sensor.
+    """Generate and persist a 30-day forecast for a sensor.
 
     Returns:
         {"status": "success", "predictions_generated": int}
@@ -375,8 +379,8 @@ async def _generate_and_store_forecast_for_sensor(sensor_id: int, db: AsyncSessi
     """
 
     try:
-        # 1) Fetch historical data (7 days)
-        start_time = datetime.now(timezone.utc) - timedelta(days=7)
+        # 1) Fetch historical data (30 days)
+        start_time = datetime.now(timezone.utc) - timedelta(days=30)
         query = (
             select(Reading)
             .where(Reading.sensor_id == sensor_id, Reading.timestamp >= start_time)
@@ -416,7 +420,7 @@ async def _generate_and_store_forecast_for_sensor(sensor_id: int, db: AsyncSessi
             return {"status": "error", "message": "No data found for forecasting"}
 
         # 3) Generate forecast
-        forecasts = timegpt.generate_forecast(df, horizon=168)
+        forecasts = timegpt.generate_forecast(df, horizon=721)
 
         # 4) Store predictions
         count = 0
@@ -601,6 +605,7 @@ class ChatRequest(BaseSchema):
 
 class ForecastCompatibilityRequest(BaseSchema):
     sensor_id: int
+    horizon_hours: Literal[24, 168, 720] = 168
 
 
 class TimelineForecastPoint(BaseSchema):
@@ -1017,7 +1022,6 @@ async def get_forecast_compatibility(
     payload: ForecastCompatibilityRequest, db: AsyncSession = Depends(get_db)
 ):
     now_utc = datetime.now(timezone.utc)
-    _window_start, window_end = compute_forecast_window(now_utc)
 
     forecast_timezone = "Asia/Jakarta"
 
@@ -1064,6 +1068,13 @@ async def get_forecast_compatibility(
         )
         result = await db.execute(prediction_query)
         prediction = result.scalar_one_or_none()
+
+        window_start = getattr(prediction, "forecast_start", None) if prediction else None
+        window_end = (
+            window_start + timedelta(hours=payload.horizon_hours)
+            if window_start
+            else now_utc + timedelta(hours=payload.horizon_hours)
+        )
         staleness = check_forecast_staleness(prediction, latest_reading, window_end, now_utc)
 
         latest_snapshot = (
@@ -1083,8 +1094,8 @@ async def get_forecast_compatibility(
             "history_hours": history_hours,
             "warning": warning,
             "forecast_generated_at": prediction.created_at if prediction else None,
-            "forecast_start": prediction.forecast_start if prediction else None,
-            "forecast_end": prediction.forecast_end if prediction else None,
+            "forecast_start": window_start,
+            "forecast_end": window_end,
             "forecast_timezone": forecast_timezone,
             "forecast_is_stale": bool(staleness.get("is_stale")),
             "forecast_stale_reason": staleness.get("stale_reason"),
@@ -1100,6 +1111,33 @@ async def get_forecast_compatibility(
     result = await db.execute(prediction_query)
     prediction = result.scalar_one_or_none()
 
+    window_start = getattr(prediction, "forecast_start", None) if prediction else None
+
+    if prediction and not window_start and prediction.forecast_values:
+        try:
+            first_val = prediction.forecast_values[0]
+            ts_val = (
+                first_val.get("timestamp")
+                if isinstance(first_val, dict)
+                else getattr(first_val, "timestamp", None)
+            )
+            if ts_val:
+                if isinstance(ts_val, str):
+                    window_start = datetime.fromisoformat(ts_val.replace("Z", "+00:00"))
+                elif isinstance(ts_val, datetime):
+                    window_start = ts_val
+        except (ValueError, AttributeError, IndexError):
+            pass
+
+    if prediction and not window_start:
+        window_start = getattr(prediction, "created_at", now_utc)
+
+    window_end = (
+        window_start + timedelta(hours=payload.horizon_hours)
+        if window_start
+        else now_utc + timedelta(hours=payload.horizon_hours)
+    )
+
     forecast_warning: Optional[str] = None
     staleness = check_forecast_staleness(prediction, latest_reading, window_end, now_utc)
     if staleness.get("is_stale"):
@@ -1110,45 +1148,50 @@ async def get_forecast_compatibility(
             "no_prediction",
             "forecast_end_before_window_end",
             "created_before_today_wib",
-            "newer_reading_exists",
         }
 
-        should_refresh = stale_reason in refreshable_reasons
+        # Explicit precedence checks for refresh
+        should_refresh = False
+        wib = ZoneInfo("Asia/Jakarta")
+        today_wib_date = now_utc.astimezone(wib).date()
 
-        # For dynamic regeneration (newer_reading_exists), check if significant new data exists
-        if (
-            should_refresh
-            and stale_reason == "newer_reading_exists"
-            and prediction
-            and latest_reading
-        ):
-            pred_created = getattr(prediction, "created_at", None)
-            latest_ts = getattr(latest_reading, "timestamp", None)
-            if pred_created and latest_ts:
-                new_data_hours = (latest_ts - pred_created).total_seconds() / 3600
-                if new_data_hours < FORECAST_REGEN_DATA_THRESHOLD_HOURS:
-                    should_refresh = False  # Not enough new data to justify regeneration
+        created_at = getattr(prediction, "created_at", None) if prediction else None
+        if prediction is None:
+            should_refresh = True
+        elif created_at is None or created_at.astimezone(wib).date() < today_wib_date:
+            should_refresh = True
+        elif prediction.forecast_end is None or prediction.forecast_end < window_end:
+            should_refresh = True
 
         if should_refresh:
-            wib = ZoneInfo("Asia/Jakarta")
-            today_wib_date = now_utc.astimezone(wib).date()
             regen_key = (payload.sensor_id, today_wib_date)
 
             refresh_allowed = False
             already_refreshed_today = False
             refresh_in_progress = False
+            refresh_cooldown = False
+
             # Single critical section: hold lock for entire decision-making to prevent race conditions
             async with _forecast_regeneration_lock:
                 if regen_key in _last_forecast_regeneration:
                     last_regen = _last_forecast_regeneration[regen_key]
-                    minutes_since_regen = (now_utc - last_regen).total_seconds() / 60
-                    if minutes_since_regen >= FORECAST_REGEN_MIN_INTERVAL_MINUTES:
+                    minutes_since = (now_utc - last_regen).total_seconds() / 60
+                    if minutes_since < FORECAST_REGEN_MIN_INTERVAL_MINUTES:
+                        already_refreshed_today = True
+                    else:
                         _forecast_regeneration_inflight.add(regen_key)
                         refresh_allowed = True
-                    else:
-                        already_refreshed_today = True
                 elif regen_key in _forecast_regeneration_inflight:
                     refresh_in_progress = True
+                elif payload.sensor_id in _last_forecast_failure:
+                    # Check failure cooldown (30 min)
+                    last_fail = _last_forecast_failure[payload.sensor_id]
+                    minutes_since_fail = (now_utc - last_fail).total_seconds() / 60
+                    if minutes_since_fail < FORECAST_REGEN_MIN_INTERVAL_MINUTES:
+                        refresh_cooldown = True
+                    else:
+                        _forecast_regeneration_inflight.add(regen_key)
+                        refresh_allowed = True
                 else:
                     _forecast_regeneration_inflight.add(regen_key)
                     refresh_allowed = True
@@ -1170,11 +1213,23 @@ async def get_forecast_compatibility(
                             _last_forecast_regeneration[regen_key] = now_utc
                             # Cleanup old entries to prevent memory leak
                             _cleanup_forecast_regeneration_cache()
+                        else:
+                            # Record failure timestamp for cooldown
+                            _last_forecast_failure[payload.sensor_id] = now_utc
+
                         _forecast_regeneration_inflight.discard(regen_key)
 
                 if generation_success:
                     refreshed_result = await db.execute(prediction_query)
                     prediction = refreshed_result.scalar_one_or_none()
+                    window_start = (
+                        getattr(prediction, "forecast_start", None) if prediction else None
+                    )
+                    window_end = (
+                        window_start + timedelta(hours=payload.horizon_hours)
+                        if window_start
+                        else now_utc + timedelta(hours=payload.horizon_hours)
+                    )
                     refreshed_staleness = check_forecast_staleness(
                         prediction, latest_reading, window_end, now_utc
                     )
@@ -1194,6 +1249,8 @@ async def get_forecast_compatibility(
                     forecast_warning = (
                         f"pH forecast may be stale ({stale_reason}); refresh in progress"
                     )
+                elif refresh_cooldown:
+                    forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh skipped (cooldown after failure)"
                 else:
                     forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh skipped"
     data_quality = min(recent_ph_count / 24.0, 1.0)
@@ -1201,14 +1258,15 @@ async def get_forecast_compatibility(
         prediction.forecast_values if prediction else [], data_quality=data_quality
     )
 
-    # Reuse window_end from line 1003 to ensure consistency between staleness check and trimming
-    forecast = _trim_forecast_to_window(raw_forecast, _window_start, window_end)
+    forecast = (
+        _trim_forecast_to_window(raw_forecast, window_start, window_end) if window_start else []
+    )
 
     if not forecast and raw_forecast:
         forecast_warning = (
-            f"{forecast_warning}; Forecast data exists but is outside the current 7-day window"
+            f"{forecast_warning}; Forecast data exists but is outside the current window"
             if forecast_warning
-            else "Forecast data exists but is outside the current 7-day window"
+            else "Forecast data exists but is outside the current window"
         )
 
     latest_snapshot = (
@@ -1229,8 +1287,8 @@ async def get_forecast_compatibility(
         "history_hours": history_hours,
         "warning": forecast_warning,
         "forecast_generated_at": prediction.created_at if prediction else None,
-        "forecast_start": prediction.forecast_start if prediction else None,
-        "forecast_end": prediction.forecast_end if prediction else None,
+        "forecast_start": window_start,
+        "forecast_end": window_end,
         "forecast_timezone": forecast_timezone,
         "forecast_is_stale": bool(staleness.get("is_stale")),
         "forecast_stale_reason": staleness.get("stale_reason"),

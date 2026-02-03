@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { Map as MapIcon, Filter, Clock } from "lucide-react";
+import { Map as MapIcon, Filter } from "lucide-react";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import BerkeleyPitMap, { 
@@ -9,12 +9,6 @@ import BerkeleyPitMap, {
   Severity, 
   SEVERITY_COLORS 
 } from "@/app/components/map/BerkeleyPitMap";
-
-const TIME_RANGES = [
-  { label: "24h", hours: 24 },
-  { label: "7d", hours: 168 },
-  { label: "30d", hours: 720 },
-] as const;
 
 const SEVERITIES: { key: Severity; label: string }[] = [
   { key: "normal", label: "Normal" },
@@ -27,7 +21,6 @@ const SEVERITIES: { key: Severity; label: string }[] = [
 export default function MapPage() {
   const [sensors, setSensors] = useState<SensorWithState[]>([]);
   const [selectedSeverities, setSelectedSeverities] = useState<Severity[]>([]);
-  const [selectedTimeRange, setSelectedTimeRange] = useState(24);
   const [missingCoordsCount, setMissingCoordsCount] = useState(0);
 
   useEffect(() => {
@@ -119,32 +112,6 @@ export default function MapPage() {
                   Clear filters
                 </button>
               )}
-            </GlassCard>
-
-            <GlassCard>
-              <div className="flex items-center gap-2 mb-4">
-                <Clock size={18} className="text-cyan-600" />
-                <h3 className="font-semibold text-slate-800">Time Range</h3>
-              </div>
-
-              <p className="text-xs text-slate-500 mb-3">
-                Affects detail panel data (popup readings)</p>
-              
-              <div className="flex gap-2">
-                {TIME_RANGES.map(({ label, hours }) => (
-                  <button
-                    key={hours}
-                    onClick={() => setSelectedTimeRange(hours)}
-                    className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all ${
-                      selectedTimeRange === hours
-                        ? "bg-cyan-100 text-cyan-800"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
             </GlassCard>
 
             <GlassCard>

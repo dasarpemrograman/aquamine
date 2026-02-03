@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Polygon, CircleMarker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Polygon, CircleMarker, Popup, Tooltip } from "react-leaflet";
 import { LatLngExpression } from "leaflet";
 import Link from "next/link";
 import { Map as MapIcon, Waves, AlertTriangle } from "lucide-react";
@@ -124,6 +124,15 @@ export default function BerkeleyPitMap({
               fillOpacity: 0.9,
             }}
           >
+            <Tooltip 
+              permanent 
+              direction="top" 
+              offset={[0, -10]}
+            >
+              <div className="bg-white/90 border border-slate-200 px-2 py-0.5 rounded shadow-sm text-xs font-medium text-slate-700">
+                {sensor.name}
+              </div>
+            </Tooltip>
             <Popup>
               <SensorPopup sensor={sensor} />
             </Popup>

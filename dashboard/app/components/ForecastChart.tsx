@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Line,
   XAxis,
@@ -53,13 +53,15 @@ interface ForecastResponse {
 
 interface ChartPoint {
   timestamp: number;
-  ph_pred: number;
-  confidence: number;
+  ph_pred?: number;
+  confidence?: number;
 }
+
 
 type ForecastTooltipPayload = {
   dataKey?: string;
   value?: number | string;
+  color?: string;
 };
 
 type ForecastTooltipProps = {
@@ -106,17 +108,17 @@ function ForecastTooltip({ active, payload, label }: ForecastTooltipProps) {
     return null;
   }
 
-  const phItem = payload.find((item) => item.dataKey === "ph_pred");
+  const phPredItem = payload.find((item) => item.dataKey === "ph_pred");
   const confidenceItem = payload.find((item) => item.dataKey === "confidence");
 
   return (
     <div className="rounded-xl border border-white/70 bg-white/90 px-3 py-2 shadow-lg backdrop-blur-md">
       <div className="text-xs font-semibold text-slate-600">{formatTooltipLabel(label)}</div>
       <div className="mt-1 space-y-1 text-xs text-slate-600">
-        {phItem && (
+        {phPredItem && (
           <div className="flex items-center justify-between gap-4">
             <span className="text-slate-500">Predicted pH</span>
-            <span className="font-semibold text-slate-800">{formatTooltipNumber(phItem.value)}</span>
+            <span className="font-semibold text-slate-800">{formatTooltipNumber(phPredItem.value)}</span>
           </div>
         )}
         {confidenceItem && (
@@ -130,6 +132,12 @@ function ForecastTooltip({ active, payload, label }: ForecastTooltipProps) {
   );
 }
 
+const RANGE_OPTIONS = [
+  { label: "24h", value: 24, description: "24-Hour Forecast" },
+  { label: "7d", value: 168, description: "7-Day Forecast" },
+  { label: "30d", value: 720, description: "30-Day Forecast" },
+] as const;
+
 export default function ForecastChart({ sensorId }: { sensorId: string }) {
   const [data, setData] = useState<ChartPoint[]>([]);
   const [anomaly, setAnomaly] = useState<AnomalyData | null>(null);
@@ -141,60 +149,66 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
   const [forecastEnd, setForecastEnd] = useState<string | null>(null);
   const [forecastIsStale, setForecastIsStale] = useState<boolean>(false);
   const [forecastStaleReason, setForecastStaleReason] = useState<string | null>(null);
+  const [selectedRange, setSelectedRange] = useState<number>(168);
   const [loading, setLoading] = useState(true);
   const isFetchingRef = useRef(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      if (isFetchingRef.current) return;
-      isFetchingRef.current = true;
-      try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/forecast`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ sensor_id: parseInt(sensorId) }),
-        });
+  const fetchData = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/forecast`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ sensor_id: parseInt(sensorId), horizon_hours: selectedRange }),
+      });
 
-        if (!res.ok) {
-          throw new Error(`Error: ${res.status}`);
-        }
+      if (!res.ok) {
+        throw new Error(`Error: ${res.status}`);
+      }
 
-        const json: ForecastResponse = await res.json();
+      const json: ForecastResponse = await res.json();
 
-        setWarning(json.warning ?? null);
-        setLatestReading(json.latest_reading ?? null);
-        setHistoryHours(json.history_hours ?? null);
-        setForecastGeneratedAt(json.forecast_generated_at ?? null);
-        setForecastStart(json.forecast_start ?? null);
-        setForecastEnd(json.forecast_end ?? null);
-        setForecastIsStale(json.forecast_is_stale ?? false);
-        setForecastStaleReason(json.forecast_stale_reason ?? null);
+      setWarning(json.warning ?? null);
+      setLatestReading(json.latest_reading ?? null);
+      setHistoryHours(json.history_hours ?? null);
+      setForecastGeneratedAt(json.forecast_generated_at ?? null);
+      setForecastStart(json.forecast_start ?? null);
+      setForecastEnd(json.forecast_end ?? null);
+      setForecastIsStale(json.forecast_is_stale ?? false);
+      setForecastStaleReason(json.forecast_stale_reason ?? null);
 
-        if (json && json.forecast) {
-          const chartData = json.forecast.map((p) => ({
-            timestamp: new Date(p.timestamp).getTime(),
+      const dataMap = new Map<number, ChartPoint>();
+
+      if (json && json.forecast) {
+        json.forecast.forEach((p) => {
+          const ts = new Date(p.timestamp).getTime();
+          dataMap.set(ts, {
+            timestamp: ts,
             ph_pred: p.ph_pred,
             confidence: p.confidence,
-          }));
-          setData(chartData);
-        } else {
-          setData([]);
-        }
-
-        if (json && json.anomaly) {
-          setAnomaly(json.anomaly);
-        }
-      } catch (e) {
-        console.error("Failed to fetch forecast", e);
-      } finally {
-        setLoading(false);
-        isFetchingRef.current = false;
+          });
+        });
       }
-    }
 
+      const mergedData = Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+      setData(mergedData);
+
+      if (json && json.anomaly) {
+        setAnomaly(json.anomaly);
+      }
+    } catch (e) {
+      console.error("Failed to fetch forecast", e);
+    } finally {
+      setLoading(false);
+      isFetchingRef.current = false;
+    }
+  }, [sensorId, selectedRange]);
+
+  useEffect(() => {
     const startInterval = () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = setInterval(() => {
@@ -211,11 +225,6 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
       }
     };
 
-    if (sensorId) {
-      fetchData();
-      startInterval();
-    }
-
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && sensorId) {
         // Reset interval to prevent duplicate fetches near the 10-minute boundary
@@ -225,13 +234,18 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
       }
     };
 
+    if (sensorId) {
+      fetchData();
+      startInterval();
+    }
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       stopInterval();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [sensorId]);
+  }, [sensorId, fetchData]);
 
   const nowTimestamp = Date.now();
   const lastReadingTimestamp = latestReading
@@ -239,30 +253,21 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
     : null;
 
   const chartDomain = useMemo(() => {
-    if (!data.length && !forecastStart && !forecastEnd && !lastReadingTimestamp) {
-      return undefined;
+    if (!data.length) return undefined;
+
+    let min = data[0].timestamp;
+    let max = data[data.length - 1].timestamp;
+
+    if (nowTimestamp < min) min = nowTimestamp;
+    if (nowTimestamp > max) max = nowTimestamp;
+
+    if (lastReadingTimestamp) {
+        if (lastReadingTimestamp < min) min = lastReadingTimestamp;
+        if (lastReadingTimestamp > max) max = lastReadingTimestamp;
     }
-    // Always include data points, current time, and last reading in domain calculation
-    // to ensure all indicators are visible even if forecast metadata differs
-    const timestamps = data.map((point) => point.timestamp);
-    let min = nowTimestamp;
-    let max = nowTimestamp;
-    if (timestamps.length > 0) {
-      min = Math.min(min, ...timestamps);
-      max = Math.max(max, ...timestamps);
-    }
-    if (forecastStart) {
-      min = Math.min(min, new Date(forecastStart).getTime());
-    }
-    if (forecastEnd) {
-      max = Math.max(max, new Date(forecastEnd).getTime());
-    }
-    if (lastReadingTimestamp !== null) {
-      min = Math.min(min, lastReadingTimestamp);
-      max = Math.max(max, lastReadingTimestamp);
-    }
+
     return [min, max] as [number, number];
-  }, [data, lastReadingTimestamp, nowTimestamp, forecastStart, forecastEnd]);
+  }, [data, nowTimestamp, lastReadingTimestamp]);
 
   if (loading) return <div className="text-sm text-slate-500">Loading forecast...</div>;
 
@@ -270,15 +275,42 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
   const sensorUpdatedLabel = latestReading ? formatWIB(latestReading.timestamp) : null;
   const forecastGeneratedLabel = forecastGeneratedAt ? formatWIB(forecastGeneratedAt) : null;
   const forecastStartLabel = data.length ? formatWIB(data[0].timestamp) : null;
+  const forecastEndLabel = data.length ? formatWIB(data[data.length - 1].timestamp) : null;
 
   return (
     <GlassCard className="w-full">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-white/40">
         <div>
-          <h3 className="text-lg font-bold text-slate-800">7-Day Forecast</h3>
-          {historyHours ? (
-            <p className="text-xs text-slate-500">Based on: {historyHours}h of sensor data</p>
-          ) : null}
+          <div className="flex flex-col gap-1">
+            <h3 className="text-lg font-bold text-slate-800">
+              {RANGE_OPTIONS.find((r) => r.value === selectedRange)?.description ?? "Forecast"}
+            </h3>
+            {forecastStartLabel && forecastEndLabel && (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-cyan-700">
+                <span>Range: {forecastStartLabel} → {forecastEndLabel}</span>
+                <span className="hidden sm:inline text-slate-300">•</span>
+                <span>{data.length} pts</span>
+              </div>
+            )}
+            {historyHours ? (
+              <p className="text-xs text-slate-500">Based on: {historyHours}h of sensor data</p>
+            ) : null}
+          </div>
+          <div className="flex gap-2 mt-2">
+            {RANGE_OPTIONS.map((range) => (
+              <button
+                key={range.value}
+                onClick={() => setSelectedRange(range.value)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  selectedRange === range.value
+                    ? "bg-cyan-100 text-cyan-800 border border-cyan-300"
+                    : "bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200"
+                }`}
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
         </div>
         {anomaly && (
           <div className="flex flex-col items-start sm:items-end gap-1">
@@ -369,6 +401,20 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
                 strokeWidth={2.5}
                 dot={false}
                 activeDot={{ r: 5, stroke: "#0ea5e9", strokeWidth: 2, fill: "#ffffff" }}
+              />
+              <ReferenceLine
+                x={data[0].timestamp}
+                stroke="#64748b"
+                strokeOpacity={0.3}
+                strokeDasharray="3 3"
+                label={{
+                  value: "Start",
+                  position: "insideTop",
+                  fill: "#64748b",
+                  fontSize: 10,
+                  textAnchor: "start",
+                  dx: 4,
+                }}
               />
               <ReferenceLine
                 x={nowTimestamp}
