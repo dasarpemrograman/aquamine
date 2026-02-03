@@ -16,6 +16,8 @@ from fastapi import (
     BackgroundTasks,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError
 import io
@@ -190,6 +192,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Proxy headers middleware for correct client IP/protocol behind Nginx
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+
+# Trusted host middleware for production
+if os.getenv("ENVIRONMENT") == "production":
+    app.add_middleware(
+        TrustedHostMiddleware, allowed_hosts=["aquamine.web.id", "*.aquamine.web.id"]
+    )
 
 cv_detector = YellowBoyDetector()
 timegpt = TimeGPTClient()
