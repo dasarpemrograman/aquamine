@@ -16,6 +16,7 @@ import {
 
 import SensorStatus from "@/app/components/SensorStatus";
 import AlertList from "@/app/components/AlertList";
+import AnalyticsWidget from "@/app/components/AnalyticsWidget";
 import BerkeleyPitMap from "@/app/components/map/BerkeleyPitMap";
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
@@ -64,8 +65,8 @@ export default function Home() {
         const warningAlerts = Array.isArray(alerts) ? alerts.filter((a: any) => a.severity === 'warning').length : 0;
         const inactiveSensors = total - active;
         
-        let calculatedHealth = 100 - (criticalAlerts * 20) - (warningAlerts * 5) - (inactiveSensors * 10);
-        if (calculatedHealth < 0) calculatedHealth = 0;
+        // Sensor Availability: % of sensors that are online (easy to understand)
+        const sensorAvailability = total > 0 ? Math.round((active / total) * 100) : 0;
 
         const getMostCriticalSensor = (): { status: string; name: string } => {
           if (activeSensors.length === 0) return { status: "offline", name: "" };
@@ -85,7 +86,7 @@ export default function Home() {
         const { status, name } = getMostCriticalSensor();
 
         setStats({
-            healthScore: calculatedHealth,
+            healthScore: sensorAvailability,
             activeSensors: active,
             totalSensors: total,
             currentStatus: status,
@@ -119,13 +120,13 @@ export default function Home() {
                   <Activity size={48} />
               </div>
               <div className="space-y-2">
-                  <p className="text-sm font-medium text-slate-500">System Health</p>
+                  <p className="text-sm font-medium text-slate-500">Sensor Availability</p>
                   <div className="flex items-end gap-2">
                       <span className="text-4xl font-bold bg-gradient-to-r from-cyan-500 to-teal-500 bg-clip-text text-transparent">
                           {stats.healthScore}%
                       </span>
                       <span className={`text-sm font-medium mb-1 ${stats.healthScore > 90 ? 'text-teal-600' : 'text-amber-600'}`}>
-                          {stats.healthScore > 90 ? 'Excellent' : stats.healthScore > 70 ? 'Good' : 'Attention'}
+                          {stats.healthScore > 90 ? 'All Online' : stats.healthScore > 0 ? 'Partial' : 'Offline'}
                       </span>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-2">
@@ -255,6 +256,7 @@ export default function Home() {
               <div className="relative">
                   <AlertList />
               </div>
+              <AnalyticsWidget />
           </div>
            <div className="absolute right-0 bottom-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl -mr-8 -mb-8" />
         </div>
