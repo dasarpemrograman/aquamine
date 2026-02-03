@@ -331,7 +331,7 @@ def parse_args() -> argparse.Namespace:
         "--days", type=int, default=7, help="Days of history to generate"
     )
     parser.add_argument(
-        "--realtime", action="store_true", help="Stream data continuously"
+        "--interval-minutes", type=int, default=60, help="Backfill interval in minutes"
     )
     parser.add_argument("--api-base", default=DEFAULT_API_BASE, help="API Base URL")
     parser.add_argument(
@@ -340,9 +340,6 @@ def parse_args() -> argparse.Namespace:
         help="Write directly to DB (bypasses API, debug only)",
     )
 
-    parser.add_argument(
-        "--sensor-id", default=DEFAULT_SENSOR_ID, help="Sensor identifier"
-    )
     parser.add_argument(
         "--interval",
         type=int,
