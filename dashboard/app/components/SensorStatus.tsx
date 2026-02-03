@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import { StatusChip } from "@/app/components/ui/StatusChip";
-import { Activity, Battery, Signal, WifiOff } from "lucide-react";
+import { Battery, Signal, WifiOff } from "lucide-react";
+import { Sensor } from "@/lib/api";
 
 export default function SensorStatus() {
-  const [sensors, setSensors] = useState([]);
+  const [sensors, setSensors] = useState<Sensor[]>([]);
 
   useEffect(() => {
     async function fetchSensors() {
@@ -24,7 +25,7 @@ export default function SensorStatus() {
   return (
     <GlassCard>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {sensors.map((sensor: any) => (
+        {sensors.map((sensor: Sensor) => (
           <div key={sensor.id} className="border p-4 rounded-lg flex flex-col gap-2">
             <div className="flex justify-between items-center">
               <span className="font-semibold">{sensor.name}</span>
@@ -37,7 +38,7 @@ export default function SensorStatus() {
 
             <div className="grid grid-cols-2 gap-2 mt-4">
               <div className="flex items-center gap-2 text-xs text-foreground-muted bg-background/50 p-2 rounded-lg">
-                <Battery size={14} className={sensor.battery < 20 ? "text-danger" : "text-success"} />
+                <Battery size={14} className="text-success" />
                 <span>Battery: 100%</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-foreground-muted bg-background/50 p-2 rounded-lg">

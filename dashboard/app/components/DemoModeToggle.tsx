@@ -4,19 +4,19 @@ import { useEffect, useState } from "react";
 import { FlaskConical } from "lucide-react";
 
 export const DEMO_MODE_STORAGE_KEY = "aquamine_demo_mode";
-export const DEMO_REFRESH_INTERVAL = 2000;
+export const DEMO_REFRESH_INTERVAL = 5000;
 
 export default function DemoModeToggle() {
   const [enabled, setEnabled] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
     const stored = localStorage.getItem(DEMO_MODE_STORAGE_KEY);
     if (stored === "true") {
       setEnabled(true);
       document.body.classList.add("demo-mode");
     }
+    setMounted(true);
   }, []);
 
   const toggleDemoMode = () => {

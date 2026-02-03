@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import { 
   LayoutDashboard, 
   Activity, 
@@ -22,18 +23,10 @@ import { GlassCard } from "@/app/components/ui/GlassCard";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { StatusChip } from "@/app/components/ui/StatusChip";
 import { IconBadge } from "@/app/components/ui/IconBadge";
-
-interface Sensor {
-  id: number;
-  sensor_id: string;
-  name: string;
-  latitude?: number | null;
-  longitude?: number | null;
-  is_active: boolean;
-  current_state?: string | null;
-}
+import { fetchSensors, Sensor } from "@/lib/api";
 
 export default function Home() {
+  const { getToken } = useAuth();
   const [stats, setStats] = useState({
     healthScore: 100,
     activeSensors: 0,
@@ -47,13 +40,8 @@ export default function Home() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const [sensorsRes, alertsRes] = await Promise.all([
-            fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sensors`),
-            fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/alerts`)
-        ]);
-
-        const sensorsData = await sensorsRes.json();
-        const alerts = await alertsRes.json();
+        const token = await getToken();
+        const sensorsData = await fetchSensors(token);
 
         setSensors(Array.isArray(sensorsData) ? sensorsData : []);
 
@@ -61,11 +49,6 @@ export default function Home() {
         const active = activeSensors.length;
         const total = Array.isArray(sensorsData) ? sensorsData.length : 0;
         
-        const criticalAlerts = Array.isArray(alerts) ? alerts.filter((a: any) => a.severity === 'critical').length : 0;
-        const warningAlerts = Array.isArray(alerts) ? alerts.filter((a: any) => a.severity === 'warning').length : 0;
-        const inactiveSensors = total - active;
-        
-        // Sensor Availability: % of sensors that are online (easy to understand)
         const sensorAvailability = total > 0 ? Math.round((active / total) * 100) : 0;
 
         const getMostCriticalSensor = (): { status: string; name: string } => {
@@ -102,7 +85,7 @@ export default function Home() {
     fetchStats();
     const interval = setInterval(fetchStats, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [getToken]);
 
   return (
     <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">

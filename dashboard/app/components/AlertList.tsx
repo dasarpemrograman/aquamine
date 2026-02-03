@@ -38,7 +38,7 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h" }:
     return () => clearInterval(interval);
   }, []);
 
-  const getStatusVariant = (severity: string) => {
+  const getStatusVariant = (severity: string): 'critical' | 'warning' | 'info' | 'active' => {
     switch (severity) {
       case "critical": return "critical";
       case "warning": return "warning";
@@ -122,7 +122,7 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h" }:
                       #{alert.id} • {alert.sensor_id}
                     </span>
                     <StatusChip 
-                      status={getStatusVariant(alert.severity) as any} 
+                      status={getStatusVariant(alert.severity)} 
                       label={alert.severity.toUpperCase()} 
                       size="sm" 
                     />
