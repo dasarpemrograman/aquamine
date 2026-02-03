@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Settings, Bell, Clock, RefreshCw, Check, AlertCircle, Globe } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 
-import { GlassPanel } from "@/app/components/ui/GlassPanel";
+import { GlassCard } from "@/app/components/ui/GlassCard";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { fetchSettings, updateSettings, UserSettings, UserSettingsUpdate } from "@/lib/api";
 
@@ -106,7 +106,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">
+    <div className="w-full px-6 py-8 md:px-8 md:py-10 pb-32">
       <div className="mx-auto w-full max-w-4xl space-y-8">
         <SectionHeader
           title="Settings"
@@ -122,8 +122,8 @@ export default function SettingsPage() {
           </div>
         )}
 
-        <div className="space-y-6">
-          <GlassPanel>
+        <div className="space-y-8">
+          <GlassCard>
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2 bg-blue-100/50 rounded-lg">
                 <Bell className="w-5 h-5 text-blue-600" />
@@ -132,7 +132,7 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-4">
-              <label className="flex items-center justify-between p-4 bg-white/40 rounded-xl hover:bg-white/60 transition-colors cursor-pointer">
+              <label className="flex items-center justify-between p-4 bg-white/40 rounded-xl hover:bg-white/60 transition-colors cursor-pointer border border-white/40">
                 <div>
                   <p className="font-medium text-slate-800">Enable Notifications</p>
                   <p className="text-sm text-slate-500">Receive alerts and updates</p>
@@ -150,7 +150,7 @@ export default function SettingsPage() {
                 </div>
               </label>
 
-              <div className="pl-4 space-y-3">
+              <div className="pl-4 space-y-3 border-l-2 border-slate-200/50 ml-2">
                 <label className="flex items-center justify-between p-3 bg-white/30 rounded-lg hover:bg-white/50 transition-colors cursor-pointer">
                   <span className="text-slate-700">Critical Alerts</span>
                   <div className="relative flex items-center">
@@ -197,9 +197,9 @@ export default function SettingsPage() {
                 </label>
               </div>
             </div>
-          </GlassPanel>
+          </GlassCard>
 
-          <GlassPanel>
+          <GlassCard>
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2 bg-purple-100/50 rounded-lg">
                 <Clock className="w-5 h-5 text-purple-600" />
@@ -207,7 +207,7 @@ export default function SettingsPage() {
               <h2 className="text-lg font-semibold text-slate-800">Quiet Hours</h2>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Start Time
@@ -232,12 +232,12 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <p className="mt-3 text-sm text-slate-500">
+            <p className="mt-4 text-sm text-slate-500">
               During quiet hours, notification badges will be suppressed.
             </p>
-          </GlassPanel>
+          </GlassCard>
 
-          <GlassPanel>
+          <GlassCard>
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2 bg-green-100/50 rounded-lg">
                 <RefreshCw className="w-5 h-5 text-green-600" />
@@ -263,7 +263,7 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3 p-4 bg-white/40 rounded-xl">
+              <div className="flex items-center gap-3 p-4 bg-white/40 rounded-xl border border-white/40">
                 <Globe className="w-5 h-5 text-slate-500" />
                 <div>
                   <p className="font-medium text-slate-800">Timezone</p>
@@ -273,13 +273,13 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
-          </GlassPanel>
+          </GlassCard>
 
-          <div className="flex justify-end">
+          <div className="flex justify-end pt-4">
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-600/20 flex items-center gap-2"
+              className="px-8 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-600/20 flex items-center gap-2 font-medium"
             >
               {saving ? (
                 <>
