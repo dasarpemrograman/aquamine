@@ -14,10 +14,14 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
     BackgroundTasks,
+    Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError
 import io
@@ -67,6 +71,7 @@ from .schemas.alert import (
 from .schemas.settings import UserSettingsResponse, UserSettingsUpdate
 from .schemas.help import FaqItem, FaqResponse
 from .schemas.base import BaseSchema
+from .config import settings
 from .schemas.chat import (
     ThreadCreate,
     ThreadUpdate,
@@ -92,6 +97,16 @@ from .alerts.notifications import NotificationService
 from .realtime.websocket import manager as ws_manager
 
 logger = logging.getLogger(__name__)
+
+# Rate limiting setup
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=REDIS_URL,
+    enabled=RATE_LIMIT_ENABLED,
+)
 
 REFRESH_INTERVAL_MIN_SECONDS = 5
 REFRESH_INTERVAL_MAX_SECONDS = 60
@@ -132,18 +147,12 @@ def _cleanup_forecast_regeneration_cache(cutoff_days: int = 7) -> None:
         logger.debug(f"Cleaned up {len(keys_to_remove)} old forecast regeneration entries")
 
 
-INGEST_API_KEY = os.getenv("INGEST_API_KEY")
+INGEST_API_KEY = settings.INGEST_API_KEY
 
 
 def verify_ingest_token(x_ingest_key: Optional[str] = Header(None, alias="X-Ingest-Key")) -> str:
     """Verify the request has a valid ingest key."""
-    if not INGEST_API_KEY:
-        # Log warning but allow if not configured? No, deny by default for security.
-        logger.warning("INGEST_API_KEY not set in environment")
-        raise HTTPException(
-            status_code=500, detail="Server configuration error: Ingest key not set"
-        )
-
+    # INGEST_API_KEY is guaranteed by settings validation
     if x_ingest_key != INGEST_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing ingest key")
     return x_ingest_key
@@ -182,9 +191,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AquaMine AI API", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Setup services
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+cors_origins = settings.CORS_ORIGINS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -197,7 +208,7 @@ app.add_middleware(
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 # Trusted host middleware for production
-if os.getenv("ENVIRONMENT") == "production":
+if settings.ENVIRONMENT == "production":
     app.add_middleware(
         TrustedHostMiddleware, allowed_hosts=["aquamine.web.id", "*.aquamine.web.id"]
     )
@@ -734,8 +745,11 @@ def get_faq() -> FaqResponse:
 
 
 @app.post("/api/v1/chat")
-async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)) -> dict[str, Any]:
-    result = await chat_orchestrator.process_user_message(request.message, request.session_id)
+@limiter.limit("30/minute")
+async def chat(
+    request: Request, body: ChatRequest, user_id: str = Depends(get_current_user)
+) -> dict[str, Any]:
+    result = await chat_orchestrator.process_user_message(body.message, body.session_id)
 
     if isinstance(result, dict) and result.get("type") == "compaction_required":
         return {
@@ -751,7 +765,8 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)) -
 
 
 @app.post("/api/v1/cv/analyze")
-async def analyze_image(file: Optional[UploadFile] = File(None)):
+@limiter.limit("10/minute")
+async def analyze_image(request: Request, file: Optional[UploadFile] = File(None)):
     if file is None:
         return error_response(
             422, "MISSING_FILE", "No file uploaded. Use 'file' field in multipart form."
@@ -857,7 +872,9 @@ async def get_sensor_readings(sensor_id: int, hours: int = 24, db: AsyncSession 
 
 
 @app.post("/api/v1/sensors/ingest")
+@limiter.limit("100/minute")
 async def ingest_sensor_data(
+    request: Request,
     payload: SensorDataIngest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),

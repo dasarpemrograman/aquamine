@@ -754,3 +754,21 @@ Day 15-16: Buffer + Final Submission
 **Last Updated:** 24 January 2026  
 **Maintained By:** Project Lead  
 **Review Frequency:** Daily during standup
+
+---
+
+## Implementation Notes (Updated: 2026-02-03)
+
+### Major Drifts
+- **Frontend Framework**: Using Next.js instead of Vite (better Clerk integration)
+- **Database Migrations**: Using Alembic (timeline said "No Alembic")
+- **CV**: 10MB upload limit
+- **Forecast**: Response shape differences
+- **Analytics endpoints**: Deferred to post-MVP
+- **Auth**: Clerk JWT (not simple token as initially planned)
+- **Deployment**: 4 uvicorn workers with Redis locks
+
+### Status Legend
+- ✅ Shipped
+- ⏳ Deferred
+- 🔄 Replaced-by
