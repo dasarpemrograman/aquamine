@@ -130,6 +130,12 @@ function ForecastTooltip({ active, payload, label }: ForecastTooltipProps) {
   );
 }
 
+const RANGE_OPTIONS = [
+  { label: "24h", value: 24, description: "24-Hour Forecast" },
+  { label: "7d", value: 168, description: "7-Day Forecast" },
+  { label: "30d", value: 720, description: "30-Day Forecast" },
+] as const;
+
 export default function ForecastChart({ sensorId }: { sensorId: string }) {
   const [data, setData] = useState<ChartPoint[]>([]);
   const [anomaly, setAnomaly] = useState<AnomalyData | null>(null);
@@ -141,6 +147,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
   const [forecastEnd, setForecastEnd] = useState<string | null>(null);
   const [forecastIsStale, setForecastIsStale] = useState<boolean>(false);
   const [forecastStaleReason, setForecastStaleReason] = useState<string | null>(null);
+  const [selectedRange, setSelectedRange] = useState<number>(168);
   const [loading, setLoading] = useState(true);
   const isFetchingRef = useRef(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -155,7 +162,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ sensor_id: parseInt(sensorId) }),
+          body: JSON.stringify({ sensor_id: parseInt(sensorId), horizon_hours: selectedRange }),
         });
 
         if (!res.ok) {
@@ -211,11 +218,6 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
       }
     };
 
-    if (sensorId) {
-      fetchData();
-      startInterval();
-    }
-
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && sensorId) {
         // Reset interval to prevent duplicate fetches near the 10-minute boundary
@@ -225,13 +227,19 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
       }
     };
 
+    if (sensorId) {
+      fetchData();
+      startInterval();
+    }
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       stopInterval();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [sensorId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sensorId, selectedRange]);
 
   const nowTimestamp = Date.now();
   const lastReadingTimestamp = latestReading
@@ -239,6 +247,13 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
     : null;
 
   const chartDomain = useMemo(() => {
+    if (forecastStart && forecastEnd) {
+      return [new Date(forecastStart).getTime(), new Date(forecastEnd).getTime()] as [
+        number,
+        number,
+      ];
+    }
+
     if (!data.length && !forecastStart && !forecastEnd && !lastReadingTimestamp) {
       return undefined;
     }
@@ -275,10 +290,27 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
     <GlassCard className="w-full">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-white/40">
         <div>
-          <h3 className="text-lg font-bold text-slate-800">7-Day Forecast</h3>
+          <h3 className="text-lg font-bold text-slate-800">
+            {RANGE_OPTIONS.find((r) => r.value === selectedRange)?.description ?? "Forecast"}
+          </h3>
           {historyHours ? (
             <p className="text-xs text-slate-500">Based on: {historyHours}h of sensor data</p>
           ) : null}
+          <div className="flex gap-2 mt-2">
+            {RANGE_OPTIONS.map((range) => (
+              <button
+                key={range.value}
+                onClick={() => setSelectedRange(range.value)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  selectedRange === range.value
+                    ? "bg-cyan-100 text-cyan-800 border border-cyan-300"
+                    : "bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200"
+                }`}
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
         </div>
         {anomaly && (
           <div className="flex flex-col items-start sm:items-end gap-1">
