@@ -71,7 +71,12 @@ export interface Alert {
 export interface Sensor {
   id: number;
   sensor_id: string;
+  name: string;
+  latitude?: number | null;
+  longitude?: number | null;
   is_active: boolean;
+  created_at?: string;
+  current_state?: string | null;
 }
 
 export async function analyzeImage(file: File): Promise<AnalysisResponse> {

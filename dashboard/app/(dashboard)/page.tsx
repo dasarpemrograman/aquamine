@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "@clerk/nextjs";
 import { 
   LayoutDashboard, 
   Activity, 
@@ -26,7 +25,6 @@ import { IconBadge } from "@/app/components/ui/IconBadge";
 import { fetchSensors, Sensor } from "@/lib/api";
 
 export default function Home() {
-  const { getToken } = useAuth();
   const [stats, setStats] = useState({
     healthScore: 100,
     activeSensors: 0,
@@ -40,8 +38,7 @@ export default function Home() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const token = await getToken();
-        const sensorsData = await fetchSensors(token);
+        const sensorsData = await fetchSensors();
 
         setSensors(Array.isArray(sensorsData) ? sensorsData : []);
 
@@ -85,7 +82,7 @@ export default function Home() {
     fetchStats();
     const interval = setInterval(fetchStats, 10000);
     return () => clearInterval(interval);
-  }, [getToken]);
+  }, []);
 
   return (
     <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">
