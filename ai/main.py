@@ -1112,6 +1112,26 @@ async def get_forecast_compatibility(
     prediction = result.scalar_one_or_none()
 
     window_start = getattr(prediction, "forecast_start", None) if prediction else None
+
+    if prediction and not window_start and prediction.forecast_values:
+        try:
+            first_val = prediction.forecast_values[0]
+            ts_val = (
+                first_val.get("timestamp")
+                if isinstance(first_val, dict)
+                else getattr(first_val, "timestamp", None)
+            )
+            if ts_val:
+                if isinstance(ts_val, str):
+                    window_start = datetime.fromisoformat(ts_val.replace("Z", "+00:00"))
+                elif isinstance(ts_val, datetime):
+                    window_start = ts_val
+        except (ValueError, AttributeError, IndexError):
+            pass
+
+    if prediction and not window_start:
+        window_start = getattr(prediction, "created_at", now_utc)
+
     window_end = (
         window_start + timedelta(hours=payload.horizon_hours)
         if window_start
@@ -1135,9 +1155,10 @@ async def get_forecast_compatibility(
         wib = ZoneInfo("Asia/Jakarta")
         today_wib_date = now_utc.astimezone(wib).date()
 
+        created_at = getattr(prediction, "created_at", None)
         if prediction is None:
             should_refresh = True
-        elif prediction.created_at.astimezone(wib).date() < today_wib_date:
+        elif created_at is None or created_at.astimezone(wib).date() < today_wib_date:
             should_refresh = True
         elif prediction.forecast_end is None or prediction.forecast_end < window_end:
             should_refresh = True
@@ -1153,8 +1174,13 @@ async def get_forecast_compatibility(
             # Single critical section: hold lock for entire decision-making to prevent race conditions
             async with _forecast_regeneration_lock:
                 if regen_key in _last_forecast_regeneration:
-                    # Strict 1x per day check - if successful entry exists for today, never refresh
-                    already_refreshed_today = True
+                    last_regen = _last_forecast_regeneration[regen_key]
+                    minutes_since = (now_utc - last_regen).total_seconds() / 60
+                    if minutes_since < FORECAST_REGEN_MIN_INTERVAL_MINUTES:
+                        already_refreshed_today = True
+                    else:
+                        _forecast_regeneration_inflight.add(regen_key)
+                        refresh_allowed = True
                 elif regen_key in _forecast_regeneration_inflight:
                     refresh_in_progress = True
                 elif payload.sensor_id in _last_forecast_failure:

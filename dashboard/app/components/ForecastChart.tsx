@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Line,
   XAxis,
@@ -154,61 +154,61 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
   const isFetchingRef = useRef(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      if (isFetchingRef.current) return;
-      isFetchingRef.current = true;
-      try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/forecast`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ sensor_id: parseInt(sensorId), horizon_hours: selectedRange }),
-        });
+  const fetchData = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/forecast`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ sensor_id: parseInt(sensorId), horizon_hours: selectedRange }),
+      });
 
-        if (!res.ok) {
-          throw new Error(`Error: ${res.status}`);
-        }
-
-        const json: ForecastResponse = await res.json();
-
-        setWarning(json.warning ?? null);
-        setLatestReading(json.latest_reading ?? null);
-        setHistoryHours(json.history_hours ?? null);
-        setForecastGeneratedAt(json.forecast_generated_at ?? null);
-        setForecastStart(json.forecast_start ?? null);
-        setForecastEnd(json.forecast_end ?? null);
-        setForecastIsStale(json.forecast_is_stale ?? false);
-        setForecastStaleReason(json.forecast_stale_reason ?? null);
-
-        const dataMap = new Map<number, ChartPoint>();
-
-        if (json && json.forecast) {
-          json.forecast.forEach((p) => {
-            const ts = new Date(p.timestamp).getTime();
-            dataMap.set(ts, {
-              timestamp: ts,
-              ph_pred: p.ph_pred,
-              confidence: p.confidence,
-            });
-          });
-        }
-
-        const mergedData = Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
-        setData(mergedData);
-
-        if (json && json.anomaly) {
-          setAnomaly(json.anomaly);
-        }
-      } catch (e) {
-        console.error("Failed to fetch forecast", e);
-      } finally {
-        setLoading(false);
-        isFetchingRef.current = false;
+      if (!res.ok) {
+        throw new Error(`Error: ${res.status}`);
       }
-    }
 
+      const json: ForecastResponse = await res.json();
+
+      setWarning(json.warning ?? null);
+      setLatestReading(json.latest_reading ?? null);
+      setHistoryHours(json.history_hours ?? null);
+      setForecastGeneratedAt(json.forecast_generated_at ?? null);
+      setForecastStart(json.forecast_start ?? null);
+      setForecastEnd(json.forecast_end ?? null);
+      setForecastIsStale(json.forecast_is_stale ?? false);
+      setForecastStaleReason(json.forecast_stale_reason ?? null);
+
+      const dataMap = new Map<number, ChartPoint>();
+
+      if (json && json.forecast) {
+        json.forecast.forEach((p) => {
+          const ts = new Date(p.timestamp).getTime();
+          dataMap.set(ts, {
+            timestamp: ts,
+            ph_pred: p.ph_pred,
+            confidence: p.confidence,
+          });
+        });
+      }
+
+      const mergedData = Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+      setData(mergedData);
+
+      if (json && json.anomaly) {
+        setAnomaly(json.anomaly);
+      }
+    } catch (e) {
+      console.error("Failed to fetch forecast", e);
+    } finally {
+      setLoading(false);
+      isFetchingRef.current = false;
+    }
+  }, [sensorId, selectedRange]);
+
+  useEffect(() => {
     const startInterval = () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = setInterval(() => {
@@ -245,8 +245,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
       stopInterval();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sensorId, selectedRange]);
+  }, [sensorId, fetchData]);
 
   const nowTimestamp = Date.now();
   const lastReadingTimestamp = latestReading
@@ -256,11 +255,19 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
   const chartDomain = useMemo(() => {
     if (!data.length) return undefined;
 
-    const domainStart = data[0].timestamp;
-    const domainEnd = data[data.length - 1].timestamp;
+    let min = data[0].timestamp;
+    let max = data[data.length - 1].timestamp;
 
-    return [domainStart, domainEnd] as [number, number];
-  }, [data]);
+    if (nowTimestamp < min) min = nowTimestamp;
+    if (nowTimestamp > max) max = nowTimestamp;
+
+    if (lastReadingTimestamp) {
+        if (lastReadingTimestamp < min) min = lastReadingTimestamp;
+        if (lastReadingTimestamp > max) max = lastReadingTimestamp;
+    }
+
+    return [min, max] as [number, number];
+  }, [data, nowTimestamp, lastReadingTimestamp]);
 
   if (loading) return <div className="text-sm text-slate-500">Loading forecast...</div>;
 
