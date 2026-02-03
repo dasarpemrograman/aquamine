@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { 
   LayoutDashboard, 
+  BarChart3,
   LineChart, 
   Bell, 
   Users, 
@@ -21,6 +22,7 @@ const classNames = (...classes: (string | undefined | null | false)[]) => classe
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/forecast', label: 'Forecast', icon: LineChart },
+  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/alerts', label: 'Alerts', icon: Bell },
   { href: '/map', label: 'Map', icon: Map },
   { href: '/recipients', label: 'Recipients', icon: Users },
