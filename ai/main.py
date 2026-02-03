@@ -1139,7 +1139,7 @@ async def get_forecast_compatibility(
             should_refresh = True
         elif prediction.created_at.astimezone(wib).date() < today_wib_date:
             should_refresh = True
-        elif prediction.forecast_end < window_end:
+        elif prediction.forecast_end is None or prediction.forecast_end < window_end:
             should_refresh = True
 
         if should_refresh:
