@@ -51,12 +51,8 @@ def test_ingest_rejects_missing_key(client, mock_db):
         "/api/v1/sensors/ingest",
         json={"sensor_id": 1, "timestamp": "2023-01-01T00:00:00Z", "readings": {}},
     )
-    # Expect 500 if key not set in env (default in test) or 401 if key set but missing in header
-    # In test env, INGEST_API_KEY might be None.
-    # Logic: if not INGEST_API_KEY: raise 500.
-    # So we expect 500 here unless we mock os.environ or INGEST_API_KEY constant.
-    # Since INGEST_API_KEY is imported at module level, it's None.
-    assert response.status_code == 500
+    # When INGEST_API_KEY is set in env but missing in header, expect 401
+    assert response.status_code == 401
 
 
 def test_ingest_rejects_invalid_key(client, mock_db, monkeypatch):
