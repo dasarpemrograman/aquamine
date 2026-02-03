@@ -7,6 +7,7 @@ import { UserButton, SignedIn, SignedOut, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import NotificationDropdown from "./NotificationDropdown";
 import { fetchHealth, fetchSensors, fetchSettings, Sensor } from "@/lib/api";
+import DemoModeToggle, { DEMO_MODE_STORAGE_KEY, DEMO_REFRESH_INTERVAL } from "./DemoModeToggle";
 
 type SystemStatus = "active" | "warning" | "critical";
 
@@ -19,7 +20,25 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
   const userId = user?.id;
   const [status, setStatus] = useState<SystemStatus>("active");
   const [statusLabel, setStatusLabel] = useState("System Active");
-  const [refreshInterval, setRefreshInterval] = useState(10000);
+  const [userRefreshInterval, setUserRefreshInterval] = useState(10000);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+
+  const refreshInterval = isDemoMode ? DEMO_REFRESH_INTERVAL : userRefreshInterval;
+
+  useEffect(() => {
+    const checkDemoMode = () => {
+      const enabled = localStorage.getItem(DEMO_MODE_STORAGE_KEY) === "true";
+      setIsDemoMode(enabled);
+    };
+
+    checkDemoMode();
+    const handleDemoChange = () => checkDemoMode();
+    window.addEventListener("demo-mode-changed", handleDemoChange);
+    
+    return () => {
+      window.removeEventListener("demo-mode-changed", handleDemoChange);
+    };
+  }, []);
 
   useEffect(() => {
     checkSystemStatus();
@@ -38,7 +57,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
 
     fetchSettings(userId)
       .then((settings) => {
-        setRefreshInterval(settings.refresh_interval_seconds * 1000);
+        setUserRefreshInterval(settings.refresh_interval_seconds * 1000);
       })
       .catch(() => {});
   }, [userId]);
@@ -87,6 +106,10 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
       <div className="flex items-center gap-2 md:gap-3">
         <div className="mr-2 hidden md:block">
           <StatusChip status={status} label={statusLabel} size="sm" />
+        </div>
+
+        <div className="hidden md:block">
+          <DemoModeToggle />
         </div>
 
         <NotificationDropdown />
