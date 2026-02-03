@@ -2,6 +2,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { plusJakartaSans } from "./fonts/plus-jakarta-sans";
 import "./globals.css";
+import "leaflet/dist/leaflet.css";
 
 import { bootstrapSuperadmin } from "@/lib/bootstrap";
 

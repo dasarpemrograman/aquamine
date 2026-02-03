@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Map as MapIcon, Waves, AlertTriangle } from "lucide-react";
 import dynamic from "next/dynamic";
+import type { Map as LeafletMap } from "leaflet";
 import {
   SEVERITY_COLORS,
   SensorWithState,
@@ -18,7 +19,6 @@ import {
 export { SEVERITY_COLORS, BERKELEY_PIT_POLYGON, BERKELEY_PIT_CENTER, getMarkerColor, getPolygonColor, countMissingCoords };
 export type { SensorWithState, Severity };
 
-// Dynamic import for Leaflet components (SSR fix)
 const MapContainer = dynamic(
   () => import("react-leaflet").then((mod) => mod.MapContainer),
   { ssr: false }
@@ -60,10 +60,21 @@ export default function BerkeleyPitMap({
   onMissingCoords,
 }: BerkeleyPitMapProps) {
   const [isMounted, setIsMounted] = useState(false);
+  const mapRef = useRef<LeafletMap | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const raf = requestAnimationFrame(() => {
+      mapRef.current?.invalidateSize();
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [isMounted]);
 
   useEffect(() => {
     if (onMissingCoords) {
@@ -75,11 +86,10 @@ export default function BerkeleyPitMap({
     ? sensors.filter((s) => severityFilter.includes(s.current_state as Severity))
     : sensors;
 
-  // Don't render map on server
   if (!isMounted) {
     return (
       <div
-        className="relative w-full rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center"
+        className="relative w-full h-full min-h-[500px] rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center"
         style={{ height }}
       >
         <div className="text-center text-slate-400">
@@ -92,14 +102,16 @@ export default function BerkeleyPitMap({
 
   return (
     <div
-      className="relative w-full rounded-xl overflow-hidden"
+      className="relative w-full h-full min-h-[500px] rounded-xl overflow-hidden"
       style={{ height }}
     >
       <MapContainer
+        ref={mapRef}
         center={BERKELEY_PIT_CENTER}
         zoom={14}
         scrollWheelZoom={true}
         className="w-full h-full"
+        style={{ height: "100%", width: "100%" }}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -127,8 +139,8 @@ export default function BerkeleyPitMap({
               center={[sensor.latitude, sensor.longitude]}
               radius={10}
               pathOptions={{
-                color: getMarkerColor(sensor.current_state),
-                fillColor: getMarkerColor(sensor.current_state),
+                color: getMarkerColor(sensor),
+                fillColor: getMarkerColor(sensor),
                 fillOpacity: 0.9,
                 weight: 2,
               }}
