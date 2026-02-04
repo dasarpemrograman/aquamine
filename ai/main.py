@@ -1,7 +1,9 @@
+# pyright: reportUnusedParameter=false
+
 import asyncio
 from contextlib import asynccontextmanager, suppress
-from datetime import date, datetime, timedelta, timezone
-from typing import List, Literal, Optional, Any
+from datetime import datetime, timedelta, timezone
+from typing import List, Literal, Optional, Any, cast
 from zoneinfo import ZoneInfo
 
 from fastapi import (
@@ -14,13 +16,19 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
     BackgroundTasks,
+    Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.responses import Response
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError
 import io
 import logging
-import os
 import re
 import time
 import uuid
@@ -32,7 +40,7 @@ from sqlalchemy.orm import selectinload
 
 # Import CV modules
 from .schemas.cv import BoundingBox, ImageAnalysisResponse
-from .cv.detector import YellowBoyDetector, ImageDecodeError
+from .cv.detector import YellowBoyDetector, ImageDecodeError, YOLO_CONFIDENCE_THRESHOLD
 from .utils.responses import error_response
 from .chatbot.orchestrator import ChatOrchestrator, SYSTEM_PROMPT
 from .chatbot.summarizer import generate_thread_title
@@ -65,12 +73,12 @@ from .schemas.alert import (
 from .schemas.settings import UserSettingsResponse, UserSettingsUpdate
 from .schemas.help import FaqItem, FaqResponse
 from .schemas.base import BaseSchema
+from .config import settings
 from .schemas.chat import (
     ThreadCreate,
     ThreadUpdate,
     ThreadResponse,
     ThreadListResponse,
-    MessageCreate,
     MessageResponse,
     MessageListResponse,
     SendMessageRequest,
@@ -79,7 +87,6 @@ from .schemas.chat import (
     CompactionPreviewResponse,
     CompactionCommitRequest,
     CompactionCommitResponse,
-    SegmentResponse,
 )
 from .auth.clerk import get_current_user
 from .iot.mqtt_bridge import process_mqtt_message
@@ -88,8 +95,23 @@ from .anomaly.detector import AnomalyDetector, ANOMALY_THRESHOLDS
 from .alerts.state_machine import AlertStateMachine
 from .alerts.notifications import NotificationService
 from .realtime.websocket import manager as ws_manager
+from .routers.analytics import router as analytics_router
 
 logger = logging.getLogger(__name__)
+
+# Keep API upload limit aligned with Nginx `client_max_body_size 10m`.
+CV_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+# Detection confidence threshold for yellow boy.
+# Keep aligned with YOLO's `conf` filtering in `ai/cv/detector.py`.
+DETECTION_THRESHOLD = YOLO_CONFIDENCE_THRESHOLD
+
+# Rate limiting setup
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=settings.REDIS_URL,
+    enabled=settings.RATE_LIMIT_ENABLED,
+)
 
 REFRESH_INTERVAL_MIN_SECONDS = 5
 REFRESH_INTERVAL_MAX_SECONDS = 60
@@ -99,56 +121,34 @@ QUIET_HOURS_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 FORECAST_REGEN_DATA_THRESHOLD_HOURS = 6  # Minimum new data hours to trigger dynamic regeneration
 FORECAST_REGEN_MIN_INTERVAL_MINUTES = 30  # Minimum interval between regenerations per sensor
 
-# In-memory rate limiting for forecast regeneration.
-# Keyed by (sensor_id, WIB date). Value is the UTC timestamp of the last successful regeneration.
-_last_forecast_regeneration: dict[tuple[int, date], datetime] = {}
-# Keyed by sensor_id. Value is the UTC timestamp of the last failed regeneration attempt.
-_last_forecast_failure: dict[int, datetime] = {}
-_forecast_regeneration_inflight: set[tuple[int, date]] = set()
-_forecast_regeneration_lock = asyncio.Lock()
+# Redis-based gating/locking TTLs for forecast regeneration.
+FORECAST_REGEN_LOCK_TTL_SECONDS = 300
+FORECAST_REGEN_TS_TTL_SECONDS = 7 * 24 * 60 * 60
+FORECAST_REGEN_FAILURE_TTL_SECONDS = FORECAST_REGEN_MIN_INTERVAL_MINUTES * 60
 
 
-def _cleanup_forecast_regeneration_cache(cutoff_days: int = 7) -> None:
-    """Remove old entries from forecast regeneration cache to prevent memory leak.
-
-    Args:
-        cutoff_days: Remove entries older than this many days (default: 7)
-    """
-    global _last_forecast_regeneration
-    if not _last_forecast_regeneration:
-        return
-
-    from datetime import timedelta
-
-    today = datetime.now(timezone.utc).date()
-    cutoff_date = today - timedelta(days=cutoff_days)
-
-    keys_to_remove = [key for key in _last_forecast_regeneration.keys() if key[1] < cutoff_date]
-
-    for key in keys_to_remove:
-        del _last_forecast_regeneration[key]
-
-    if keys_to_remove:
-        logger.debug(f"Cleaned up {len(keys_to_remove)} old forecast regeneration entries")
+INGEST_API_KEY = settings.INGEST_API_KEY
 
 
-def verify_user_id(user_id: str, x_user_id: Optional[str] = Header(None, alias="x-user-id")) -> str:
-    """Verify the path user_id matches the authenticated user from the X-User-Id header.
+def verify_ingest_token(x_ingest_key: Optional[str] = Header(None, alias="X-Ingest-Key")) -> str:
+    """Verify the request has a valid ingest key."""
+    # INGEST_API_KEY is guaranteed by settings validation
+    if not x_ingest_key or x_ingest_key != INGEST_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing ingest key")
+    return x_ingest_key
 
-    The frontend must send the authenticated user's ID in the X-User-Id header.
+
+def verify_user_id(user_id: str, token_user: str = Depends(get_current_user)) -> str:
+    """Verify the path user_id matches the authenticated user from the Clerk token.
+
     This prevents users from accessing other users' settings by manipulating the URL.
     """
-    if not x_user_id:
-        raise HTTPException(
-            status_code=401,
-            detail="Missing X-User-Id header - authentication required",
-        )
-    if x_user_id != user_id:
+    if user_id != token_user:
         raise HTTPException(
             status_code=403,
             detail="Access denied - cannot access another user's settings",
         )
-    return user_id
+    return token_user
 
 
 @asynccontextmanager
@@ -157,8 +157,20 @@ async def lifespan(app: FastAPI):
     app.state.redis_listener_task = task
 
     def task_done_callback(t):
-        if t.exception():
-            logger.error(f"Redis listener task crashed: {t.exception()}")
+        if t.cancelled():
+            return
+
+        try:
+            exc = t.exception()
+        except asyncio.CancelledError:
+            # Task cancellation during lifespan shutdown is expected.
+            return
+
+        if exc is not None:
+            logger.error(
+                "Redis listener task crashed",
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
 
     task.add_done_callback(task_done_callback)
 
@@ -170,10 +182,18 @@ async def lifespan(app: FastAPI):
             await task
 
 
+def rate_limit_exceeded_handler(request: Request, exc: Exception) -> Response:
+    if not isinstance(exc, RateLimitExceeded):
+        raise exc
+    return _rate_limit_exceeded_handler(request, exc)
+
+
 app = FastAPI(title="AquaMine AI API", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # Setup services
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+cors_origins = settings.CORS_ORIGINS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -181,6 +201,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Routers
+app.include_router(analytics_router)
+
+# Proxy headers middleware for correct client IP/protocol behind Nginx
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+
+# Trusted host middleware for production
+if settings.ENVIRONMENT == "production":
+    app.add_middleware(
+        TrustedHostMiddleware, allowed_hosts=["aquamine.web.id", "*.aquamine.web.id"]
+    )
 
 cv_detector = YellowBoyDetector()
 timegpt = TimeGPTClient()
@@ -299,8 +331,8 @@ def check_forecast_staleness(
     Rule order:
     1) no_prediction
     2) forecast_end_before_window_end
-    3) newer_reading_exists
-    4) created_before_today_wib
+    3) created_before_today_wib
+    4) newer_reading_exists
 
     Naive datetimes are treated as UTC.
     """
@@ -330,13 +362,6 @@ def check_forecast_staleness(
     if forecast_end_utc is None or forecast_end_utc < window_end_utc:
         return {"is_stale": True, "stale_reason": "forecast_end_before_window_end"}
 
-    latest_ts_utc = None
-    if latest_reading is not None:
-        latest_ts_utc = _as_utc_optional(getattr(latest_reading, "timestamp", None))
-
-    if latest_ts_utc is not None and created_at_utc is not None and latest_ts_utc > created_at_utc:
-        return {"is_stale": True, "stale_reason": "newer_reading_exists"}
-
     if created_at_utc is None:
         return {"is_stale": True, "stale_reason": "created_before_today_wib"}
 
@@ -344,6 +369,13 @@ def check_forecast_staleness(
     today_date_wib = now_utc_utc.astimezone(wib).date()
     if created_date_wib < today_date_wib:
         return {"is_stale": True, "stale_reason": "created_before_today_wib"}
+
+    latest_ts_utc = None
+    if latest_reading is not None:
+        latest_ts_utc = _as_utc_optional(getattr(latest_reading, "timestamp", None))
+
+    if latest_ts_utc is not None and created_at_utc is not None and latest_ts_utc > created_at_utc:
+        return {"is_stale": True, "stale_reason": "newer_reading_exists"}
 
     return {"is_stale": False, "stale_reason": None}
 
@@ -714,8 +746,11 @@ def get_faq() -> FaqResponse:
 
 
 @app.post("/api/v1/chat")
-async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)) -> dict[str, Any]:
-    result = await chat_orchestrator.process_user_message(request.message, request.session_id)
+@limiter.limit("30/minute")
+async def chat(
+    request: Request, body: ChatRequest, user_id: str = Depends(get_current_user)
+) -> dict[str, Any]:
+    result = await chat_orchestrator.process_user_message(body.message, body.session_id)
 
     if isinstance(result, dict) and result.get("type") == "compaction_required":
         return {
@@ -731,7 +766,8 @@ async def chat(request: ChatRequest, user_id: str = Depends(get_current_user)) -
 
 
 @app.post("/api/v1/cv/analyze")
-async def analyze_image(file: Optional[UploadFile] = File(None)):
+@limiter.limit("10/minute")
+async def analyze_image(request: Request, file: Optional[UploadFile] = File(None)):
     if file is None:
         return error_response(
             422, "MISSING_FILE", "No file uploaded. Use 'file' field in multipart form."
@@ -739,10 +775,13 @@ async def analyze_image(file: Optional[UploadFile] = File(None)):
 
     content = await file.read()
 
-    if len(content) > 5 * 1024 * 1024:
+    if len(content) > CV_MAX_UPLOAD_BYTES:
         size_mb = len(content) / (1024 * 1024)
+        limit_mb = CV_MAX_UPLOAD_BYTES / (1024 * 1024)
         return error_response(
-            413, "FILE_TOO_LARGE", f"File exceeds 5MB limit. Received: {size_mb:.1f}MB"
+            413,
+            "FILE_TOO_LARGE",
+            f"File exceeds {limit_mb:.0f}MB limit. Received: {size_mb:.1f}MB",
         )
 
     if file.content_type not in ["image/jpeg", "image/png"]:
@@ -766,9 +805,6 @@ async def analyze_image(file: Optional[UploadFile] = File(None)):
     except Exception as e:
         return error_response(500, "INFERENCE_FAILED", f"Model inference failed: {str(e)}")
     elapsed_ms = int((time.perf_counter() - start_time) * 1000)
-
-    # Detection confidence threshold for yellow boy
-    DETECTION_THRESHOLD = 0.65
 
     # Filter detections by threshold
     valid_detections = [d for d in detections if d.confidence >= DETECTION_THRESHOLD]
@@ -837,19 +873,24 @@ async def get_sensor_readings(sensor_id: int, hours: int = 24, db: AsyncSession 
 
 
 @app.post("/api/v1/sensors/ingest")
+@limiter.limit("100/minute")
 async def ingest_sensor_data(
-    payload: SensorDataIngest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
+    request: Request,
+    payload: SensorDataIngest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    token: str = Depends(verify_ingest_token),
 ):
     try:
-        await process_mqtt_message(payload)
+        await process_mqtt_message(payload, session=db)
 
         result = await db.execute(select(Sensor).where(Sensor.sensor_id == payload.sensor_id))
         sensor = result.scalar_one_or_none()
         if not sensor:
             raise HTTPException(status_code=404, detail="Sensor not found after ingestion")
 
-        # --- Alert State Management (Persistence) ---
-        # 1. Fetch current state from DB
+        # --- Alert State Management (DB source of truth) ---
+        # Fetch current state from DB
         stmt = select(SensorAlertState).where(SensorAlertState.sensor_id == sensor.id)
         result = await db.execute(stmt)
         db_state = result.scalar_one_or_none()
@@ -857,16 +898,12 @@ async def ingest_sensor_data(
         if not db_state:
             db_state = SensorAlertState(sensor_id=sensor.id, current_state="normal")
             db.add(db_state)
-            await db.commit()
-            await db.refresh(db_state)
 
         anomalies = anomaly_detector.detect_threshold_anomalies(
             sensor.id,
             {key: value for key, value in payload.readings.items() if value is not None},
             payload.timestamp,
         )
-
-        alert_triggered = None  # Track if any alert happened to update DB
 
         if anomalies:
             for anom in anomalies:
@@ -883,9 +920,14 @@ async def ingest_sensor_data(
                 severity = "critical" if "critical" in (anom.detection_method or "") else "warning"
                 message = f"{anom.parameter.upper()} {severity}: {anom.value:.2f}"
 
-                alert = await alert_sm.process_anomaly(sensor.id, severity, message)
+                alert, new_state, new_last_alert_at = alert_sm.process_anomaly(
+                    sensor_id=sensor.id,
+                    severity=severity,
+                    message=message,
+                    current_state=db_state.current_state,
+                    last_alert_at=db_state.last_alert_at,
+                )
                 if alert:
-                    alert_triggered = alert  # Keep track
                     db_alert = Alert(
                         sensor_id=alert.sensor_id,
                         severity=alert.severity,
@@ -893,12 +935,15 @@ async def ingest_sensor_data(
                         message=alert.message,
                     )
                     db.add(db_alert)
-                    await db.commit()
-                    await db.refresh(db_alert)
+
+                    db_state.current_state = new_state
+                    db_state.last_alert_at = new_last_alert_at
 
                     # Fetch recipients
                     recipients_result = await db.execute(
-                        select(NotificationRecipient).where(NotificationRecipient.is_active == True)
+                        select(NotificationRecipient).where(
+                            NotificationRecipient.is_active.is_(True)
+                        )
                     )
                     recipients = recipients_result.scalars().all()
 
@@ -932,9 +977,12 @@ async def ingest_sensor_data(
                     )
         else:
             # Check for recovery
-            alert = await alert_sm.process_recovery(sensor.id)
+            alert, new_state, new_last_alert_at = alert_sm.process_recovery(
+                sensor_id=sensor.id,
+                current_state=db_state.current_state,
+                last_alert_at=db_state.last_alert_at,
+            )
             if alert:
-                alert_triggered = alert  # Keep track
                 db_alert = Alert(
                     sensor_id=alert.sensor_id,
                     severity=alert.severity,
@@ -942,12 +990,13 @@ async def ingest_sensor_data(
                     message=alert.message,
                 )
                 db.add(db_alert)
-                await db.commit()
-                await db.refresh(db_alert)
+
+                db_state.current_state = new_state
+                db_state.last_alert_at = new_last_alert_at
 
                 # Fetch recipients
                 recipients_result = await db.execute(
-                    select(NotificationRecipient).where(NotificationRecipient.is_active == True)
+                    select(NotificationRecipient).where(NotificationRecipient.is_active.is_(True))
                 )
                 recipients = recipients_result.scalars().all()
 
@@ -973,18 +1022,6 @@ async def ingest_sensor_data(
                     "alert",
                     {"severity": alert.severity, "message": alert.message, "sensor_id": sensor.id},
                 )
-
-        # 3. Update Alert State in DB if changed
-        if alert_triggered:
-            # If severity is 'info' (recovery), new state is normal
-            new_state = "normal" if alert_triggered.severity == "info" else alert_triggered.severity
-            db_state.current_state = new_state
-            # We use DB timestamp for consistency, but alert_triggered doesn't have it (it's Pydantic)
-            # Use current time or db_alert.created_at if available.
-            # db_alert is local in loop, not available here easily. Use datetime.now()
-            db_state.last_alert_at = datetime.now(timezone.utc)
-            db.add(db_state)
-            await db.commit()
 
         await db.commit()
 
@@ -1144,12 +1181,6 @@ async def get_forecast_compatibility(
         stale_reason = staleness.get("stale_reason")
         forecast_warning = f"pH forecast may be stale ({stale_reason})"
 
-        refreshable_reasons = {
-            "no_prediction",
-            "forecast_end_before_window_end",
-            "created_before_today_wib",
-        }
-
         # Explicit precedence checks for refresh
         should_refresh = False
         wib = ZoneInfo("Asia/Jakarta")
@@ -1164,37 +1195,66 @@ async def get_forecast_compatibility(
             should_refresh = True
 
         if should_refresh:
-            regen_key = (payload.sensor_id, today_wib_date)
-
             refresh_allowed = False
             already_refreshed_today = False
             refresh_in_progress = False
             refresh_cooldown = False
 
-            # Single critical section: hold lock for entire decision-making to prevent race conditions
-            async with _forecast_regeneration_lock:
-                if regen_key in _last_forecast_regeneration:
-                    last_regen = _last_forecast_regeneration[regen_key]
-                    minutes_since = (now_utc - last_regen).total_seconds() / 60
-                    if minutes_since < FORECAST_REGEN_MIN_INTERVAL_MINUTES:
-                        already_refreshed_today = True
-                    else:
-                        _forecast_regeneration_inflight.add(regen_key)
-                        refresh_allowed = True
-                elif regen_key in _forecast_regeneration_inflight:
-                    refresh_in_progress = True
-                elif payload.sensor_id in _last_forecast_failure:
-                    # Check failure cooldown (30 min)
-                    last_fail = _last_forecast_failure[payload.sensor_id]
-                    minutes_since_fail = (now_utc - last_fail).total_seconds() / 60
-                    if minutes_since_fail < FORECAST_REGEN_MIN_INTERVAL_MINUTES:
-                        refresh_cooldown = True
-                    else:
-                        _forecast_regeneration_inflight.add(regen_key)
-                        refresh_allowed = True
-                else:
-                    _forecast_regeneration_inflight.add(regen_key)
+            # Distributed locking with Redis
+            redis_client: Any = await ws_manager.get_redis_client()
+            regen_lock_key = f"forecast:regen:lock:{payload.sensor_id}:{today_wib_date}"
+            regen_ts_key = f"forecast:regen:ts:{payload.sensor_id}:{today_wib_date}"
+            regen_fail_key = f"forecast:regen:failure:{payload.sensor_id}"
+
+            # 1. Check Redis Success Timestamp
+            last_regen = None
+            try:
+                ts_val = await redis_client.get(regen_ts_key)
+                if ts_val:
+                    last_regen = datetime.fromisoformat(ts_val.decode("utf-8"))
+            except Exception:
+                logger.warning(
+                    "Failed to check Redis for forecast regeneration timestamp", exc_info=True
+                )
+
+            if last_regen:
+                minutes_since = (now_utc - last_regen).total_seconds() / 60
+                if minutes_since < FORECAST_REGEN_MIN_INTERVAL_MINUTES:
+                    already_refreshed_today = True
+
+            # 2. Check Redis Failure Cache
+            if not already_refreshed_today:
+                try:
+                    fail_val = await redis_client.get(regen_fail_key)
+                    if fail_val:
+                        last_fail = datetime.fromisoformat(fail_val.decode("utf-8"))
+                        minutes_since_fail = (now_utc - last_fail).total_seconds() / 60
+                        if minutes_since_fail < FORECAST_REGEN_MIN_INTERVAL_MINUTES:
+                            refresh_cooldown = True
+                except Exception:
+                    logger.warning(
+                        "Failed to check Redis for forecast failure timestamp", exc_info=True
+                    )
+
+            # 3. Attempt Lock & Regenerate
+            if not already_refreshed_today and not refresh_cooldown:
+                lock_acquired = False
+                lock_token = None
+                try:
+                    lock_token = str(uuid.uuid4())
+                    lock_acquired = await redis_client.set(
+                        regen_lock_key,
+                        lock_token,
+                        nx=True,
+                        ex=FORECAST_REGEN_LOCK_TTL_SECONDS,
+                    )
+                except Exception:
+                    logger.warning("Failed to acquire Redis lock", exc_info=True)
+
+                if lock_acquired:
                     refresh_allowed = True
+                else:
+                    refresh_in_progress = True
 
             if refresh_allowed:
                 generation_success = False
@@ -1208,16 +1268,44 @@ async def get_forecast_compatibility(
                 except Exception as e:
                     generation_result = {"status": "error", "message": str(e)}
                 finally:
-                    async with _forecast_regeneration_lock:
-                        if generation_success:
-                            _last_forecast_regeneration[regen_key] = now_utc
-                            # Cleanup old entries to prevent memory leak
-                            _cleanup_forecast_regeneration_cache()
-                        else:
-                            # Record failure timestamp for cooldown
-                            _last_forecast_failure[payload.sensor_id] = now_utc
+                    # Release lock
+                    try:
+                        if lock_token is not None:
+                            await redis_client.eval(
+                                """
+                                if redis.call('get', KEYS[1]) == ARGV[1] then
+                                    return redis.call('del', KEYS[1])
+                                else
+                                    return 0
+                                end
+                                """,
+                                1,
+                                regen_lock_key,
+                                lock_token,
+                            )
+                    except Exception:
+                        logger.warning("Failed to release Redis lock", exc_info=True)
 
-                        _forecast_regeneration_inflight.discard(regen_key)
+                    if generation_success:
+                        # Store in Redis
+                        try:
+                            await redis_client.set(
+                                regen_ts_key,
+                                now_utc.isoformat(),
+                                ex=FORECAST_REGEN_TS_TTL_SECONDS,
+                            )
+                        except Exception:
+                            logger.error("Failed to store forecast regeneration timestamp in Redis")
+                    else:
+                        # Store in Redis
+                        try:
+                            await redis_client.set(
+                                regen_fail_key,
+                                now_utc.isoformat(),
+                                ex=FORECAST_REGEN_FAILURE_TTL_SECONDS,
+                            )
+                        except Exception:
+                            logger.error("Failed to store forecast failure timestamp in Redis")
 
                 if generation_success:
                     refreshed_result = await db.execute(prediction_query)
@@ -1329,7 +1417,10 @@ async def list_anomalies(
 
 @app.get("/api/v1/alerts", response_model=List[AlertResponse])
 async def list_alerts(
-    severity: Optional[str] = None, limit: int = 50, db: AsyncSession = Depends(get_db)
+    severity: Optional[str] = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
 ):
     query = select(Alert).order_by(desc(Alert.created_at)).limit(limit)
     if severity:
@@ -1406,7 +1497,11 @@ async def update_user_settings(
 
 
 @app.post("/api/v1/recipients", response_model=RecipientResponse)
-async def create_recipient(recipient: RecipientCreate, db: AsyncSession = Depends(get_db)):
+async def create_recipient(
+    recipient: RecipientCreate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
     db_recipient = NotificationRecipient(**recipient.model_dump())
     db.add(db_recipient)
     await db.commit()
@@ -1415,7 +1510,9 @@ async def create_recipient(recipient: RecipientCreate, db: AsyncSession = Depend
 
 
 @app.get("/api/v1/recipients", response_model=List[RecipientResponse])
-async def list_recipients(db: AsyncSession = Depends(get_db)):
+async def list_recipients(
+    db: AsyncSession = Depends(get_db), user_id: str = Depends(get_current_user)
+):
     result = await db.execute(select(NotificationRecipient).order_by(NotificationRecipient.id))
     recipients = result.scalars().all()
     return [RecipientResponse.model_validate(r) for r in recipients]
@@ -1423,7 +1520,10 @@ async def list_recipients(db: AsyncSession = Depends(get_db)):
 
 @app.patch("/api/v1/recipients/{recipient_id}", response_model=RecipientResponse)
 async def update_recipient(
-    recipient_id: int, updates: RecipientBase, db: AsyncSession = Depends(get_db)
+    recipient_id: int,
+    updates: RecipientBase,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
 ):
     result = await db.execute(
         select(NotificationRecipient).where(NotificationRecipient.id == recipient_id)
@@ -1442,7 +1542,11 @@ async def update_recipient(
 
 
 @app.delete("/api/v1/recipients/{recipient_id}")
-async def delete_recipient(recipient_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_recipient(
+    recipient_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
     result = await db.execute(
         select(NotificationRecipient).where(NotificationRecipient.id == recipient_id)
     )
@@ -1457,6 +1561,9 @@ async def delete_recipient(recipient_id: int, db: AsyncSession = Depends(get_db)
 
 @app.delete("/api/v1/test-data")
 async def clear_test_data(db: AsyncSession = Depends(get_db)):
+    if settings.ENVIRONMENT != "test":
+        raise HTTPException(status_code=404, detail="Not found")
+
     anomalies_stmt = delete(Anomaly).where(
         Anomaly.detection_method == "threshold_critical", Anomaly.value.in_([1.5, 2.0])
     )
@@ -1479,7 +1586,9 @@ async def clear_test_data(db: AsyncSession = Depends(get_db)):
 
 @app.post("/api/v1/alerts/{alert_id}/acknowledge")
 async def acknowledge_alert(
-    alert_id: int, username: str = "admin", db: AsyncSession = Depends(get_db)
+    alert_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
 ):
     result = await db.execute(select(Alert).where(Alert.id == alert_id))
     alert = result.scalar_one_or_none()
@@ -1488,7 +1597,7 @@ async def acknowledge_alert(
         raise HTTPException(status_code=404, detail="Alert not found")
 
     alert.acknowledged_at = datetime.now(timezone.utc)
-    alert.acknowledged_by = username
+    alert.acknowledged_by = user_id
     await db.commit()
     return {"status": "acknowledged"}
 
@@ -1872,7 +1981,10 @@ async def send_message(
 
     # Get response from LLM
     # Build conversation history
-    conversation = [{"role": "system", "content": SYSTEM_PROMPT}]
+    conversation = cast(
+        list[dict[str, Any]],
+        [{"role": "system", "content": SYSTEM_PROMPT}],
+    )
     for msg in existing_messages:
         conversation.append(
             {"role": msg.role, "content": msg.content, "token_estimate": msg.token_estimate}
@@ -1981,7 +2093,7 @@ async def preview_compaction(
     db: AsyncSession = Depends(get_db),
 ):
     """Generate a summary preview for compaction."""
-    from .chatbot.token_budget import calculate_context_stats, estimate_message_tokens
+    from .chatbot.token_budget import calculate_context_stats
 
     # Verify thread ownership
     thread_stmt = (

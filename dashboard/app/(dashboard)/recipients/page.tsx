@@ -2,19 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { Plus, Edit2, Trash2, X, AlertTriangle, AlertOctagon, Check, Users, Phone, Mail } from "lucide-react";
+import { useAuth } from "@clerk/nextjs";
 
 import { GlassPanel } from "@/app/components/ui/GlassPanel";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
-
-interface Recipient {
-  id: number;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  is_active: boolean;
-  notify_warning: boolean;
-  notify_critical: boolean;
-}
+import { 
+  fetchRecipients, 
+  createRecipient, 
+  updateRecipient, 
+  deleteRecipient, 
+  Recipient 
+} from "@/lib/api";
 
 interface RecipientFormData {
   name: string;
@@ -25,11 +23,8 @@ interface RecipientFormData {
   notify_critical: boolean;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL 
-  ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1`
-  : "http://localhost:8181/api/v1";
-
 export default function RecipientsPage() {
+  const { getToken } = useAuth();
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -50,7 +45,7 @@ export default function RecipientsPage() {
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
   useEffect(() => {
-    fetchRecipients();
+    loadRecipients();
   }, []);
 
   useEffect(() => {
@@ -64,12 +59,11 @@ export default function RecipientsPage() {
     setToast({ message, type });
   };
 
-  async function fetchRecipients() {
+  async function loadRecipients() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/recipients`);
-      if (!res.ok) throw new Error("Failed to fetch recipients");
-      const data = await res.json();
+      const token = await getToken();
+      const data = await fetchRecipients(token);
       setRecipients(data);
     } catch (err) {
       console.error(err);
@@ -111,32 +105,23 @@ export default function RecipientsPage() {
 
     setIsSubmitting(true);
     try {
-      const url = editingRecipient 
-        ? `${API_BASE_URL}/recipients/${editingRecipient.id}`
-        : `${API_BASE_URL}/recipients`;
-      
-      const method = editingRecipient ? "PATCH" : "POST";
-      
+      const token = await getToken();
       const payload = {
         ...formData,
         phone: formData.phone || null,
         email: formData.email || null
       };
 
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      if (editingRecipient) {
+        await updateRecipient(editingRecipient.id, payload, token);
+        showToast("Recipient updated successfully", "success");
+      } else {
+        await createRecipient(payload, token);
+        showToast("Recipient added successfully", "success");
+      }
 
-      if (!res.ok) throw new Error("Operation failed");
-
-      await fetchRecipients();
+      await loadRecipients();
       closeModal();
-      showToast(
-        editingRecipient ? "Recipient updated successfully" : "Recipient added successfully", 
-        "success"
-      );
     } catch (err) {
       console.error(err);
       showToast("Error saving recipient", "error");
@@ -147,13 +132,10 @@ export default function RecipientsPage() {
 
   const handleDelete = async (id: number) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/recipients/${id}`, {
-        method: "DELETE"
-      });
+      const token = await getToken();
+      await deleteRecipient(id, token);
 
-      if (!res.ok) throw new Error("Delete failed");
-
-      await fetchRecipients();
+      await loadRecipients();
       setDeleteConfirmOpen(null);
       showToast("Recipient deleted successfully", "success");
     } catch (err) {
@@ -194,6 +176,7 @@ export default function RecipientsPage() {
     setIsModalOpen(false);
     setEditingRecipient(null);
   };
+
 
   return (
     <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">

@@ -2,9 +2,11 @@ import asyncio
 import logging
 import json
 import redis.asyncio as redis
-from fastapi import WebSocket, WebSocketDisconnect
-from typing import List, Dict
-import os
+from redis.asyncio.client import PubSub, Redis
+from fastapi import WebSocket
+from typing import List, Dict, Optional
+
+from ai.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -12,9 +14,9 @@ logger = logging.getLogger(__name__)
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
-        self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-        self.redis: redis.Redis = None
-        self.pubsub = None
+        self.redis_url = settings.REDIS_URL
+        self.redis: Optional[Redis] = None
+        self.pubsub: Optional[PubSub] = None
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -58,10 +60,15 @@ class ConnectionManager:
                 await asyncio.sleep(retry_delay)
                 retry_delay = min(retry_delay * 2, max_retry_delay)
 
-    async def publish_update(self, type: str, data: Dict):
-        """Publish update to Redis."""
+    async def get_redis_client(self) -> Redis:
+        """Get or create a Redis client instance."""
         if not self.redis:
             self.redis = redis.from_url(self.redis_url)
+        return self.redis
+
+    async def publish_update(self, type: str, data: Dict):
+        """Publish update to Redis."""
+        client = await self.get_redis_client()
 
         message = json.dumps(
             {
@@ -70,7 +77,7 @@ class ConnectionManager:
                 "data": data,
             }
         )
-        await self.redis.publish("aquamine:updates", message)
+        await client.publish("aquamine:updates", message)
 
 
 manager = ConnectionManager()

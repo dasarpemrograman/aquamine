@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { Map as MapIcon, Filter } from "lucide-react";
+import { useAuth } from "@clerk/nextjs";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import BerkeleyPitMap, { 
@@ -9,6 +10,7 @@ import BerkeleyPitMap, {
   Severity, 
   SEVERITY_COLORS 
 } from "@/app/components/map/BerkeleyPitMap";
+import { fetchSensors } from "@/lib/api";
 
 const SEVERITIES: { key: Severity; label: string }[] = [
   { key: "normal", label: "Normal" },
@@ -19,27 +21,25 @@ const SEVERITIES: { key: Severity; label: string }[] = [
 ];
 
 export default function MapPage() {
+  const { getToken } = useAuth();
   const [sensors, setSensors] = useState<SensorWithState[]>([]);
   const [selectedSeverities, setSelectedSeverities] = useState<Severity[]>([]);
   const [missingCoordsCount, setMissingCoordsCount] = useState(0);
 
   useEffect(() => {
-    async function fetchSensors() {
+    async function loadSensors() {
       try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sensors`
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setSensors(Array.isArray(data) ? data : []);
-        }
+        const token = await getToken();
+        const data = await fetchSensors(token);
+        setSensors(Array.isArray(data) ? (data as SensorWithState[]) : []);
       } catch (e) {
         console.error("Failed to fetch sensors:", e);
+        setSensors([]);
       }
     }
 
-    fetchSensors();
-    const interval = setInterval(fetchSensors, 10000);
+    loadSensors();
+    const interval = setInterval(loadSensors, 10000);
     return () => clearInterval(interval);
   }, []);
 

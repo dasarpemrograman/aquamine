@@ -21,7 +21,7 @@ export default function AccessPendingPage() {
                 Access Pending
             </h1>
             <p className="text-slate-500 font-medium">
-                Hold tight, we're reviewing your account
+                Hold tight, we&apos;re reviewing your account
             </p>
         </div>
 

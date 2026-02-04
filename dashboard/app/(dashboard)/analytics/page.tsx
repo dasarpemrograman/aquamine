@@ -1,0 +1,432 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { 
+  BarChart3, 
+  Activity, 
+  CheckCircle2, 
+  AlertTriangle, 
+  TrendingUp, 
+  Info, 
+  RefreshCw,
+  Zap
+} from "lucide-react";
+import { 
+  ResponsiveContainer, 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+} from "recharts";
+
+import { GlassCard } from "@/app/components/ui/GlassCard";
+import { SectionHeader } from "@/app/components/ui/SectionHeader";
+import { StatusChip } from "@/app/components/ui/StatusChip";
+import { 
+  fetchAnalyticsSummary, 
+  fetchAnalyticsTrends, 
+  fetchAnalyticsCompliance, 
+  fetchAnalyticsInsights,
+  AnalyticsSummaryResponse,
+  AnalyticsTrendsResponse,
+  AnalyticsComplianceResponse,
+  AnalyticsInsightsResponse,
+} from "@/lib/api";
+import { formatWIB } from "@/lib/dateUtils";
+
+export default function AnalyticsPage() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+
+  const [summary, setSummary] = useState<AnalyticsSummaryResponse | null>(null);
+  const [trends, setTrends] = useState<AnalyticsTrendsResponse | null>(null);
+  const [compliance, setCompliance] = useState<AnalyticsComplianceResponse | null>(null);
+  const [insights, setInsights] = useState<AnalyticsInsightsResponse | null>(null);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [summaryData, trendsData, complianceData, insightsData] = await Promise.all([
+        fetchAnalyticsSummary(),
+        fetchAnalyticsTrends(),
+        fetchAnalyticsCompliance(),
+        fetchAnalyticsInsights()
+      ]);
+
+      setSummary(summaryData);
+      setTrends(trendsData);
+      setCompliance(complianceData);
+      setInsights(insightsData);
+      setLastRefreshed(new Date());
+    } catch (err) {
+      console.error("Failed to load analytics data:", err);
+      setError("Failed to load analytics data. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const getComplianceColor = (percent: number | null) => {
+    if (percent === null) return "text-slate-400";
+    if (percent >= 80) return "text-emerald-500";
+    if (percent >= 60) return "text-amber-500";
+    return "text-rose-500";
+  };
+
+  const formatTrendDate = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' });
+  };
+
+  return (
+    <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">
+      <div className="mx-auto w-full max-w-6xl space-y-8">
+        <SectionHeader
+          title="Analytics"
+          subtitle="System health, compliance metrics, and AI-driven insights"
+          icon={BarChart3}
+          actions={
+            <div className="flex items-center gap-3">
+              {lastRefreshed && (
+                <span className="text-xs text-slate-500 hidden sm:inline-block">
+                  Updated: {lastRefreshed.toLocaleTimeString()}
+                </span>
+              )}
+              <button
+                onClick={loadData}
+                disabled={loading}
+                className="p-2 hover:bg-white/50 rounded-lg transition-colors text-slate-600 disabled:opacity-50"
+                title="Refresh Data"
+              >
+                <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+              </button>
+            </div>
+          }
+        />
+
+        {error ? (
+          <GlassCard className="p-6 border-rose-200 bg-rose-50/50">
+            <div className="flex items-center gap-3 text-rose-700">
+              <AlertTriangle size={20} />
+              <p>{error}</p>
+              <button 
+                onClick={loadData}
+                className="ml-auto px-4 py-1.5 bg-white/50 hover:bg-white/80 rounded-lg text-sm font-medium transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          </GlassCard>
+        ) : null}
+
+        {loading && !summary ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-pulse">
+             {[...Array(4)].map((_, i) => (
+               <div key={i} className="h-32 bg-white/40 rounded-2xl border border-white/20" />
+             ))}
+             <div className="col-span-1 md:col-span-2 lg:col-span-4 h-96 bg-white/40 rounded-2xl border border-white/20" />
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {summary && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <GlassCard className="p-5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-slate-500">System Health</span>
+                    <Activity size={16} className="text-slate-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-2xl font-bold text-slate-800">
+                        {Math.round((summary.system_health.active_sensors / summary.system_health.total_sensors) * 100)}%
+                      </span>
+                      <StatusChip 
+                        status={summary.system_health.offline_sensors > 0 ? "warning" : "active"} 
+                        label={summary.system_health.offline_sensors > 0 ? "Degraded" : "Healthy"}
+                        size="sm"
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {summary.system_health.active_sensors} of {summary.system_health.total_sensors} sensors online
+                    </p>
+                  </div>
+                </GlassCard>
+
+                <GlassCard className="p-5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-slate-500">Alerts (24h)</span>
+                    <AlertTriangle size={16} className="text-slate-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-slate-800 mb-1">
+                      {summary.alerts.total_24h}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-rose-600 font-medium">{summary.alerts.critical} Critical</span>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-amber-600 font-medium">{summary.alerts.warning} Warning</span>
+                    </div>
+                  </div>
+                </GlassCard>
+
+                <GlassCard className="p-5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-slate-500">Water Quality</span>
+                    <CheckCircle2 size={16} className="text-slate-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`text-2xl font-bold ${getComplianceColor(summary.water_quality.ph.percent_compliance)}`}>
+                        pH
+                      </div>
+                      <span className="text-sm text-slate-600">
+                        {summary.water_quality.ph.avg?.toFixed(1) ?? "--"} avg
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {summary.water_quality.ph.percent_compliance}% compliance (24h)
+                    </p>
+                  </div>
+                </GlassCard>
+
+                <GlassCard className="p-5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-slate-500">Data Points</span>
+                    <TrendingUp size={16} className="text-slate-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-slate-800 mb-1">
+                      {trends?.points.length ?? 0}
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Recorded in last {summary.period}
+                    </p>
+                  </div>
+                </GlassCard>
+              </div>
+            )}
+
+            {trends && trends.points.length > 0 && (
+              <GlassCard className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-semibold text-slate-800">Water Quality Trends</h3>
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <span className="w-3 h-3 rounded-full bg-cyan-500"></span> pH
+                    <span className="w-3 h-3 rounded-full bg-amber-500 ml-2"></span> Turbidity
+                    <span className="w-3 h-3 rounded-full bg-indigo-500 ml-2"></span> Temp
+                  </div>
+                </div>
+                <div className="h-[350px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={trends.points}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                      <XAxis 
+                        dataKey="timestamp" 
+                        tickFormatter={formatTrendDate}
+                        stroke="#94a3b8"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={{ stroke: '#e2e8f0' }}
+                        minTickGap={30}
+                      />
+                      <YAxis 
+                        yAxisId="left"
+                        domain={[0, 14]}
+                        stroke="#94a3b8"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                        label={{ value: 'pH', angle: -90, position: 'insideLeft', fill: '#94a3b8' }}
+                      />
+                      <YAxis 
+                        yAxisId="right"
+                        orientation="right"
+                        stroke="#94a3b8"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                        label={{ value: 'Turbidity (NTU) / Temp (°C)', angle: 90, position: 'insideRight', fill: '#94a3b8' }}
+                      />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'rgba(255, 255, 255, 0.9)', 
+                          borderRadius: '12px', 
+                          border: '1px solid rgba(255, 255, 255, 0.5)',
+                          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                        }}
+                        labelFormatter={(label) => formatWIB(label)}
+                      />
+                      <Line 
+                        yAxisId="left"
+                        type="monotone" 
+                        dataKey="ph_avg" 
+                        name="pH"
+                        stroke="#06b6d4" 
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 6, fill: "#06b6d4" }}
+                      />
+                      <Line 
+                        yAxisId="right"
+                        type="monotone" 
+                        dataKey="turbidity_avg" 
+                        name="Turbidity"
+                        stroke="#f59e0b" 
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 6, fill: "#f59e0b" }}
+                      />
+                      <Line 
+                        yAxisId="right"
+                        type="monotone" 
+                        dataKey="temperature_avg" 
+                        name="Temperature"
+                        stroke="#6366f1" 
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 6, fill: "#6366f1" }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </GlassCard>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {compliance && (
+                <GlassCard className="p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-lg font-semibold text-slate-800">Compliance Standards</h3>
+                    <div className="text-xs px-2 py-1 bg-slate-100 rounded text-slate-500">
+                      {compliance.standard.source}
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="font-medium text-slate-700">pH Levels</span>
+                        <span className={`font-bold ${getComplianceColor(compliance.ph.percent_compliance)}`}>
+                          {compliance.ph.percent_compliance}% Compliant
+                        </span>
+                      </div>
+                      <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full ${compliance.ph.percent_compliance && compliance.ph.percent_compliance >= 80 ? 'bg-emerald-500' : compliance.ph.percent_compliance && compliance.ph.percent_compliance >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                          style={{ width: `${compliance.ph.percent_compliance}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>Standard: {compliance.standard.ph_min} - {compliance.standard.ph_max}</span>
+                        <span>{compliance.ph.violation_count} violations</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="font-medium text-slate-700">Turbidity</span>
+                        <span className={`font-bold ${getComplianceColor(compliance.turbidity.percent_compliance)}`}>
+                          {compliance.turbidity.percent_compliance}% Compliant
+                        </span>
+                      </div>
+                      <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full ${compliance.turbidity.percent_compliance && compliance.turbidity.percent_compliance >= 80 ? 'bg-emerald-500' : compliance.turbidity.percent_compliance && compliance.turbidity.percent_compliance >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                          style={{ width: `${compliance.turbidity.percent_compliance}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>Max: {compliance.standard.turbidity_max_ntu} NTU</span>
+                        <span>{compliance.turbidity.violation_count} violations</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="font-medium text-slate-700">Temperature</span>
+                        <span className={`font-bold ${getComplianceColor(compliance.temperature.percent_compliance)}`}>
+                          {compliance.temperature.percent_compliance}% Compliant
+                        </span>
+                      </div>
+                      <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full ${compliance.temperature.percent_compliance && compliance.temperature.percent_compliance >= 80 ? 'bg-emerald-500' : compliance.temperature.percent_compliance && compliance.temperature.percent_compliance >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                          style={{ width: `${compliance.temperature.percent_compliance}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>Max: {compliance.standard.temperature_max_c}°C</span>
+                        <span>{compliance.temperature.violation_count} violations</span>
+                      </div>
+                    </div>
+                  </div>
+                </GlassCard>
+              )}
+
+              {insights && (
+                <GlassCard className="p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-lg font-semibold text-slate-800">AI Insights</h3>
+                    <StatusChip 
+                      status={insights.executive_summary.status === "NORMAL" ? "active" : insights.executive_summary.status === "WARNING" ? "warning" : "critical"}
+                      label={insights.executive_summary.status}
+                      size="sm"
+                    />
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 mb-6">
+                    <div className="flex gap-3">
+                      <Zap className="text-amber-500 shrink-0 mt-0.5" size={18} />
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-800 mb-1">{insights.executive_summary.headline}</h4>
+                        <p className="text-sm text-slate-600 leading-relaxed">
+                          {insights.executive_summary.recommendation}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Key Findings</h4>
+                    {insights.key_findings.map((finding, idx) => (
+                      <div key={idx} className="flex gap-3 group">
+                        <div className="mt-1">
+                          <Info size={16} className="text-cyan-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-slate-800 group-hover:text-cyan-700 transition-colors">
+                            {finding.title}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {finding.description}
+                          </p>
+                          {finding.evidence.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {finding.evidence.map((ev, i) => (
+                                <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-medium border border-slate-200">
+                                  {ev.key}: {ev.value}{ev.unit}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </GlassCard>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

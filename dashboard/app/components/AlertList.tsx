@@ -2,18 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, Info, CheckCircle2 } from "lucide-react";
+import { useAuth } from "@clerk/nextjs";
 import { formatWIB } from "@/lib/dateUtils";
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import { StatusChip } from "@/app/components/ui/StatusChip";
-
-interface Alert {
-  id: number;
-  sensor_id: string;
-  severity: "critical" | "warning" | "info";
-  message: string;
-  created_at: string;
-  status?: string;
-}
+import { fetchAlerts, Alert } from "@/lib/api";
 
 interface AlertListProps {
   severityFilter?: string;
@@ -21,24 +14,25 @@ interface AlertListProps {
 }
 
 export default function AlertList({ severityFilter = "all", timeRange = "24h" }: AlertListProps) {
+  const { getToken } = useAuth();
   const [alerts, setAlerts] = useState<Alert[]>([]);
 
   useEffect(() => {
-    async function fetchAlerts() {
+    async function loadAlerts() {
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/alerts`);
-        const json = await res.json();
+        const token = await getToken();
+        const json = await fetchAlerts(token);
         setAlerts(json);
       } catch (e) {
         console.error("Failed to fetch alerts", e);
       }
     }
-    fetchAlerts();
-    const interval = setInterval(fetchAlerts, 10000);
+    loadAlerts();
+    const interval = setInterval(loadAlerts, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [getToken]);
 
-  const getStatusVariant = (severity: string) => {
+  const getStatusVariant = (severity: string): 'critical' | 'warning' | 'info' | 'active' => {
     switch (severity) {
       case "critical": return "critical";
       case "warning": return "warning";
@@ -122,7 +116,7 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h" }:
                       #{alert.id} • {alert.sensor_id}
                     </span>
                     <StatusChip 
-                      status={getStatusVariant(alert.severity) as any} 
+                      status={getStatusVariant(alert.severity)} 
                       label={alert.severity.toUpperCase()} 
                       size="sm" 
                     />

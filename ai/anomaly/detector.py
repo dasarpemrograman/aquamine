@@ -1,5 +1,4 @@
-import pandas as pd
-from typing import List, Dict, Optional
+from typing import Dict, List
 from datetime import datetime
 from ai.schemas.alert import AnomalyCreate
 
@@ -63,6 +62,32 @@ class AnomalyDetector:
                 anomalies.append(
                     self._create_anomaly(
                         sensor_id, timestamp, "turbidity", val, 5.0, "threshold_warning"
+                    )
+                )
+
+        # Check Temperature
+        if "temperature" in reading and reading["temperature"] is not None:
+            val = reading["temperature"]
+            if val > self.thresholds["temperature"]["critical_high"]:
+                anomalies.append(
+                    self._create_anomaly(
+                        sensor_id,
+                        timestamp,
+                        "temperature",
+                        val,
+                        10.0,
+                        "threshold_critical",
+                    )
+                )
+            elif val > self.thresholds["temperature"]["warning_high"]:
+                anomalies.append(
+                    self._create_anomaly(
+                        sensor_id,
+                        timestamp,
+                        "temperature",
+                        val,
+                        5.0,
+                        "threshold_warning",
                     )
                 )
 

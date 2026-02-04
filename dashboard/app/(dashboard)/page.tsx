@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import { 
   LayoutDashboard, 
   Activity, 
@@ -16,23 +17,16 @@ import {
 
 import SensorStatus from "@/app/components/SensorStatus";
 import AlertList from "@/app/components/AlertList";
+import AnalyticsWidget from "@/app/components/AnalyticsWidget";
 import BerkeleyPitMap from "@/app/components/map/BerkeleyPitMap";
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { StatusChip } from "@/app/components/ui/StatusChip";
 import { IconBadge } from "@/app/components/ui/IconBadge";
-
-interface Sensor {
-  id: number;
-  sensor_id: string;
-  name: string;
-  latitude?: number | null;
-  longitude?: number | null;
-  is_active: boolean;
-  current_state?: string | null;
-}
+import { fetchSensors, Sensor } from "@/lib/api";
 
 export default function Home() {
+  const { getToken } = useAuth();
   const [stats, setStats] = useState({
     healthScore: 100,
     activeSensors: 0,
@@ -46,13 +40,8 @@ export default function Home() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const [sensorsRes, alertsRes] = await Promise.all([
-            fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sensors`),
-            fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/alerts`)
-        ]);
-
-        const sensorsData = await sensorsRes.json();
-        const alerts = await alertsRes.json();
+        const token = await getToken();
+        const sensorsData = await fetchSensors(token);
 
         setSensors(Array.isArray(sensorsData) ? sensorsData : []);
 
@@ -60,12 +49,7 @@ export default function Home() {
         const active = activeSensors.length;
         const total = Array.isArray(sensorsData) ? sensorsData.length : 0;
         
-        const criticalAlerts = Array.isArray(alerts) ? alerts.filter((a: any) => a.severity === 'critical').length : 0;
-        const warningAlerts = Array.isArray(alerts) ? alerts.filter((a: any) => a.severity === 'warning').length : 0;
-        const inactiveSensors = total - active;
-        
-        let calculatedHealth = 100 - (criticalAlerts * 20) - (warningAlerts * 5) - (inactiveSensors * 10);
-        if (calculatedHealth < 0) calculatedHealth = 0;
+        const sensorAvailability = total > 0 ? Math.round((active / total) * 100) : 0;
 
         const getMostCriticalSensor = (): { status: string; name: string } => {
           if (activeSensors.length === 0) return { status: "offline", name: "" };
@@ -85,7 +69,7 @@ export default function Home() {
         const { status, name } = getMostCriticalSensor();
 
         setStats({
-            healthScore: calculatedHealth,
+            healthScore: sensorAvailability,
             activeSensors: active,
             totalSensors: total,
             currentStatus: status,
@@ -101,7 +85,7 @@ export default function Home() {
     fetchStats();
     const interval = setInterval(fetchStats, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [getToken]);
 
   return (
     <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">
@@ -119,13 +103,13 @@ export default function Home() {
                   <Activity size={48} />
               </div>
               <div className="space-y-2">
-                  <p className="text-sm font-medium text-slate-500">System Health</p>
+                  <p className="text-sm font-medium text-slate-500">Sensor Availability</p>
                   <div className="flex items-end gap-2">
                       <span className="text-4xl font-bold bg-gradient-to-r from-cyan-500 to-teal-500 bg-clip-text text-transparent">
                           {stats.healthScore}%
                       </span>
                       <span className={`text-sm font-medium mb-1 ${stats.healthScore > 90 ? 'text-teal-600' : 'text-amber-600'}`}>
-                          {stats.healthScore > 90 ? 'Excellent' : stats.healthScore > 70 ? 'Good' : 'Attention'}
+                          {stats.healthScore > 90 ? 'All Online' : stats.healthScore > 0 ? 'Partial' : 'Offline'}
                       </span>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-2">
@@ -255,6 +239,7 @@ export default function Home() {
               <div className="relative">
                   <AlertList />
               </div>
+              <AnalyticsWidget />
           </div>
            <div className="absolute right-0 bottom-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl -mr-8 -mb-8" />
         </div>

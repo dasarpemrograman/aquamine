@@ -256,20 +256,33 @@ class ChatMessage(Base):
 # Event listener to convert readings table to hypertable after creation
 @event.listens_for(Reading.__table__, "after_create")
 def create_hypertable_listener(_target, connection, **_kw):
-    # Only try to create hypertable if TimescaleDB extension is available
-    # We use execute with text() for DDL
+    if connection.dialect.name != "postgresql":
+        return
+
+    pk_column_names = {col.name for col in _target.primary_key.columns}
+    if "timestamp" not in pk_column_names:
+        print(
+            "Warning: Skipping hypertable conversion for readings; primary key missing timestamp."
+        )
+        return
+
+    # Only try to create hypertable if TimescaleDB extension is available.
+    # Use a savepoint so a failure doesn't abort the surrounding create_all transaction.
     try:
-        connection.execute(
-            text(
-                "SELECT create_hypertable('readings', 'timestamp', chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE);"
+        with connection.begin_nested():
+            connection.execute(
+                text(
+                    "SELECT create_hypertable('readings', 'timestamp', chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE);"
+                )
             )
-        )
-        connection.execute(
-            text(
-                "ALTER TABLE readings SET (timescaledb.compress, timescaledb.compress_orderby = 'timestamp DESC', timescaledb.compress_segmentby = 'sensor_id');"
+            connection.execute(
+                text(
+                    "ALTER TABLE readings SET (timescaledb.compress, timescaledb.compress_orderby = 'timestamp DESC', timescaledb.compress_segmentby = 'sensor_id');"
+                )
             )
-        )
-        connection.execute(text("SELECT add_compression_policy('readings', INTERVAL '3 days');"))
-        connection.execute(text("SELECT add_retention_policy('readings', INTERVAL '2 years');"))
+            connection.execute(
+                text("SELECT add_compression_policy('readings', INTERVAL '3 days');")
+            )
+            connection.execute(text("SELECT add_retention_policy('readings', INTERVAL '2 years');"))
     except Exception as e:
         print(f"Warning: Could not convert to hypertable (might be missing extension): {e}")

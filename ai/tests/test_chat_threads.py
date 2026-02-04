@@ -5,7 +5,50 @@ from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 import uuid
 
-from ai.db.models import ChatThread, ChatSessionSegment, ChatMessage
+from ai.db.connection import get_db
+from ai.db.models import ChatThread
+from ai.main import app, get_current_user
+
+
+class _DummyScalarResult:
+    def __init__(self, value=None, values=None):
+        self._value = value
+        self._values = values or []
+
+    def scalar(self):
+        return self._value
+
+    def scalar_one_or_none(self):
+        return self._value
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return list(self._values)
+
+
+class _DummySession:
+    def __init__(self):
+        self.added = []
+        self.commits = 0
+        self.refreshes = 0
+
+    async def execute(self, _stmt):
+        return _DummyScalarResult(value=0, values=[])
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    async def commit(self):
+        self.commits += 1
+
+    async def refresh(self, obj):
+        self.refreshes += 1
+        if getattr(obj, "created_at", None) is None:
+            obj.created_at = datetime.now(timezone.utc)
+        if getattr(obj, "updated_at", None) is None:
+            obj.updated_at = datetime.now(timezone.utc)
 
 
 @pytest.fixture
@@ -88,39 +131,77 @@ class TestChatAPI:
     @pytest.mark.asyncio
     async def test_list_threads_empty(self, client, mock_jwks_client):
         """Test listing threads when none exist."""
-        with patch("ai.auth.clerk.get_current_user", return_value="user_123"):
-            response = client.get(
-                "/api/v1/chat/threads", headers={"Authorization": "Bearer valid_token"}
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert data["threads"] == []
-            assert data["total"] == 0
+        _ = mock_jwks_client
+        with patch("ai.main.get_current_user", return_value="user_123"):
+            session = _DummySession()
+
+            async def override_get_db():
+                yield session
+
+            app.dependency_overrides[get_current_user] = lambda: "user_123"
+            app.dependency_overrides[get_db] = override_get_db
+            try:
+                response = client.get(
+                    "/api/v1/chat/threads", headers={"Authorization": "Bearer valid_token"}
+                )
+                assert response.status_code == 200
+                data = response.json()
+                assert data["threads"] == []
+                assert data["total"] == 0
+            finally:
+                app.dependency_overrides.pop(get_current_user, None)
+                app.dependency_overrides.pop(get_db, None)
 
     @pytest.mark.asyncio
     async def test_create_thread(self, client, mock_jwks_client):
         """Test creating a new thread."""
-        with patch("ai.auth.clerk.get_current_user", return_value="user_123"):
-            response = client.post(
-                "/api/v1/chat/threads",
-                headers={"Authorization": "Bearer valid_token"},
-                json={"title": "New Test Thread"},
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert data["title"] == "New Test Thread"
-            assert data["user_id"] == "user_123"
+        _ = mock_jwks_client
+        with patch("ai.main.get_current_user", return_value="user_123"):
+            session = _DummySession()
+
+            async def override_get_db():
+                yield session
+
+            app.dependency_overrides[get_current_user] = lambda: "user_123"
+            app.dependency_overrides[get_db] = override_get_db
+            try:
+                response = client.post(
+                    "/api/v1/chat/threads",
+                    headers={"Authorization": "Bearer valid_token"},
+                    json={"title": "New Test Thread"},
+                )
+                assert response.status_code == 200
+                data = response.json()
+                assert data["title"] == "New Test Thread"
+                assert data["user_id"] == "user_123"
+            finally:
+                app.dependency_overrides.pop(get_current_user, None)
+                app.dependency_overrides.pop(get_db, None)
 
     @pytest.mark.asyncio
     async def test_create_thread_default_title(self, client, mock_jwks_client):
         """Test creating thread with default title."""
-        with patch("ai.auth.clerk.get_current_user", return_value="user_123"):
-            response = client.post(
-                "/api/v1/chat/threads", headers={"Authorization": "Bearer valid_token"}, json={}
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert data["title"] == "New chat"
+        _ = mock_jwks_client
+        with patch("ai.main.get_current_user", return_value="user_123"):
+            session = _DummySession()
+
+            async def override_get_db():
+                yield session
+
+            app.dependency_overrides[get_current_user] = lambda: "user_123"
+            app.dependency_overrides[get_db] = override_get_db
+            try:
+                response = client.post(
+                    "/api/v1/chat/threads",
+                    headers={"Authorization": "Bearer valid_token"},
+                    json={},
+                )
+                assert response.status_code == 200
+                data = response.json()
+                assert data["title"] == "New chat"
+            finally:
+                app.dependency_overrides.pop(get_current_user, None)
+                app.dependency_overrides.pop(get_db, None)
 
 
 class TestTokenBudget:
@@ -167,22 +248,36 @@ class TestCompactionAPI:
     @pytest.mark.asyncio
     async def test_compaction_preview(self, client, mock_jwks_client):
         """Test compaction preview endpoint."""
-        with patch("ai.auth.clerk.get_current_user", return_value="user_123"):
-            # First create a thread
-            thread_response = client.post(
-                "/api/v1/chat/threads", headers={"Authorization": "Bearer valid_token"}, json={}
-            )
-            thread_id = thread_response.json()["id"]
+        _ = mock_jwks_client
+        with patch("ai.main.get_current_user", return_value="user_123"):
+            session = _DummySession()
 
-            # Get compaction preview
-            response = client.post(
-                f"/api/v1/chat/threads/{thread_id}/compaction/preview",
-                headers={"Authorization": "Bearer valid_token"},
-                json={},
-            )
+            async def override_get_db():
+                yield session
 
-            # Should work even with no messages
-            assert response.status_code in [200, 404]
+            app.dependency_overrides[get_current_user] = lambda: "user_123"
+            app.dependency_overrides[get_db] = override_get_db
+            try:
+                # First create a thread
+                thread_response = client.post(
+                    "/api/v1/chat/threads",
+                    headers={"Authorization": "Bearer valid_token"},
+                    json={},
+                )
+                thread_id = thread_response.json()["id"]
+
+                # Get compaction preview
+                response = client.post(
+                    f"/api/v1/chat/threads/{thread_id}/compaction/preview",
+                    headers={"Authorization": "Bearer valid_token"},
+                    json={},
+                )
+
+                # Should work even with no messages
+                assert response.status_code in [200, 404]
+            finally:
+                app.dependency_overrides.pop(get_current_user, None)
+                app.dependency_overrides.pop(get_db, None)
 
 
 class TestThreadSecurity:
@@ -191,19 +286,43 @@ class TestThreadSecurity:
     @pytest.mark.asyncio
     async def test_cannot_access_other_user_thread(self, client, mock_jwks_client):
         """Test user cannot access another user's thread."""
+        _ = mock_jwks_client
         # Create thread as user_1
-        with patch("ai.auth.clerk.get_current_user", return_value="user_1"):
-            create_response = client.post(
-                "/api/v1/chat/threads",
-                headers={"Authorization": "Bearer valid_token"},
-                json={"title": "Private Thread"},
-            )
-            thread_id = create_response.json()["id"]
+        with patch("ai.main.get_current_user", return_value="user_1"):
+            session = _DummySession()
+
+            async def override_get_db():
+                yield session
+
+            app.dependency_overrides[get_current_user] = lambda: "user_1"
+            app.dependency_overrides[get_db] = override_get_db
+            try:
+                create_response = client.post(
+                    "/api/v1/chat/threads",
+                    headers={"Authorization": "Bearer valid_token"},
+                    json={"title": "Private Thread"},
+                )
+                thread_id = create_response.json()["id"]
+            finally:
+                app.dependency_overrides.pop(get_current_user, None)
+                app.dependency_overrides.pop(get_db, None)
 
         # Try to access as user_2
-        with patch("ai.auth.clerk.get_current_user", return_value="user_2"):
-            response = client.get(
-                f"/api/v1/chat/threads/{thread_id}", headers={"Authorization": "Bearer valid_token"}
-            )
-            # Should return 404 (not 403) to avoid leaking existence
-            assert response.status_code == 404
+        with patch("ai.main.get_current_user", return_value="user_2"):
+            session = _DummySession()
+
+            async def override_get_db():
+                yield session
+
+            app.dependency_overrides[get_current_user] = lambda: "user_2"
+            app.dependency_overrides[get_db] = override_get_db
+            try:
+                response = client.get(
+                    f"/api/v1/chat/threads/{thread_id}",
+                    headers={"Authorization": "Bearer valid_token"},
+                )
+                # Should return 404 (not 403) to avoid leaking existence
+                assert response.status_code == 404
+            finally:
+                app.dependency_overrides.pop(get_current_user, None)
+                app.dependency_overrides.pop(get_db, None)

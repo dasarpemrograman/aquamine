@@ -19,7 +19,7 @@ if RESERVED_OUTPUT_TOKENS <= 0:
 SYSTEM_PROMPT_OVERHEAD = 1000
 
 
-def estimate_tokens(text: str) -> int:
+def estimate_tokens(text: str | None) -> int:
     """
     Estimate the number of tokens in a string using a lightweight heuristic.
     Fallbacks to character count / 3.5 if tiktoken is not available.
@@ -37,7 +37,6 @@ def estimate_message_tokens(message: Dict[str, Any]) -> int:
     Estimate tokens for a single message including overhead.
     """
     content = message.get("content") or ""
-    role = message.get("role") or ""
 
     # Base tokens for content
     tokens = estimate_tokens(str(content))

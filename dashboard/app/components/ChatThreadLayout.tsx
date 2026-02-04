@@ -44,7 +44,7 @@ export default function ChatThreadLayout() {
     } catch (error) {
       console.error("Failed to fetch threads:", error);
     }
-  }, [userId, searchQuery, getToken]);
+  }, [userId, searchQuery, getToken, API_BASE]);
 
   useEffect(() => {
     fetchThreads();

@@ -107,6 +107,8 @@ services:
       --scenario=auto
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      API_BASE_URL: http://api:8181
+      INGEST_API_KEY: ${INGEST_API_KEY}
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: /app
     depends_on:

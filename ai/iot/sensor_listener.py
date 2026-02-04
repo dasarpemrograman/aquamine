@@ -1,8 +1,8 @@
+# pyright: reportUnusedParameter=false
+
 import asyncio
 import json
 import logging
-import sys
-import os
 import paho.mqtt.client as mqtt
 from ai.iot.config import mqtt_config
 from ai.iot.mqtt_bridge import process_mqtt_message
@@ -17,7 +17,7 @@ logger = logging.getLogger("mqtt_listener")
 loop = None
 
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, _userdata, _flags, rc):
     """Callback for when the client receives a CONNACK response from the server."""
     if rc == 0:
         logger.info("Connected to MQTT Broker!")
@@ -28,7 +28,7 @@ def on_connect(client, userdata, flags, rc):
         logger.error(f"Failed to connect, return code {rc}")
 
 
-def on_message(client, userdata, msg):
+def on_message(_client, _userdata, msg):
     """Callback for when a PUBLISH message is received from the server."""
     try:
         payload_str = msg.payload.decode()

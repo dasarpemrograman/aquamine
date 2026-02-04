@@ -1,8 +1,6 @@
 from datetime import datetime, timezone
 
-from ai.db.connection import get_db
 from ai.db.models import UserSettings
-from ai.main import app
 
 
 class DummyResult:
@@ -55,117 +53,180 @@ def _parse_datetime(value: str) -> datetime:
 
 
 def test_get_settings_creates_defaults(client):
+    import ai.main as main
+
     session = DummySession()
 
     async def override_get_db():
         yield session
 
-    app.dependency_overrides[get_db] = override_get_db
+    def override_get_current_user():
+        return "test-user"
 
-    response = client.get("/api/v1/settings/test-user", headers={"x-user-id": "test-user"})
-    assert response.status_code == 200
-    data = response.json()
+    client.app.dependency_overrides.clear()
+    client.app.dependency_overrides[main.get_db] = override_get_db
+    client.app.dependency_overrides[main.get_current_user] = override_get_current_user
 
-    assert data["user_id"] == "test-user"
-    assert data["notifications_enabled"] is True
-    assert data["notify_critical"] is True
-    assert data["notify_warning"] is True
-    assert data["notify_info"] is False
-    assert data["refresh_interval_seconds"] == 10
-    assert data["timezone"] == "UTC"
-    assert data["created_at"]
-    assert data["updated_at"]
+    try:
+        response = client.get("/api/v1/settings/test-user")
+        assert response.status_code == 200
+        data = response.json()
 
-    app.dependency_overrides.pop(get_db, None)
+        assert data["user_id"] == "test-user"
+        assert data["notifications_enabled"] is True
+        assert data["notify_critical"] is True
+        assert data["notify_warning"] is True
+        assert data["notify_info"] is False
+        assert data["refresh_interval_seconds"] == 10
+        assert data["timezone"] == "UTC"
+        assert data["created_at"]
+        assert data["updated_at"]
+    finally:
+        client.app.dependency_overrides.clear()
 
 
 def test_get_settings_rejects_missing_auth_header(client):
+    client.app.dependency_overrides.clear()
     response = client.get("/api/v1/settings/test-user")
-    assert response.status_code == 401
+    assert response.status_code in [401, 403]
 
 
 def test_get_settings_rejects_mismatched_user_id(client):
-    response = client.get("/api/v1/settings/test-user", headers={"x-user-id": "different-user"})
-    assert response.status_code == 403
+    import ai.main as main
 
-
-def test_patch_settings_updates_fields(client):
     session = DummySession()
 
     async def override_get_db():
         yield session
 
-    app.dependency_overrides[get_db] = override_get_db
+    def override_get_current_user():
+        return "different-user"
 
-    now = datetime.now(timezone.utc)
-    payload = {
-        "refresh_interval_seconds": 15,
-        "quiet_hours_start": "22:00",
-        "quiet_hours_end": "06:00",
-        "timezone": "America/Denver",
-        "last_notification_seen_at": now.isoformat(),
-    }
+    client.app.dependency_overrides.clear()
+    client.app.dependency_overrides[main.get_db] = override_get_db
+    client.app.dependency_overrides[main.get_current_user] = override_get_current_user
 
-    response = client.patch(
-        "/api/v1/settings/test-user", json=payload, headers={"x-user-id": "test-user"}
-    )
-    assert response.status_code == 200
-    data = response.json()
+    try:
+        response = client.get("/api/v1/settings/test-user")
+        assert response.status_code == 403
+    finally:
+        client.app.dependency_overrides.clear()
 
-    assert data["refresh_interval_seconds"] == 15
-    assert data["quiet_hours_start"] == "22:00"
-    assert data["quiet_hours_end"] == "06:00"
-    assert data["timezone"] == "America/Denver"
-    assert _parse_datetime(data["last_notification_seen_at"]) == now
 
-    app.dependency_overrides.pop(get_db, None)
+def test_patch_settings_updates_fields(client):
+    import ai.main as main
+
+    session = DummySession()
+
+    async def override_get_db():
+        yield session
+
+    def override_get_current_user():
+        return "test-user"
+
+    client.app.dependency_overrides.clear()
+    client.app.dependency_overrides[main.get_db] = override_get_db
+    client.app.dependency_overrides[main.get_current_user] = override_get_current_user
+
+    try:
+        now = datetime.now(timezone.utc)
+        payload = {
+            "refresh_interval_seconds": 15,
+            "quiet_hours_start": "22:00",
+            "quiet_hours_end": "06:00",
+            "timezone": "America/Denver",
+            "last_notification_seen_at": now.isoformat(),
+        }
+
+        response = client.patch("/api/v1/settings/test-user", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["refresh_interval_seconds"] == 15
+        assert data["quiet_hours_start"] == "22:00"
+        assert data["quiet_hours_end"] == "06:00"
+        assert data["timezone"] == "America/Denver"
+        assert _parse_datetime(data["last_notification_seen_at"]) == now
+    finally:
+        client.app.dependency_overrides.clear()
 
 
 def test_patch_settings_rejects_missing_auth_header(client):
+    client.app.dependency_overrides.clear()
     response = client.patch("/api/v1/settings/test-user", json={"refresh_interval_seconds": 15})
-    assert response.status_code == 401
+    assert response.status_code in [401, 403]
 
 
 def test_patch_settings_rejects_mismatched_user_id(client):
-    response = client.patch(
-        "/api/v1/settings/test-user",
-        json={"refresh_interval_seconds": 15},
-        headers={"x-user-id": "different-user"},
-    )
-    assert response.status_code == 403
+    import ai.main as main
+
+    session = DummySession()
+
+    async def override_get_db():
+        yield session
+
+    def override_get_current_user():
+        return "different-user"
+
+    client.app.dependency_overrides.clear()
+    client.app.dependency_overrides[main.get_db] = override_get_db
+    client.app.dependency_overrides[main.get_current_user] = override_get_current_user
+
+    try:
+        response = client.patch(
+            "/api/v1/settings/test-user",
+            json={"refresh_interval_seconds": 15},
+        )
+        assert response.status_code == 403
+    finally:
+        client.app.dependency_overrides.clear()
 
 
 def test_patch_settings_rejects_refresh_interval_out_of_bounds(client):
+    import ai.main as main
+
     session = DummySession(UserSettings(user_id="test-user", timezone="UTC"))
 
     async def override_get_db():
         yield session
 
-    app.dependency_overrides[get_db] = override_get_db
+    def override_get_current_user():
+        return "test-user"
 
-    response = client.patch(
-        "/api/v1/settings/test-user",
-        json={"refresh_interval_seconds": 3},
-        headers={"x-user-id": "test-user"},
-    )
-    assert response.status_code == 400
+    client.app.dependency_overrides.clear()
+    client.app.dependency_overrides[main.get_db] = override_get_db
+    client.app.dependency_overrides[main.get_current_user] = override_get_current_user
 
-    app.dependency_overrides.pop(get_db, None)
+    try:
+        response = client.patch(
+            "/api/v1/settings/test-user",
+            json={"refresh_interval_seconds": 3},
+        )
+        assert response.status_code == 400
+    finally:
+        client.app.dependency_overrides.clear()
 
 
 def test_patch_settings_rejects_invalid_quiet_hours_format(client):
+    import ai.main as main
+
     session = DummySession(UserSettings(user_id="test-user", timezone="UTC"))
 
     async def override_get_db():
         yield session
 
-    app.dependency_overrides[get_db] = override_get_db
+    def override_get_current_user():
+        return "test-user"
 
-    response = client.patch(
-        "/api/v1/settings/test-user",
-        json={"quiet_hours_start": "25:00"},
-        headers={"x-user-id": "test-user"},
-    )
-    assert response.status_code == 400
+    client.app.dependency_overrides.clear()
+    client.app.dependency_overrides[main.get_db] = override_get_db
+    client.app.dependency_overrides[main.get_current_user] = override_get_current_user
 
-    app.dependency_overrides.pop(get_db, None)
+    try:
+        response = client.patch(
+            "/api/v1/settings/test-user",
+            json={"quiet_hours_start": "25:00"},
+        )
+        assert response.status_code == 400
+    finally:
+        client.app.dependency_overrides.clear()

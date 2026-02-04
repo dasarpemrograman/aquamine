@@ -1,7 +1,6 @@
 import pytest
 from sqlalchemy import text
 from ai.db.connection import engine, Base
-from ai.db.models import Sensor, Reading
 
 
 @pytest.mark.asyncio

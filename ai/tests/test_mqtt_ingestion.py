@@ -1,5 +1,4 @@
 import pytest
-import json
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch, AsyncMock
 from ai.iot.mqtt_bridge import process_mqtt_message
@@ -22,6 +21,8 @@ def valid_payload():
 async def test_process_mqtt_message_auto_registration(mock_session_local, valid_payload):
     # Setup mock session
     mock_session = AsyncMock()
+    # add is synchronous in SQLAlchemy
+    mock_session.add = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
     # Mock database query returning None (sensor not found)
@@ -46,6 +47,8 @@ async def test_process_mqtt_message_auto_registration(mock_session_local, valid_
 async def test_process_mqtt_message_existing_sensor(mock_session_local, valid_payload):
     # Setup mock session
     mock_session = AsyncMock()
+    # add is synchronous in SQLAlchemy
+    mock_session.add = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
     # Mock database query returning existing sensor
@@ -63,6 +66,28 @@ async def test_process_mqtt_message_existing_sensor(mock_session_local, valid_pa
     assert mock_session.add.call_count == 1
     # Verify commit called
     assert mock_session.commit.called
+
+
+@pytest.mark.asyncio
+async def test_process_mqtt_message_with_provided_session(valid_payload):
+    # Setup mock session
+    mock_session = AsyncMock()
+    mock_session.add = MagicMock()
+
+    # Mock database query returning existing sensor
+    mock_sensor = MagicMock()
+    mock_sensor.id = 1
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = mock_sensor
+    mock_session.execute.return_value = mock_result
+
+    # Run processing with session
+    result = await process_mqtt_message(valid_payload, session=mock_session)
+
+    assert result is True
+    assert mock_session.add.call_count == 1
+    # Verify commit NOT called (caller handles it)
+    assert not mock_session.commit.called
 
 
 @pytest.mark.asyncio

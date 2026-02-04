@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import math
+import os
 import random
 import sys
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
+import httpx
 from sqlalchemy import select
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -37,6 +39,8 @@ DEFAULT_SENSOR_ID = "ESP32_AMD_001"
 DEFAULT_SENSOR_NAME = "Mining Site Alpha (Main)"
 DEFAULT_LATITUDE = 46.02
 DEFAULT_LONGITUDE = -112.51
+DEFAULT_API_BASE = os.getenv("API_BASE_URL", "http://localhost:8181")
+INGEST_API_KEY = os.getenv("INGEST_API_KEY", "")
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,40 @@ class SimulatorReading:
     temperature: float
     battery_voltage: float
     signal_strength: int
+
+
+async def _send_reading_http(
+    client: httpx.AsyncClient,
+    api_base: str,
+    sensor_id: str,
+    reading: SimulatorReading,
+    ingest_key: str = "",
+) -> bool:
+    url = f"{api_base}/api/v1/sensors/ingest"
+    payload = {
+        "sensor_id": sensor_id,
+        "timestamp": reading.timestamp.isoformat(),
+        "location": {"lat": DEFAULT_LATITUDE, "lon": DEFAULT_LONGITUDE},
+        "readings": {
+            "ph": reading.ph,
+            "turbidity": reading.turbidity,
+            "temperature": reading.temperature,
+        },
+        "metadata": {
+            "battery_voltage": reading.battery_voltage,
+            "signal_strength": reading.signal_strength,
+        },
+    }
+    headers = {}
+    if ingest_key:
+        headers["X-Ingest-Key"] = ingest_key
+    try:
+        resp = await client.post(url, json=payload, headers=headers, timeout=10.0)
+        resp.raise_for_status()
+        return True
+    except httpx.HTTPError as e:
+        print(f"HTTP Error sending reading: {e}")
+        return False
 
 
 def _choose_severity(scenario: str) -> str:
@@ -180,59 +218,105 @@ async def run_backfill(args: argparse.Namespace) -> None:
         for i in range(total_points)
     ]
 
-    async with AsyncSessionLocal() as session:
-        sensor = await _ensure_sensor(session, args.sensor_id)
-
     readings = [_build_reading(ts, args.scenario) for ts in timestamps]
-    inserted = await _insert_readings(sensor.id, readings)
 
-    if readings:
-        last_reading = readings[-1]
-        final_state = _determine_state_from_reading(
-            last_reading.ph, last_reading.turbidity
-        )
+    if args.db_direct:
+        print(f"Starting DB-DIRECT backfill for {args.sensor_id}...")
         async with AsyncSessionLocal() as session:
-            await _update_alert_state(session, sensor.id, final_state)
+            sensor = await _ensure_sensor(session, args.sensor_id)
 
-    print(
-        f"Inserted {inserted} readings for {args.sensor_id} "
-        f"from {start_time.isoformat()} to {end_time.isoformat()}"
-    )
+        inserted = await _insert_readings(sensor.id, readings)
+
+        if readings:
+            last_reading = readings[-1]
+            final_state = _determine_state_from_reading(
+                last_reading.ph, last_reading.turbidity
+            )
+            async with AsyncSessionLocal() as session:
+                await _update_alert_state(session, sensor.id, final_state)
+
+        print(
+            f"Inserted {inserted} readings for {args.sensor_id} "
+            f"from {start_time.isoformat()} to {end_time.isoformat()}"
+        )
+    else:
+        print(f"Starting HTTP backfill for {args.sensor_id} to {args.api_base}...")
+        success_count = 0
+        async with httpx.AsyncClient() as client:
+            for i, reading in enumerate(readings):
+                if await _send_reading_http(
+                    client, args.api_base, args.sensor_id, reading, args.ingest_key
+                ):
+                    success_count += 1
+                if (i + 1) % 10 == 0:
+                    print(f"Sent {i + 1}/{len(readings)} readings...")
+
+        print(
+            f"Successfully sent {success_count}/{len(readings)} readings for {args.sensor_id} "
+            f"from {start_time.isoformat()} to {end_time.isoformat()}"
+        )
 
 
 async def run_realtime(args: argparse.Namespace) -> None:
-    async with AsyncSessionLocal() as session:
-        sensor = await _ensure_sensor(session, args.sensor_id)
+    if args.db_direct:
+        print(f"Starting DB-DIRECT realtime simulation for {args.sensor_id}...")
+        async with AsyncSessionLocal() as session:
+            sensor = await _ensure_sensor(session, args.sensor_id)
 
-        count = 0
-        while True:
-            timestamp = datetime.now(timezone.utc)
-            reading = _build_reading(timestamp, args.scenario)
-            session.add(
-                Reading(
-                    sensor_id=sensor.id,
-                    timestamp=reading.timestamp,
-                    ph=reading.ph,
-                    turbidity=reading.turbidity,
-                    temperature=reading.temperature,
-                    battery_voltage=reading.battery_voltage,
-                    signal_strength=reading.signal_strength,
+            count = 0
+            while True:
+                timestamp = datetime.now(timezone.utc)
+                reading = _build_reading(timestamp, args.scenario)
+                session.add(
+                    Reading(
+                        sensor_id=sensor.id,
+                        timestamp=reading.timestamp,
+                        ph=reading.ph,
+                        turbidity=reading.turbidity,
+                        temperature=reading.temperature,
+                        battery_voltage=reading.battery_voltage,
+                        signal_strength=reading.signal_strength,
+                    )
                 )
-            )
-            await session.commit()
+                await session.commit()
 
-            new_state = _determine_state_from_reading(reading.ph, reading.turbidity)
-            await _update_alert_state(session, sensor.id, new_state)
+                new_state = _determine_state_from_reading(reading.ph, reading.turbidity)
+                await _update_alert_state(session, sensor.id, new_state)
 
-            count += 1
-            print(
-                f"Sent reading #{count} at {timestamp.isoformat()} "
-                f"pH={reading.ph} turbidity={reading.turbidity} state={new_state}"
-            )
+                count += 1
+                print(
+                    f"Sent reading #{count} at {timestamp.isoformat()} "
+                    f"pH={reading.ph} turbidity={reading.turbidity} state={new_state}"
+                )
 
-            if args.count and count >= args.count:
-                break
-            await asyncio.sleep(args.interval)
+                if args.count and count >= args.count:
+                    break
+                await asyncio.sleep(args.interval)
+    else:
+        print(
+            f"Starting HTTP realtime simulation for {args.sensor_id} to {args.api_base}..."
+        )
+        async with httpx.AsyncClient() as client:
+            count = 0
+            while True:
+                timestamp = datetime.now(timezone.utc)
+                reading = _build_reading(timestamp, args.scenario)
+
+                success = await _send_reading_http(
+                    client, args.api_base, args.sensor_id, reading, args.ingest_key
+                )
+
+                count += 1
+                status = "SENT" if success else "FAIL"
+                state = _determine_state_from_reading(reading.ph, reading.turbidity)
+                print(
+                    f"[{status}] Reading #{count} at {timestamp.isoformat()} "
+                    f"pH={reading.ph} turbidity={reading.turbidity} local_state={state}"
+                )
+
+                if args.count and count >= args.count:
+                    break
+                await asyncio.sleep(args.interval)
 
 
 def parse_args() -> argparse.Namespace:
@@ -254,6 +338,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--interval-minutes", type=int, default=60, help="Backfill interval in minutes"
     )
+    parser.add_argument("--api-base", default=DEFAULT_API_BASE, help="API Base URL")
+    parser.add_argument(
+        "--ingest-key",
+        default=INGEST_API_KEY,
+        help="API ingest key for X-Ingest-Key header (defaults to INGEST_API_KEY env var)",
+    )
+    parser.add_argument(
+        "--db-direct",
+        action="store_true",
+        help="Write directly to DB (bypasses API, debug only)",
+    )
+
     parser.add_argument(
         "--interval",
         type=int,

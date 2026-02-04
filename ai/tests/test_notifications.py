@@ -1,6 +1,4 @@
 import pytest
-import os
-import resend
 from unittest.mock import MagicMock, patch, AsyncMock
 from ai.alerts.notifications import NotificationService
 from ai.schemas.alert import AlertCreate, RecipientBase

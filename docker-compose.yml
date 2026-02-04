@@ -37,11 +37,13 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
+      INGEST_API_KEY: ${INGEST_API_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      CLERK_ISSUER: ${CLERK_ISSUER}
       NIXTLA_API_KEY: ${NIXTLA_API_KEY}
       CEREBRAS_API_KEY: ${CEREBRAS_API_KEY}
       FONNTE_API_TOKEN: ${FONNTE_API_TOKEN}
       RESEND_API_KEY: ${RESEND_API_KEY}
-      CLERK_ISSUER: ${CLERK_ISSUER}
       PYTHONPATH: /app
     depends_on:
       db:
@@ -98,6 +100,8 @@ services:
       --scenario=auto
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      API_BASE_URL: http://api:8181
+      INGEST_API_KEY: ${INGEST_API_KEY}
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: /app
     depends_on:

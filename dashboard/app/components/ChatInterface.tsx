@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Volume2, VolumeX, Send } from "lucide-react";
 import { GlassPanel } from "@/app/components/ui/GlassPanel";
+import { sendChatMessage } from "@/lib/api";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -40,12 +41,35 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
         });
         
         if (response.ok) {
-          const data = await response.json();
-          const formattedMessages = data.messages.map((m: any) => ({
-            role: m.role,
-            content: m.content,
-          }));
-          setMessages(formattedMessages);
+          const data: unknown = await response.json();
+          const messagesValue =
+            typeof data === "object" && data !== null && "messages" in data
+              ? (data as { messages?: unknown }).messages
+              : undefined;
+
+          if (Array.isArray(messagesValue)) {
+            const formattedMessages: ChatMessage[] = messagesValue
+              .map((message) => {
+                if (typeof message !== "object" || message === null) {
+                  return null;
+                }
+
+                const role = "role" in message ? (message as { role?: unknown }).role : undefined;
+                const content = "content" in message ? (message as { content?: unknown }).content : undefined;
+                if (typeof role !== "string" || typeof content !== "string") {
+                  return null;
+                }
+
+                if (role !== "user" && role !== "assistant") {
+                  return null;
+                }
+
+                return { role, content };
+              })
+              .filter((message): message is ChatMessage => message !== null);
+
+            setMessages(formattedMessages);
+          }
         }
       } catch (error) {
         console.error("Failed to fetch messages:", error);
@@ -55,7 +79,7 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
     if (threadId) {
       fetchMessages();
     }
-  }, [threadId, getToken]);
+  }, [threadId, getToken, API_BASE]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -126,6 +150,11 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
 
     try {
       const token = await getToken();
+      // Using sendChatMessage from API library if possible, but it takes sessionId which might be threadId?
+      // Looking at lib/api.ts: sendChatMessage(message, sessionId, token) -> POST /api/v1/chat
+      // But here we are posting to /api/v1/chat/threads/${threadId}/messages
+      // So we should keep using fetch here for now as it's a different endpoint.
+      
       const response = await fetch(`${API_BASE}/api/v1/chat/threads/${threadId}/messages`, {
         method: "POST",
         headers: {
