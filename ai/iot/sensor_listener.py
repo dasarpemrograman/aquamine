@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import ssl
 import paho.mqtt.client as mqtt
 from ai.iot.config import mqtt_config
 from ai.iot.mqtt_bridge import process_mqtt_message
@@ -60,7 +61,14 @@ async def main_loop():
     global loop
     loop = asyncio.get_running_loop()
 
-    client = mqtt.Client(client_id=mqtt_config.client_id)
+    if mqtt_config.use_tls:
+        client = mqtt.Client(client_id=mqtt_config.client_id)
+        client.tls_set(cert_reqs=ssl.CERT_NONE)
+        client.tls_insecure_set(True)
+        logger.info("TLS enabled for MQTT connection")
+    else:
+        client = mqtt.Client(client_id=mqtt_config.client_id)
+
     if mqtt_config.username:
         client.username_pw_set(mqtt_config.username, mqtt_config.password)
 
