@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { Bell, Check, AlertTriangle, AlertOctagon, Info, X, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
-import { fetchAlerts, acknowledgeAlert, fetchSettings, updateSettings, Alert, UserSettings } from "@/lib/api";
+import { fetchAlerts, fetchSettings, updateSettings, Alert, UserSettings, acknowledgeAlertOffline } from "@/lib/api";
 
 interface NotificationDropdownProps {
   onCountChange?: (count: { unread: number; new: number }) => void;
@@ -19,6 +19,7 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = alerts.filter(a => !a.acknowledged_at).length;
@@ -89,6 +90,7 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
       setAlerts(alertsData);
       setSettings(settingsData);
       setError(null);
+      setInfo(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load notifications";
       setError(message);
@@ -99,6 +101,7 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
     setIsOpen(true);
     setLoading(true);
     setError(null);
+    setInfo(null);
     
     try {
       await updateSettings(userId, {
@@ -119,7 +122,14 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
     const unreadAlerts = alerts.filter(a => !a.acknowledged_at);
     
     try {
-      await Promise.all(unreadAlerts.map(alert => acknowledgeAlert(alert.id)));
+      const results = await Promise.all(unreadAlerts.map(alert => acknowledgeAlertOffline(alert.id)));
+      const anyQueued = results.some(r => r.status === 'queued');
+
+      if (anyQueued) {
+        setInfo(results.find(r => r.status === 'queued')?.message ?? null);
+        return;
+      }
+
       await loadData();
     } catch (err) {
       console.error("Error marking all as read:", err);
@@ -128,7 +138,12 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
 
   const handleMarkRead = async (alertId: number) => {
     try {
-      await acknowledgeAlert(alertId);
+      const result = await acknowledgeAlertOffline(alertId);
+      if (result.status === 'queued') {
+        setInfo(result.message);
+        return;
+      }
+
       await loadData();
     } catch (err) {
       console.error("Error marking alert as read:", err);
@@ -212,6 +227,11 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
           </div>
 
           <div className="max-h-80 overflow-y-auto bg-slate-50/50">
+            {info && !error && (
+              <div className="px-4 py-2 text-xs font-medium text-slate-600 bg-white border-b border-slate-100">
+                {info}
+              </div>
+            )}
             {error ? (
               <div className="flex flex-col items-center justify-center h-32 text-red-500 px-4">
                 <AlertTriangle className="w-8 h-8 mb-2" />
