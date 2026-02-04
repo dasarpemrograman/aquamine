@@ -23,6 +23,21 @@
   --glass-saturation: 140%;
 }
 
+.field-mode {
+  --color-bg-base: #ffffff;
+  --color-bg-secondary: #f1f5f9;
+
+  --color-text-primary: #000000;
+  --color-text-secondary: #0f172a;
+  --color-text-muted: #334155;
+
+  --glass-surface: #ffffff;
+  --glass-border: #94a3b8;
+  --glass-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+  --glass-blur: 0px;
+  --glass-saturation: 100%;
+}
+
 @theme inline {
   --color-background: var(--color-bg-base);
   --color-foreground: var(--color-text-primary);
@@ -55,12 +70,21 @@ body {
   min-height: 100vh;
 }
 
+.field-mode body {
+  background-image: none;
+  font-size: 18px;
+}
+
 .glass {
   background: var(--glass-surface);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-shadow);
+}
+
+.field-mode .glass {
+  border-width: 2px;
 }
 
 .glass-panel {
@@ -71,14 +95,32 @@ body {
   box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.6), 0 20px 40px -10px rgba(15, 23, 42, 0.1);
 }
 
+.field-mode .glass-panel {
+  background: #ffffff;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 2px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
 .glass-border {
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.5);
 }
 
+.field-mode .glass-border {
+  border-width: 2px;
+  box-shadow: none;
+}
+
 .gradient-bg {
   background: radial-gradient(circle at top left, rgba(34, 211, 238, 0.15), transparent 40%),
               radial-gradient(circle at bottom right, rgba(20, 184, 166, 0.15), transparent 40%);
+}
+
+.field-mode .gradient-bg {
+  background: #ffffff;
+  border: 2px solid var(--glass-border);
 }
 
 .text-gradient {
@@ -87,6 +129,14 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   color: transparent;
+}
+
+.field-mode .text-gradient {
+  background: none;
+  -webkit-background-clip: initial;
+  -webkit-text-fill-color: initial;
+  background-clip: border-box;
+  color: #0369a1;
 }
 
 .cl-footer,
@@ -101,4 +151,47 @@ body {
 [class*="cl-signUp"],
 .cl-card a[href*="sign-up"] {
   display: none !important;
+}
+
+/* Dark Mode */
+.dark-mode {
+  --color-bg-base: #0f172a;
+  --color-bg-secondary: #1e293b;
+  
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #94a3b8;
+
+  --glass-surface: rgba(15, 23, 42, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+.field-mode.dark-mode {
+  --color-bg-base: #000000;
+  --color-bg-secondary: #0f172a;
+  
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #e2e8f0;
+  
+  --glass-surface: #000000;
+  --glass-border: #ffffff;
+  --glass-shadow: none;
+}
+
+body.dark-mode {
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(34, 211, 238, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(20, 184, 166, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(251, 113, 133, 0.05) 0px, transparent 50%);
+}
+
+body.field-mode {
+  background-image: none !important;
+}
+
+.dark-mode .glass-panel {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(30, 41, 59, 0.4));
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5);
 }
