@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { HelpCircle, ChevronDown, ChevronUp, AlertCircle, RefreshCw } from "lucide-react";
+import { HelpCircle, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Info } from "lucide-react";
 import { GlassPanel } from "@/app/components/ui/GlassPanel";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
+import { StatusChip } from "@/app/components/ui/StatusChip";
 
 interface FAQItem {
   title: string;
@@ -58,6 +59,87 @@ export default function HelpPage() {
           subtitle="Frequently asked questions and support documentation"
           icon={HelpCircle}
         />
+
+        <GlassPanel className="p-6">
+          <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <Info size={24} className="text-blue-600" />
+            Legenda Status Dashboard
+          </h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="space-y-3">
+              <h3 className="font-semibold text-slate-700 border-b border-slate-200 pb-2">Konektivitas</h3>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-20 flex-shrink-0">
+                    <StatusChip status="info" label="Online" size="sm" />
+                  </div>
+                  <span className="text-sm text-slate-600">Data diterima &lt; 15 menit lalu. Sistem berjalan normal.</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-20 flex-shrink-0">
+                    <StatusChip status="warning" label="Stale" size="sm" />
+                  </div>
+                  <span className="text-sm text-slate-600">Data diterima 15-60 menit lalu. Periksa koneksi internet di lapangan.</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-20 flex-shrink-0">
+                    <StatusChip status="inactive" label="Offline" size="sm" />
+                  </div>
+                  <span className="text-sm text-slate-600">Tidak ada data &gt; 60 menit. Sensor mungkin mati atau terputus.</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="font-semibold text-slate-700 border-b border-slate-200 pb-2">Keselamatan</h3>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-20 flex-shrink-0">
+                    <StatusChip status="active" label="Normal" size="sm" />
+                  </div>
+                  <span className="text-sm text-slate-600">Semua sensor dalam batas aman.</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-20 flex-shrink-0">
+                    <StatusChip status="warning" label="Waspada" size="sm" />
+                  </div>
+                  <span className="text-sm text-slate-600">Setidaknya satu sensor mendeteksi anomali ringan.</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-20 flex-shrink-0">
+                    <StatusChip status="critical" label="Kritis" size="sm" />
+                  </div>
+                  <span className="text-sm text-slate-600">Bahaya! Setidaknya satu sensor melampaui batas kritis.</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="font-semibold text-slate-700 border-b border-slate-200 pb-2">Sinkronisasi</h3>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-20 flex-shrink-0">
+                    <StatusChip status="info" label="Sync • 0" size="sm" />
+                  </div>
+                  <span className="text-sm text-slate-600">Semua data tersinkronisasi dengan server.</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-20 flex-shrink-0">
+                    <StatusChip status="warning" label="Sync • 3" size="sm" />
+                  </div>
+                  <span className="text-sm text-slate-600">Aksi (Ack/Resolve) tersimpan di perangkat saat offline (Pending).</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-20 flex-shrink-0">
+                    <StatusChip status="info" label="Syncing..." size="sm" />
+                  </div>
+                  <span className="text-sm text-slate-600">Sedang mengirim ulang data tertunda ke server otomatis.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </GlassPanel>
 
         <GlassPanel className="min-h-[50vh]">
           {loading ? (
