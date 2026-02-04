@@ -35,10 +35,10 @@ def _determine_state_from_reading(ph: float, turbidity: float) -> str:
     return "normal"
 
 
-DEFAULT_SENSOR_ID = "ESP32_AMD_001"
-DEFAULT_SENSOR_NAME = "Mining Site Alpha (Main)"
-DEFAULT_LATITUDE = 46.02
-DEFAULT_LONGITUDE = -112.51
+DEFAULT_SENSOR_ID = "SIM_ESP32_001"
+DEFAULT_SENSOR_NAME = "Simulated Sensor (Demo)"
+DEFAULT_LATITUDE = -6.9147
+DEFAULT_LONGITUDE = 107.6098
 DEFAULT_API_BASE = os.getenv("API_BASE_URL", "http://localhost:8181")
 INGEST_API_KEY = os.getenv("INGEST_API_KEY", "")
 
