@@ -23,6 +23,10 @@ interface ForecastPoint {
   timestamp: string;
   ph_pred: number;
   confidence: number;
+  turbidity_pred?: number;
+  turbidity_confidence?: number;
+  temperature_pred?: number;
+  temperature_confidence?: number;
 }
 
 interface AnomalyData {
@@ -57,8 +61,59 @@ interface ChartPoint {
   timestamp: number;
   ph_pred?: number;
   confidence?: number;
+  turbidity_pred?: number;
+  turbidity_confidence?: number;
+  temperature_pred?: number;
+  temperature_confidence?: number;
 }
 
+type ForecastParameter = "ph" | "turbidity" | "temperature";
+
+const PARAMETER_CONFIG: Record<ForecastParameter, {
+  label: string;
+  unit: string;
+  dataKey: keyof ChartPoint;
+  confidenceKey: keyof ChartPoint;
+  domain: [number, number | "auto"];
+  color: string;
+  gradientId: string;
+  areaGradientId: string;
+  copy: string;
+}> = {
+  ph: {
+    label: "pH",
+    unit: "pH",
+    dataKey: "ph_pred",
+    confidenceKey: "confidence",
+    domain: [0, 14],
+    color: "#0ea5e9", // Sky blue
+    gradientId: "forecast-ph-line",
+    areaGradientId: "forecast-confidence-area-ph",
+    copy: UI_COPY.predicted_ph,
+  },
+  turbidity: {
+    label: UI_COPY.turbidity,
+    unit: "NTU",
+    dataKey: "turbidity_pred",
+    confidenceKey: "turbidity_confidence",
+    domain: [0, "auto"],
+    color: "#d97706", // Amber
+    gradientId: "forecast-turbidity-line",
+    areaGradientId: "forecast-confidence-area-turbidity",
+    copy: `Prediksi ${UI_COPY.turbidity}`,
+  },
+  temperature: {
+    label: UI_COPY.temperature,
+    unit: "°C",
+    dataKey: "temperature_pred",
+    confidenceKey: "temperature_confidence",
+    domain: [0, 50],
+    color: "#ef4444", // Red
+    gradientId: "forecast-temperature-line",
+    areaGradientId: "forecast-confidence-area-temperature",
+    copy: `Prediksi ${UI_COPY.temperature}`,
+  },
+};
 
 type ForecastTooltipPayload = {
   dataKey?: string;
@@ -70,6 +125,7 @@ type ForecastTooltipProps = {
   active?: boolean;
   payload?: ForecastTooltipPayload[];
   label?: number | string;
+  parameter?: ForecastParameter;
 };
 
 const formatTooltipNumber = (value: number | string | null | undefined) => {
@@ -105,22 +161,25 @@ const formatTooltipLabel = (label: number | string | undefined) => {
   return formatWIB(numeric);
 };
 
-function ForecastTooltip({ active, payload, label }: ForecastTooltipProps) {
+function ForecastTooltip({ active, payload, label, parameter = "ph" }: ForecastTooltipProps) {
   if (!active || !payload || payload.length === 0) {
     return null;
   }
 
-  const phPredItem = payload.find((item) => item.dataKey === "ph_pred");
-  const confidenceItem = payload.find((item) => item.dataKey === "confidence");
+  const config = PARAMETER_CONFIG[parameter];
+  const predItem = payload.find((item) => item.dataKey === config.dataKey);
+  const confidenceItem = payload.find((item) => item.dataKey === config.confidenceKey);
 
   return (
     <div className="rounded-xl border border-white/70 bg-white/90 px-3 py-2 shadow-lg backdrop-blur-md">
       <div className="text-xs font-semibold text-slate-600">{formatTooltipLabel(label)}</div>
       <div className="mt-1 space-y-1 text-xs text-slate-600">
-        {phPredItem && (
+        {predItem && (
           <div className="flex items-center justify-between gap-4">
-            <span className="text-slate-500">{UI_COPY.predicted_ph}</span>
-            <span className="font-semibold text-slate-800">{formatTooltipNumber(phPredItem.value)}</span>
+            <span className="text-slate-500">{config.copy}</span>
+            <span className="font-semibold text-slate-800">
+              {formatTooltipNumber(predItem.value)} <span className="text-[10px] text-slate-400 font-normal">{config.unit}</span>
+            </span>
           </div>
         )}
         {confidenceItem && (
@@ -152,6 +211,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
   const [forecastIsStale, setForecastIsStale] = useState<boolean>(false);
   const [forecastStaleReason, setForecastStaleReason] = useState<string | null>(null);
   const [selectedRange, setSelectedRange] = useState<number>(168);
+  const [selectedParameter, setSelectedParameter] = useState<ForecastParameter>("ph");
   const [loading, setLoading] = useState(true);
   const isFetchingRef = useRef(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -192,6 +252,10 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
             timestamp: ts,
             ph_pred: p.ph_pred,
             confidence: p.confidence,
+            turbidity_pred: p.turbidity_pred,
+            turbidity_confidence: p.turbidity_confidence,
+            temperature_pred: p.temperature_pred,
+            temperature_confidence: p.temperature_confidence,
           });
         });
       }
@@ -254,9 +318,15 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
     ? new Date(latestReading.timestamp).getTime()
     : null;
 
-  // Get the latest prediction point if available
+  const activeConfig = PARAMETER_CONFIG[selectedParameter];
 
+  // Get the latest prediction point if available
   const latestPrediction = data.length > 0 ? data[0] : null;
+  const latestPredictionValue = latestPrediction ? latestPrediction[activeConfig.dataKey] : null;
+
+  const hasDataForParameter = useMemo(() => {
+    return data.some((p) => p[activeConfig.dataKey] != null);
+  }, [data, activeConfig.dataKey]);
 
   const chartDomain = useMemo(() => {
     if (!data.length) return undefined;
@@ -282,10 +352,15 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
   if (loading) return <div className="text-sm text-slate-500">{UI_COPY.loading_forecast}</div>;
 
   const statusLabel = anomaly ? getSeverityLabel(anomaly.severity) : getSeverityLabel(null);
-  const sensorUpdatedLabel = latestReading ? formatWIB(latestReading.timestamp) : null;
   const forecastGeneratedLabel = forecastGeneratedAt ? formatWIB(forecastGeneratedAt) : null;
   const forecastStartLabel = data.length ? formatWIB(data[0].timestamp) : null;
   const forecastEndLabel = data.length ? formatWIB(data[data.length - 1].timestamp) : null;
+
+  const latestReadingValue = latestReading ? (
+    selectedParameter === 'ph' ? latestReading.ph :
+    selectedParameter === 'turbidity' ? latestReading.turbidity :
+    selectedParameter === 'temperature' ? latestReading.temperature : null
+  ) : null;
 
   return (
     <GlassCard className="w-full">
@@ -309,10 +384,10 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
             {latestPrediction && (
               <div className="flex items-baseline gap-3 mb-2">
                 <span className="text-4xl font-bold text-slate-900">
-                  {latestPrediction.ph_pred?.toFixed(2) ?? "--"}
+                  {typeof latestPredictionValue === 'number' ? latestPredictionValue.toFixed(2) : "--"}
                 </span>
                 <span className="text-sm font-medium text-slate-500 uppercase tracking-wide">
-                  {UI_COPY.predicted_ph} ({UI_COPY.now})
+                  {activeConfig.copy} ({UI_COPY.now})
                 </span>
               </div>
             )}
@@ -325,13 +400,30 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
               </div>
             )}
             
-            {/* Threshold Source Label */}
-            <div className="mt-2 inline-flex items-center px-2 py-1 bg-slate-100 rounded text-[10px] font-medium text-slate-500 border border-slate-200">
-              {UI_COPY.source}: Kepmen LH 113/2003 (pH 6-9)
-            </div>
+            {selectedParameter === 'ph' && (
+              <div className="mt-2 inline-flex items-center px-2 py-1 bg-slate-100 rounded text-[10px] font-medium text-slate-500 border border-slate-200">
+                {UI_COPY.source}: Kepmen LH 113/2003 (pH 6-9)
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col items-start md:items-end gap-3">
+             <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                {(Object.keys(PARAMETER_CONFIG) as ForecastParameter[]).map((param) => (
+                  <button
+                    key={param}
+                    onClick={() => setSelectedParameter(param)}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                      selectedParameter === param
+                        ? "bg-white text-cyan-700 shadow-sm border border-slate-200"
+                        : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+                    }`}
+                  >
+                    {PARAMETER_CONFIG[param].label}
+                  </button>
+                ))}
+             </div>
+
              <div className="flex items-center gap-2">
                 <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
                   {RANGE_OPTIONS.map((range) => (
@@ -381,17 +473,17 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
       </div>
 
       <div className="h-96 w-full">
-        {data.length ? (
+        {data.length && hasDataForParameter ? (
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data}>
               <defs>
-                <linearGradient id="forecast-ph-line" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#0ea5e9" />
-                  <stop offset="100%" stopColor="#14b8a6" />
+                <linearGradient id={activeConfig.gradientId} x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor={activeConfig.color} />
+                  <stop offset="100%" stopColor={activeConfig.color} />
                 </linearGradient>
-                <linearGradient id="forecast-confidence-area" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="rgba(14, 165, 233, 0.25)" />
-                  <stop offset="100%" stopColor="rgba(14, 165, 233, 0.02)" />
+                <linearGradient id={activeConfig.areaGradientId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={`${activeConfig.color}40`} />
+                  <stop offset="100%" stopColor={`${activeConfig.color}05`} />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 6" vertical={false} />
@@ -407,8 +499,8 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
               />
               <YAxis
                 yAxisId="left"
-                label={{ value: "pH", angle: -90, position: "insideLeft", fill: "#94a3b8", fontSize: 12 }}
-                domain={[0, 14]}
+                label={{ value: activeConfig.unit, angle: -90, position: "insideLeft", fill: "#94a3b8", fontSize: 12 }}
+                domain={activeConfig.domain}
                 tick={{ fill: "#64748b", fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
@@ -423,26 +515,27 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
                 axisLine={false}
                 tickLine={false}
               />
-              <Tooltip content={<ForecastTooltip />} cursor={{ stroke: "#bae6fd", strokeDasharray: "4 4" }} />
+              <Tooltip content={<ForecastTooltip parameter={selectedParameter} />} cursor={{ stroke: "#bae6fd", strokeDasharray: "4 4" }} />
               <Area
                 yAxisId="right"
                 type="monotone"
-                dataKey="confidence"
+                dataKey={activeConfig.confidenceKey}
                 name="Confidence"
-                fill="url(#forecast-confidence-area)"
-                stroke="#38bdf8"
+                fill={`url(#${activeConfig.areaGradientId})`}
+                stroke={activeConfig.color}
+                strokeOpacity={0.5}
                 strokeWidth={1.5}
                 fillOpacity={1}
               />
               <Line
                 yAxisId="left"
                 type="monotone"
-                dataKey="ph_pred"
-                name="Predicted pH"
-                stroke="url(#forecast-ph-line)"
+                dataKey={activeConfig.dataKey}
+                name={activeConfig.copy}
+                stroke={`url(#${activeConfig.gradientId})`}
                 strokeWidth={2.5}
                 dot={false}
-                activeDot={{ r: 5, stroke: "#0ea5e9", strokeWidth: 2, fill: "#ffffff" }}
+                activeDot={{ r: 5, stroke: activeConfig.color, strokeWidth: 2, fill: "#ffffff" }}
               />
               <ReferenceLine
                 x={data[0].timestamp}
@@ -469,18 +562,18 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
                   fontSize: 11,
                 }}
               />
-              {lastReadingTimestamp !== null && latestReading?.ph != null ? (
+              {lastReadingTimestamp !== null && latestReadingValue != null ? (
                 <ReferenceDot
                   x={lastReadingTimestamp}
-                  y={latestReading.ph}
+                  y={latestReadingValue}
                   r={4}
                   fill="#ffffff"
-                  stroke="#0ea5e9"
+                  stroke={activeConfig.color}
                   strokeWidth={2}
                   label={{
                     value: UI_COPY.last_reading,
                     position: "top",
-                    fill: "#0ea5e9",
+                    fill: activeConfig.color,
                     fontSize: 11,
                   }}
                 />
@@ -489,16 +582,16 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
           </ResponsiveContainer>
         ) : (
           <div className="h-full flex items-center justify-center text-sm text-slate-500">
-            {warning ?? UI_COPY.no_forecast}
+            {warning ?? (data.length ? "Data tidak tersedia untuk parameter ini" : UI_COPY.no_forecast)}
           </div>
         )}
       </div>
 
       <div className="mt-4 space-y-1 text-sm text-slate-600">
-        {latestReading ? (
+        {latestReading && latestReadingValue != null ? (
           <div className="p-3 bg-background/50 rounded-xl border border-white/5">
             <span className="block text-xs font-bold uppercase tracking-wider mb-1 text-primary">{UI_COPY.last_reading}</span>
-             pH {latestReading.ph?.toFixed(2) ?? "--"} @ {formatWIB(latestReading.timestamp)}
+             {activeConfig.label} {latestReadingValue.toFixed(2)} {activeConfig.unit} @ {formatWIB(latestReading.timestamp)}
           </div>
         ) : (
           <div className="p-3 bg-background/50 rounded-xl border border-white/5">{UI_COPY.last_reading}: Tidak ada data</div>
