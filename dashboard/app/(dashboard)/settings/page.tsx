@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Settings, Bell, Clock, RefreshCw, Check, AlertCircle, Globe } from "lucide-react";
+import { Settings, Bell, Clock, RefreshCw, Check, AlertCircle, Globe, FlaskConical } from "lucide-react";
 import { useAuth, useUser } from "@clerk/nextjs";
 
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { fetchSettings, updateSettings, UserSettings, UserSettingsUpdate } from "@/lib/api";
+import DemoModeToggle from "@/app/components/DemoModeToggle";
+import FieldModeToggle from "@/app/components/FieldModeToggle";
 
 export default function SettingsPage() {
   const { user } = useUser();
@@ -273,6 +275,37 @@ export default function SettingsPage() {
                   <p className="text-sm text-slate-500">
                     {formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
                   </p>
+                </div>
+              </div>
+            </div>
+          </GlassCard>
+
+          <GlassCard>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-indigo-100/50 rounded-lg">
+                <FlaskConical className="w-5 h-5 text-indigo-600" />
+              </div>
+              <h2 className="text-lg font-semibold text-slate-800">Application Modes</h2>
+            </div>
+
+            <div className="space-y-6">
+              <div className="flex items-center justify-between p-4 bg-white/40 rounded-xl border border-white/40">
+                <div>
+                  <p className="font-medium text-slate-800">Demo Mode</p>
+                  <p className="text-sm text-slate-500">Enable high-frequency data updates for presentation</p>
+                </div>
+                <div className="scale-110">
+                  <DemoModeToggle />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-white/40 rounded-xl border border-white/40">
+                <div>
+                  <p className="font-medium text-slate-800">Field Mode</p>
+                  <p className="text-sm text-slate-500">High contrast mode for outdoor visibility</p>
+                </div>
+                <div className="scale-110">
+                  <FieldModeToggle />
                 </div>
               </div>
             </div>

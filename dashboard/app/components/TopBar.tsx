@@ -6,6 +6,7 @@ import { StatusChip } from "./ui/StatusChip";
 import { UserButton, SignedIn, SignedOut, useAuth, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import NotificationDropdown from "./NotificationDropdown";
+import LegendDropdown from "./LegendDropdown";
 import {
   fetchHealth,
   fetchSensors,
@@ -16,8 +17,7 @@ import {
   resolveAlert,
   reopenAlert,
 } from "@/lib/api";
-import DemoModeToggle, { DEMO_MODE_STORAGE_KEY, DEMO_REFRESH_INTERVAL } from "./DemoModeToggle";
-import FieldModeToggle from "./FieldModeToggle";
+import { DEMO_MODE_STORAGE_KEY, DEMO_REFRESH_INTERVAL } from "./DemoModeToggle";
 import ThemeToggle from "./ThemeToggle";
 import { alertOfflineQueue, type ReplayExecutor } from "@/lib/offlineQueue";
 
@@ -35,6 +35,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
   
   const [connectivityStatus, setConnectivityStatus] = useState<ConnectivityState>("info");
   const [connectivityLabel, setConnectivityLabel] = useState("Online");
+  const [lastUpdateLabel, setLastUpdateLabel] = useState("0m ago");
   const [safetyStatus, setSafetyStatus] = useState<SafetyState>("active");
   const [safetyLabel, setSafetyLabel] = useState("Normal");
   
@@ -51,8 +52,9 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
         setConnectivityStatus("inactive");
         setConnectivityLabel("Offline");
+        setLastUpdateLabel("No data");
         setSafetyStatus("inactive");
-        setSafetyLabel("Tidak diketahui");
+        setSafetyLabel("Status: Unknown");
         return;
       }
 
@@ -68,6 +70,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
       if (!healthOk) {
         setConnectivityStatus("inactive");
         setConnectivityLabel("Offline (API Error)");
+        setLastUpdateLabel("No data");
       } else {
         // Fetch readings for all sensors to find last data timestamp
         // Use 2 hours window to cover Offline threshold (60m)
@@ -88,19 +91,22 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
         if (lastDataTime === 0) {
           setConnectivityStatus("inactive");
           setConnectivityLabel("Offline");
+          setLastUpdateLabel("No data");
         } else {
           const diffMinutes = Math.floor((Date.now() - lastDataTime) / 60000);
-          const timeText = `Data terakhir ${diffMinutes} menit lalu`;
+          const timeText = `${diffMinutes}m ago`;
+          
+          setLastUpdateLabel(`Updated: ${timeText}`);
           
           if (diffMinutes < 15) {
             setConnectivityStatus("info"); // Blue
-            setConnectivityLabel(`Online • ${timeText}`);
+            setConnectivityLabel("Online");
           } else if (diffMinutes < 60) {
             setConnectivityStatus("warning"); // Yellow
-            setConnectivityLabel(`Stale • ${timeText}`);
+            setConnectivityLabel("Stale");
           } else {
             setConnectivityStatus("inactive"); // Gray
-            setConnectivityLabel(`Offline • ${timeText}`);
+            setConnectivityLabel("Offline");
           }
         }
       }
@@ -128,27 +134,28 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
       switch (worstState) {
         case "critical":
           setSafetyStatus("critical");
-          setSafetyLabel("Kritis");
+          setSafetyLabel("Status: Critical");
           break;
         case "warning":
           setSafetyStatus("warning");
-          setSafetyLabel("Waspada");
+          setSafetyLabel("Status: Warning");
           break;
         case "normal":
           setSafetyStatus("active");
-          setSafetyLabel("Normal");
+          setSafetyLabel("Status: Normal");
           break;
         default:
           setSafetyStatus("inactive");
-          setSafetyLabel("Tidak diketahui");
+          setSafetyLabel("Status: Unknown");
       }
 
     } catch (e) {
       console.error("System status check failed", e);
       setConnectivityStatus("inactive");
       setConnectivityLabel("Offline (Error)");
+      setLastUpdateLabel("No data");
       setSafetyStatus("inactive");
-      setSafetyLabel("Tidak diketahui");
+      setSafetyLabel("Status: ?");
     }
   };
 
@@ -247,22 +254,20 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
       ? "warning"
       : "info";
   const syncLabel = !syncState.isOnline
-    ? `Offline • Sync ${syncState.pendingCount}`
+    ? `Queue: ${syncState.pendingCount}`
     : syncState.isReplaying
-      ? `Syncing • ${syncState.pendingCount}`
-      : `Sync • ${syncState.pendingCount}`;
+      ? `Syncing: ${syncState.pendingCount}`
+      : `Queue: ${syncState.pendingCount}`;
 
-  const connectivityLabelMobile =
-    connectivityLabel.startsWith("Online")
-      ? "Online"
-      : connectivityLabel.startsWith("Stale")
-        ? "Stale"
-        : "Offline";
+  const connectivityLabelMobile = connectivityLabel;
+  
+  const safetyLabelMobile = safetyLabel;
+
   const syncLabelMobile = !syncState.isOnline
-    ? `Offline • ${syncState.pendingCount}`
+    ? `Q: ${syncState.pendingCount}`
     : syncState.isReplaying
-      ? `Syncing • ${syncState.pendingCount}`
-      : `Sync • ${syncState.pendingCount}`;
+      ? `Sync: ${syncState.pendingCount}`
+      : `Q: ${syncState.pendingCount}`;
 
   const triggerReplay = () => {
     const executor = replayExecutorRef.current;
@@ -283,27 +288,56 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
       </div>
 
       <div className="flex items-center gap-2 md:gap-3">
-        <div className="mr-2 hidden md:flex gap-2">
-          <StatusChip status={connectivityStatus} label={connectivityLabel} size="sm" />
-          <StatusChip status={safetyStatus} label={safetyLabel} size="sm" />
-          <button onClick={triggerReplay} type="button" title="Sync now">
+        <div className="mr-2 hidden md:flex gap-2 items-center">
+          <StatusChip 
+            status={connectivityStatus} 
+            label={`Connection: ${connectivityLabel}`} 
+            size="sm" 
+            title={`Status Koneksi:\n• Online: data diterima < 15 menit lalu\n• Stale: data diterima 15-60 menit lalu\n• Offline: tidak ada data > 60 menit`}
+          />
+          <StatusChip 
+            status="inactive"
+            label={lastUpdateLabel} 
+            size="sm" 
+          />
+          <StatusChip 
+            status={safetyStatus} 
+            label={safetyLabel} 
+            size="sm" 
+            title={`Status Keamanan (paling buruk):\n• Normal: semua sensor aman\n• Warning: minimal 1 sensor berstatus Warning\n• Critical: minimal 1 sensor berstatus Critical`}
+          />
+          <button 
+            onClick={triggerReplay} 
+            type="button" 
+            title={`Queue Sinkronisasi:\n• Aksi (Ack/Resolve) disimpan saat offline\n• Klik untuk coba kirim ulang`}
+          >
             <StatusChip status={syncStatus} label={syncLabel} size="sm" />
           </button>
+          
+          <LegendDropdown />
         </div>
 
-        <div className="mr-2 flex md:hidden gap-2">
-          <StatusChip status={connectivityStatus} label={connectivityLabelMobile} size="sm" />
-          <button onClick={triggerReplay} type="button" title="Sync now">
+        <div className="mr-2 flex md:hidden gap-2 items-center">
+          <StatusChip 
+            status={connectivityStatus} 
+            label={connectivityLabelMobile} 
+            size="sm" 
+            title="Status Koneksi"
+          />
+          <StatusChip
+            status={safetyStatus}
+            label={safetyLabelMobile}
+            size="sm"
+            title="Status Keamanan"
+          />
+          <button 
+            onClick={triggerReplay} 
+            type="button" 
+            title="Queue Sinkronisasi"
+          >
             <StatusChip status={syncStatus} label={syncLabelMobile} size="sm" />
           </button>
-        </div>
-
-        <div className="hidden md:block">
-          <DemoModeToggle />
-        </div>
-
-        <div className="hidden md:block">
-          <FieldModeToggle />
+          <LegendDropdown />
         </div>
 
         <div className="hidden md:block">
