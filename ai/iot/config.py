@@ -10,5 +10,9 @@ class MQTTConfig(BaseModel):
     username: str = os.getenv("MQTT_USERNAME", "")
     password: str = os.getenv("MQTT_PASSWORD", "")
 
+    @property
+    def use_tls(self) -> bool:
+        return self.port == 8883
+
 
 mqtt_config = MQTTConfig()
