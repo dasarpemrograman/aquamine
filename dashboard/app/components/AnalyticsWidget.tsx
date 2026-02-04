@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Activity, AlertTriangle, CheckCircle, Info, TrendingUp, XCircle } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import {
@@ -77,7 +77,7 @@ export default function AnalyticsWidget() {
 
   const refreshInterval = isDemoMode ? DEMO_REFRESH_INTERVAL : NORMAL_REFRESH_INTERVAL;
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -97,14 +97,14 @@ export default function AnalyticsWidget() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     fetchData();
 
     const interval = setInterval(fetchData, refreshInterval);
     return () => clearInterval(interval);
-  }, [user, refreshInterval]);
+  }, [fetchData, refreshInterval]);
 
   if (loading && !summary) {
     return (

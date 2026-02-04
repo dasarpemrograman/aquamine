@@ -108,13 +108,10 @@ CV_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 DETECTION_THRESHOLD = YOLO_CONFIDENCE_THRESHOLD
 
 # Rate limiting setup
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
-
 limiter = Limiter(
     key_func=get_remote_address,
-    storage_uri=REDIS_URL,
-    enabled=RATE_LIMIT_ENABLED,
+    storage_uri=settings.REDIS_URL,
+    enabled=settings.RATE_LIMIT_ENABLED,
 )
 
 REFRESH_INTERVAL_MIN_SECONDS = 5

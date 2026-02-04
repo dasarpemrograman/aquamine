@@ -5,7 +5,8 @@ import redis.asyncio as redis
 from redis.asyncio.client import PubSub, Redis
 from fastapi import WebSocket
 from typing import List, Dict, Optional
-import os
+
+from ai.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
-        self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        self.redis_url = settings.REDIS_URL
         self.redis: Optional[Redis] = None
         self.pubsub: Optional[PubSub] = None
 

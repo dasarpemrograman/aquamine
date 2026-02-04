@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -37,7 +38,10 @@ MAX_RAW_SAMPLES = 12
 MAX_TREND_POINTS = 168
 MIN_CORRELATION_POINTS = 20
 
-_TIME_BUCKET_SUPPORTED: Optional[bool] = None
+# Thread-safe cache for time_bucket support check (per-request context)
+_time_bucket_supported: ContextVar[Optional[bool]] = ContextVar(
+    "_time_bucket_supported", default=None
+)
 
 
 def _now_utc() -> datetime:
@@ -53,18 +57,20 @@ def _format_dt(dt: datetime) -> str:
 
 
 async def supports_time_bucket(db: AsyncSession) -> bool:
-    global _TIME_BUCKET_SUPPORTED
-    if _TIME_BUCKET_SUPPORTED is not None:
-        return _TIME_BUCKET_SUPPORTED
+    cached = _time_bucket_supported.get()
+    if cached is not None:
+        return cached
 
     try:
         res = await db.execute(
             text("SELECT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'time_bucket')")
         )
-        _TIME_BUCKET_SUPPORTED = bool(res.scalar_one())
+        result = bool(res.scalar_one())
     except Exception:
-        _TIME_BUCKET_SUPPORTED = False
-    return _TIME_BUCKET_SUPPORTED
+        result = False
+
+    _time_bucket_supported.set(result)
+    return result
 
 
 def _bucket_expr(aggregation: str, use_time_bucket: bool):
@@ -118,8 +124,7 @@ async def fetch_trend_points(
     except DBAPIError as exc:
         if use_time_bucket:
             logger.info("time_bucket failed; falling back to date_trunc")
-            global _TIME_BUCKET_SUPPORTED
-            _TIME_BUCKET_SUPPORTED = False
+            _time_bucket_supported.set(False)
 
             # The failed statement can leave the transaction aborted.
             # Roll back before retrying with the fallback query.
