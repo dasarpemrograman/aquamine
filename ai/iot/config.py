@@ -15,9 +15,5 @@ class MQTTConfig(BaseModel):
     def use_tls(self) -> bool:
         return self.port == 8883
 
-    @property
-    def use_tls(self) -> bool:
-        return self.port == 8883
-
 
 mqtt_config = MQTTConfig()
