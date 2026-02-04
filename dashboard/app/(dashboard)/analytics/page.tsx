@@ -9,7 +9,9 @@ import {
   TrendingUp, 
   Info, 
   RefreshCw,
-  Zap
+  Zap,
+  CheckSquare,
+  List
 } from "lucide-react";
 import { 
   ResponsiveContainer, 
@@ -35,6 +37,7 @@ import {
   AnalyticsInsightsResponse,
 } from "@/lib/api";
 import { formatWIB } from "@/lib/dateUtils";
+import { UI_COPY, formatString, getSeverityLabel } from "@/lib/copy";
 
 export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
@@ -81,6 +84,13 @@ export default function AnalyticsPage() {
     return "text-rose-500";
   };
 
+  const getComplianceLabel = (percent: number | null) => {
+    if (percent === null) return "--";
+    if (percent >= 80) return UI_COPY.compliant;
+    if (percent >= 60) return UI_COPY.warn_short;
+    return "Tidak Patuh";
+  };
+
   const formatTrendDate = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' });
@@ -90,14 +100,14 @@ export default function AnalyticsPage() {
     <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">
       <div className="mx-auto w-full max-w-6xl space-y-8">
         <SectionHeader
-          title="Analytics"
-          subtitle="System health, compliance metrics, and AI-driven insights"
+          title={UI_COPY.analytics_title}
+          subtitle={UI_COPY.analytics_subtitle}
           icon={BarChart3}
           actions={
             <div className="flex items-center gap-3">
               {lastRefreshed && (
                 <span className="text-xs text-slate-500 hidden sm:inline-block">
-                  Updated: {lastRefreshed.toLocaleTimeString()}
+                  {UI_COPY.updated}: {lastRefreshed.toLocaleTimeString()}
                 </span>
               )}
               <button
@@ -121,7 +131,7 @@ export default function AnalyticsPage() {
                 onClick={loadData}
                 className="ml-auto px-4 py-1.5 bg-white/50 hover:bg-white/80 rounded-lg text-sm font-medium transition-colors"
               >
-                Retry
+                {UI_COPY.retry}
               </button>
             </div>
           </GlassCard>
@@ -140,7 +150,7 @@ export default function AnalyticsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <GlassCard className="p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-500">System Health</span>
+                    <span className="text-sm font-medium text-slate-500">{UI_COPY.system_health}</span>
                     <Activity size={16} className="text-slate-400" />
                   </div>
                   <div>
@@ -150,19 +160,19 @@ export default function AnalyticsPage() {
                       </span>
                       <StatusChip 
                         status={summary.system_health.offline_sensors > 0 ? "warning" : "active"} 
-                        label={summary.system_health.offline_sensors > 0 ? "Degraded" : "Healthy"}
+                        label={summary.system_health.offline_sensors > 0 ? UI_COPY.degraded : UI_COPY.healthy}
                         size="sm"
                       />
                     </div>
                     <p className="text-xs text-slate-500">
-                      {summary.system_health.active_sensors} of {summary.system_health.total_sensors} sensors online
+                      {formatString(UI_COPY.online_sensors, { active: summary.system_health.active_sensors, total: summary.system_health.total_sensors })}
                     </p>
                   </div>
                 </GlassCard>
 
                 <GlassCard className="p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-500">Alerts (24h)</span>
+                    <span className="text-sm font-medium text-slate-500">{UI_COPY.alerts_24h}</span>
                     <AlertTriangle size={16} className="text-slate-400" />
                   </div>
                   <div>
@@ -170,16 +180,16 @@ export default function AnalyticsPage() {
                       {summary.alerts.total_24h}
                     </div>
                     <div className="flex items-center gap-2 text-xs">
-                      <span className="text-rose-600 font-medium">{summary.alerts.critical} Critical</span>
+                      <span className="text-rose-600 font-medium">{summary.alerts.critical} {getSeverityLabel('critical')}</span>
                       <span className="text-slate-300">|</span>
-                      <span className="text-amber-600 font-medium">{summary.alerts.warning} Warning</span>
+                      <span className="text-amber-600 font-medium">{summary.alerts.warning} {getSeverityLabel('warning')}</span>
                     </div>
                   </div>
                 </GlassCard>
 
                 <GlassCard className="p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-500">Water Quality</span>
+                    <span className="text-sm font-medium text-slate-500">{UI_COPY.water_quality}</span>
                     <CheckCircle2 size={16} className="text-slate-400" />
                   </div>
                   <div>
@@ -192,14 +202,14 @@ export default function AnalyticsPage() {
                       </span>
                     </div>
                     <p className="text-xs text-slate-500">
-                      {summary.water_quality.ph.percent_compliance}% compliance (24h)
+                      {formatString(UI_COPY.compliance_24h, { percent: summary.water_quality.ph.percent_compliance ?? 0 })}
                     </p>
                   </div>
                 </GlassCard>
 
                 <GlassCard className="p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-500">Data Points</span>
+                    <span className="text-sm font-medium text-slate-500">{UI_COPY.data_points}</span>
                     <TrendingUp size={16} className="text-slate-400" />
                   </div>
                   <div>
@@ -207,7 +217,7 @@ export default function AnalyticsPage() {
                       {trends?.points.length ?? 0}
                     </div>
                     <p className="text-xs text-slate-500">
-                      Recorded in last {summary.period}
+                      {formatString(UI_COPY.recorded_in_last, { period: summary.period })}
                     </p>
                   </div>
                 </GlassCard>
@@ -217,11 +227,11 @@ export default function AnalyticsPage() {
             {trends && trends.points.length > 0 && (
               <GlassCard className="p-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-semibold text-slate-800">Water Quality Trends</h3>
+                  <h3 className="text-lg font-semibold text-slate-800">{UI_COPY.water_quality_trends}</h3>
                   <div className="flex items-center gap-2 text-sm text-slate-500">
                     <span className="w-3 h-3 rounded-full bg-cyan-500"></span> pH
-                    <span className="w-3 h-3 rounded-full bg-amber-500 ml-2"></span> Turbidity
-                    <span className="w-3 h-3 rounded-full bg-indigo-500 ml-2"></span> Temp
+                    <span className="w-3 h-3 rounded-full bg-amber-500 ml-2"></span> {UI_COPY.turbidity}
+                    <span className="w-3 h-3 rounded-full bg-indigo-500 ml-2"></span> {UI_COPY.temperature}
                   </div>
                 </div>
                 <div className="h-[350px] w-full">
@@ -304,7 +314,7 @@ export default function AnalyticsPage() {
               {compliance && (
                 <GlassCard className="p-6">
                   <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-semibold text-slate-800">Compliance Standards</h3>
+                    <h3 className="text-lg font-semibold text-slate-800">{UI_COPY.compliance_standards}</h3>
                     <div className="text-xs px-2 py-1 bg-slate-100 rounded text-slate-500">
                       {compliance.standard.source}
                     </div>
@@ -315,7 +325,7 @@ export default function AnalyticsPage() {
                       <div className="flex justify-between items-center text-sm">
                         <span className="font-medium text-slate-700">pH Levels</span>
                         <span className={`font-bold ${getComplianceColor(compliance.ph.percent_compliance)}`}>
-                          {compliance.ph.percent_compliance}% Compliant
+                          {compliance.ph.percent_compliance}% {getComplianceLabel(compliance.ph.percent_compliance)}
                         </span>
                       </div>
                       <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -325,16 +335,16 @@ export default function AnalyticsPage() {
                         />
                       </div>
                       <div className="flex justify-between text-xs text-slate-500">
-                        <span>Standard: {compliance.standard.ph_min} - {compliance.standard.ph_max}</span>
-                        <span>{compliance.ph.violation_count} violations</span>
+                        <span>{UI_COPY.standard}: {compliance.standard.ph_min} - {compliance.standard.ph_max}</span>
+                        <span>{formatString(UI_COPY.violations, { count: compliance.ph.violation_count })}</span>
                       </div>
                     </div>
 
                     <div className="space-y-2">
                       <div className="flex justify-between items-center text-sm">
-                        <span className="font-medium text-slate-700">Turbidity</span>
+                        <span className="font-medium text-slate-700">{UI_COPY.turbidity}</span>
                         <span className={`font-bold ${getComplianceColor(compliance.turbidity.percent_compliance)}`}>
-                          {compliance.turbidity.percent_compliance}% Compliant
+                          {compliance.turbidity.percent_compliance}% {getComplianceLabel(compliance.turbidity.percent_compliance)}
                         </span>
                       </div>
                       <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -344,16 +354,16 @@ export default function AnalyticsPage() {
                         />
                       </div>
                       <div className="flex justify-between text-xs text-slate-500">
-                        <span>Max: {compliance.standard.turbidity_max_ntu} NTU</span>
-                        <span>{compliance.turbidity.violation_count} violations</span>
+                        <span>{UI_COPY.max}: {compliance.standard.turbidity_max_ntu} NTU</span>
+                        <span>{formatString(UI_COPY.violations, { count: compliance.turbidity.violation_count })}</span>
                       </div>
                     </div>
 
                     <div className="space-y-2">
                       <div className="flex justify-between items-center text-sm">
-                        <span className="font-medium text-slate-700">Temperature</span>
+                        <span className="font-medium text-slate-700">{UI_COPY.temperature}</span>
                         <span className={`font-bold ${getComplianceColor(compliance.temperature.percent_compliance)}`}>
-                          {compliance.temperature.percent_compliance}% Compliant
+                          {compliance.temperature.percent_compliance}% {getComplianceLabel(compliance.temperature.percent_compliance)}
                         </span>
                       </div>
                       <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -363,8 +373,8 @@ export default function AnalyticsPage() {
                         />
                       </div>
                       <div className="flex justify-between text-xs text-slate-500">
-                        <span>Max: {compliance.standard.temperature_max_c}°C</span>
-                        <span>{compliance.temperature.violation_count} violations</span>
+                        <span>{UI_COPY.max}: {compliance.standard.temperature_max_c}°C</span>
+                        <span>{formatString(UI_COPY.violations, { count: compliance.temperature.violation_count })}</span>
                       </div>
                     </div>
                   </div>
@@ -374,33 +384,45 @@ export default function AnalyticsPage() {
               {insights && (
                 <GlassCard className="p-6">
                   <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-semibold text-slate-800">AI Insights</h3>
+                    <h3 className="text-lg font-semibold text-slate-800">{UI_COPY.ai_insights}</h3>
                     <StatusChip 
                       status={insights.executive_summary.status === "NORMAL" ? "active" : insights.executive_summary.status === "WARNING" ? "warning" : "critical"}
-                      label={insights.executive_summary.status}
+                      label={getSeverityLabel(insights.executive_summary.status)}
                       size="sm"
                     />
                   </div>
 
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 mb-6">
-                    <div className="flex gap-3">
-                      <Zap className="text-amber-500 shrink-0 mt-0.5" size={18} />
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-800 mb-1">{insights.executive_summary.headline}</h4>
-                        <p className="text-sm text-slate-600 leading-relaxed">
-                          {insights.executive_summary.recommendation}
-                        </p>
+                    <div className="flex flex-col gap-4">
+                      <div className="flex gap-3">
+                        <Zap className="text-amber-500 shrink-0 mt-0.5" size={18} />
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">{UI_COPY.summary}</h4>
+                          <p className="text-sm font-semibold text-slate-800 leading-relaxed">
+                            {insights.executive_summary.headline}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 pt-4 border-t border-slate-200">
+                         <CheckSquare className="text-emerald-500 shrink-0 mt-0.5" size={18} />
+                         <div>
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">{UI_COPY.action_checklist}</h4>
+                            <p className="text-sm text-slate-600 leading-relaxed">
+                              {insights.executive_summary.recommendation}
+                            </p>
+                         </div>
                       </div>
                     </div>
                   </div>
 
                   <div className="space-y-4">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Key Findings</h4>
+                    <div className="flex items-center gap-2 mb-2">
+                       <List size={16} className="text-slate-400" />
+                       <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">{UI_COPY.facts}</h4>
+                    </div>
                     {insights.key_findings.map((finding, idx) => (
-                      <div key={idx} className="flex gap-3 group">
-                        <div className="mt-1">
-                          <Info size={16} className="text-cyan-600" />
-                        </div>
+                      <div key={idx} className="flex gap-3 group pl-2 border-l-2 border-slate-200 hover:border-cyan-400 transition-colors">
                         <div>
                           <p className="text-sm font-medium text-slate-800 group-hover:text-cyan-700 transition-colors">
                             {finding.title}

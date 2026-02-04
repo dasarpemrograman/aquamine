@@ -13,9 +13,11 @@ import {
   ReferenceLine,
   ReferenceDot,
 } from "recharts";
+import { RefreshCw } from "lucide-react";
 import { GlassCard } from "@/app/components/ui/GlassCard";
 import { StatusChip } from "@/app/components/ui/StatusChip";
 import { formatWIB, formatWIBShort } from "@/lib/dateUtils";
+import { UI_COPY, getSeverityLabel, getStaleReason, formatString } from "@/lib/copy";
 
 interface ForecastPoint {
   timestamp: string;
@@ -117,13 +119,13 @@ function ForecastTooltip({ active, payload, label }: ForecastTooltipProps) {
       <div className="mt-1 space-y-1 text-xs text-slate-600">
         {phPredItem && (
           <div className="flex items-center justify-between gap-4">
-            <span className="text-slate-500">Predicted pH</span>
+            <span className="text-slate-500">{UI_COPY.predicted_ph}</span>
             <span className="font-semibold text-slate-800">{formatTooltipNumber(phPredItem.value)}</span>
           </div>
         )}
         {confidenceItem && (
           <div className="flex items-center justify-between gap-4">
-            <span className="text-slate-500">Confidence</span>
+            <span className="text-slate-500">{UI_COPY.confidence}</span>
             <span className="font-semibold text-slate-800">{formatTooltipConfidence(confidenceItem.value)}</span>
           </div>
         )}
@@ -133,9 +135,9 @@ function ForecastTooltip({ active, payload, label }: ForecastTooltipProps) {
 }
 
 const RANGE_OPTIONS = [
-  { label: "24h", value: 24, description: "24-Hour Forecast" },
-  { label: "7d", value: 168, description: "7-Day Forecast" },
-  { label: "30d", value: 720, description: "30-Day Forecast" },
+  { label: "24h", value: 24, description: UI_COPY.range_24h },
+  { label: "7d", value: 168, description: UI_COPY.range_7d },
+  { label: "30d", value: 720, description: UI_COPY.range_30d },
 ] as const;
 
 export default function ForecastChart({ sensorId }: { sensorId: string }) {
@@ -252,6 +254,10 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
     ? new Date(latestReading.timestamp).getTime()
     : null;
 
+  // Get the latest prediction point if available
+
+  const latestPrediction = data.length > 0 ? data[0] : null;
+
   const chartDomain = useMemo(() => {
     if (!data.length) return undefined;
 
@@ -269,9 +275,13 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
     return [min, max] as [number, number];
   }, [data, nowTimestamp, lastReadingTimestamp]);
 
-  if (loading) return <div className="text-sm text-slate-500">Loading forecast...</div>;
+  const handleRefresh = useCallback(() => {
+    fetchData();
+  }, [fetchData]);
 
-  const statusLabel = anomaly ? anomaly.severity.toUpperCase() : "UNKNOWN";
+  if (loading) return <div className="text-sm text-slate-500">{UI_COPY.loading_forecast}</div>;
+
+  const statusLabel = anomaly ? getSeverityLabel(anomaly.severity) : getSeverityLabel(null);
   const sensorUpdatedLabel = latestReading ? formatWIB(latestReading.timestamp) : null;
   const forecastGeneratedLabel = forecastGeneratedAt ? formatWIB(forecastGeneratedAt) : null;
   const forecastStartLabel = data.length ? formatWIB(data[0].timestamp) : null;
@@ -279,63 +289,95 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
 
   return (
     <GlassCard className="w-full">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-white/40">
-        <div>
-          <div className="flex flex-col gap-1">
-            <h3 className="text-lg font-bold text-slate-800">
-              {RANGE_OPTIONS.find((r) => r.value === selectedRange)?.description ?? "Forecast"}
-            </h3>
+      <div className="flex flex-col gap-6 pb-6 border-b border-white/40">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <h3 className="text-lg font-bold text-slate-800">
+                {RANGE_OPTIONS.find((r) => r.value === selectedRange)?.description ?? UI_COPY.forecast_title}
+              </h3>
+              {forecastIsStale && (
+                <StatusChip 
+                  status="warning" 
+                  label={UI_COPY.stale} 
+                  size="sm"
+                />
+              )}
+            </div>
+            
+            {/* Big Number Summary */}
+            {latestPrediction && (
+              <div className="flex items-baseline gap-3 mb-2">
+                <span className="text-4xl font-bold text-slate-900">
+                  {latestPrediction.ph_pred?.toFixed(2) ?? "--"}
+                </span>
+                <span className="text-sm font-medium text-slate-500 uppercase tracking-wide">
+                  {UI_COPY.predicted_ph} ({UI_COPY.now})
+                </span>
+              </div>
+            )}
+
             {forecastStartLabel && forecastEndLabel && (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-cyan-700">
-                <span>Range: {forecastStartLabel} → {forecastEndLabel}</span>
+                <span>{UI_COPY.forecast_range_label}: {forecastStartLabel} → {forecastEndLabel}</span>
                 <span className="hidden sm:inline text-slate-300">•</span>
-                <span>{data.length} pts</span>
+                <span>{data.length} {UI_COPY.forecast_points}</span>
               </div>
             )}
-            {historyHours ? (
-              <p className="text-xs text-slate-500">Based on: {historyHours}h of sensor data</p>
-            ) : null}
+            
+            {/* Threshold Source Label */}
+            <div className="mt-2 inline-flex items-center px-2 py-1 bg-slate-100 rounded text-[10px] font-medium text-slate-500 border border-slate-200">
+              {UI_COPY.source}: Kepmen LH 113/2003 (pH 6-9)
+            </div>
           </div>
-          <div className="flex gap-2 mt-2">
-            {RANGE_OPTIONS.map((range) => (
-              <button
-                key={range.value}
-                onClick={() => setSelectedRange(range.value)}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                  selectedRange === range.value
-                    ? "bg-cyan-100 text-cyan-800 border border-cyan-300"
-                    : "bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200"
-                }`}
-              >
-                {range.label}
-              </button>
-            ))}
+
+          <div className="flex flex-col items-start md:items-end gap-3">
+             <div className="flex items-center gap-2">
+                <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                  {RANGE_OPTIONS.map((range) => (
+                    <button
+                      key={range.value}
+                      onClick={() => setSelectedRange(range.value)}
+                      className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                        selectedRange === range.value
+                          ? "bg-white text-cyan-700 shadow-sm border border-slate-200"
+                          : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+                      }`}
+                    >
+                      {range.label}
+                    </button>
+                  ))}
+                </div>
+                
+                <button
+                  onClick={handleRefresh}
+                  className="p-2 text-slate-500 hover:text-cyan-700 hover:bg-cyan-50 rounded-lg transition-colors border border-transparent hover:border-cyan-100"
+                  title={UI_COPY.refresh_forecast}
+                >
+                  <RefreshCw size={16} className={isFetchingRef.current ? "animate-spin" : ""} />
+                </button>
+             </div>
+
+            {anomaly && (
+              <div className="flex flex-col items-start md:items-end gap-1">
+                <StatusChip
+                  status={
+                    anomaly.severity === "critical" ? "critical" :
+                    anomaly.severity === "warning" ? "warning" :
+                    anomaly.severity === "normal" ? "active" : "info"
+                  }
+                  label={statusLabel}
+                  size="sm"
+                />
+                {forecastIsStale && forecastStaleReason && (
+                   <span className="text-xs text-amber-600 font-medium text-right max-w-[200px]">
+                      {getStaleReason(forecastStaleReason)}
+                   </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
-        {anomaly && (
-          <div className="flex flex-col items-start sm:items-end gap-1">
-            <StatusChip
-              status={
-                anomaly.severity === "critical" ? "critical" :
-                anomaly.severity === "warning" ? "warning" :
-                anomaly.severity === "normal" ? "active" : "info"
-              }
-              label={statusLabel}
-              size="sm"
-            />
-            {sensorUpdatedLabel ? (
-              <div className="text-xs text-slate-500">Sensor updated: {sensorUpdatedLabel}</div>
-            ) : null}
-            {forecastGeneratedLabel ? (
-              <div className="text-xs text-slate-500">Forecast generated: {forecastGeneratedLabel}</div>
-            ) : null}
-            {forecastIsStale && (
-              <div className="text-xs text-amber-600 font-medium">
-                Stale{forecastStaleReason ? `: ${forecastStaleReason}` : ""}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       <div className="h-96 w-full">
@@ -408,7 +450,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
                 strokeOpacity={0.3}
                 strokeDasharray="3 3"
                 label={{
-                  value: "Start",
+                  value: UI_COPY.start,
                   position: "insideTop",
                   fill: "#64748b",
                   fontSize: 10,
@@ -421,7 +463,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
                 stroke="#38bdf8"
                 strokeDasharray="4 4"
                 label={{
-                  value: `Now (${formatWIBShort(nowTimestamp)})`,
+                  value: `${UI_COPY.now} (${formatWIBShort(nowTimestamp)})`,
                   position: "top",
                   fill: "#38bdf8",
                   fontSize: 11,
@@ -436,7 +478,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
                   stroke="#0ea5e9"
                   strokeWidth={2}
                   label={{
-                    value: `Last Reading`,
+                    value: UI_COPY.last_reading,
                     position: "top",
                     fill: "#0ea5e9",
                     fontSize: 11,
@@ -447,7 +489,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
           </ResponsiveContainer>
         ) : (
           <div className="h-full flex items-center justify-center text-sm text-slate-500">
-            {warning ?? "No forecast available"}
+            {warning ?? UI_COPY.no_forecast}
           </div>
         )}
       </div>
@@ -455,15 +497,15 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
       <div className="mt-4 space-y-1 text-sm text-slate-600">
         {latestReading ? (
           <div className="p-3 bg-background/50 rounded-xl border border-white/5">
-            <span className="block text-xs font-bold uppercase tracking-wider mb-1 text-primary">Last Reading</span>
-             pH {latestReading.ph?.toFixed(2) ?? "--"} at {formatWIB(latestReading.timestamp)}
+            <span className="block text-xs font-bold uppercase tracking-wider mb-1 text-primary">{UI_COPY.last_reading}</span>
+             pH {latestReading.ph?.toFixed(2) ?? "--"} @ {formatWIB(latestReading.timestamp)}
           </div>
         ) : (
-          <div className="p-3 bg-background/50 rounded-xl border border-white/5">Last Reading: No data</div>
+          <div className="p-3 bg-background/50 rounded-xl border border-white/5">{UI_COPY.last_reading}: Tidak ada data</div>
         )}
         {forecastStartLabel ? (
            <div className="p-3 bg-background/50 rounded-xl border border-white/5">
-              <span className="block text-xs font-bold uppercase tracking-wider mb-1 text-primary">Forecast Start</span>
+              <span className="block text-xs font-bold uppercase tracking-wider mb-1 text-primary">{UI_COPY.forecast_start}</span>
               {forecastStartLabel}
            </div>
         ) : null}
@@ -471,7 +513,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
 
       {anomaly && anomaly.reason ? (
         <div className="mt-2 text-sm text-slate-600">
-          <strong>Analysis:</strong> {anomaly.reason}
+          <strong>{UI_COPY.analysis}:</strong> {anomaly.reason}
         </div>
       ) : null}
     </GlassCard>
