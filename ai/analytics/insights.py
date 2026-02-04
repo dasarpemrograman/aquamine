@@ -188,7 +188,12 @@ async def build_insights_evidence(
     )
 
     sensors_stmt = (
-        select(Sensor, SensorAlertState)
+        select(
+            Sensor.id,
+            Sensor.sensor_id,
+            Sensor.name,
+            SensorAlertState.current_state,
+        )
         .join(SensorAlertState, SensorAlertState.sensor_id == Sensor.id, isouter=True)
         .order_by(Sensor.id)
     )
@@ -335,12 +340,12 @@ async def build_insights_evidence(
         "raw_samples": raw_samples,
         "sensors": [
             {
-                "id": s.id,
-                "sensor_id": s.sensor_id,
-                "name": s.name,
-                "current_state": (state.current_state if state else "normal"),
+                "id": row.id,
+                "sensor_id": row.sensor_id,
+                "name": row.name,
+                "current_state": (row.current_state if row.current_state is not None else "normal"),
             }
-            for (s, state) in sensors_rows
+            for row in sensors_rows
         ],
         "compliance": {
             "ph": {"sample_count": ph_samples, "violation_count": ph_violations, "percent": ph_pct},
