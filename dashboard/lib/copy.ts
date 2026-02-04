@@ -40,7 +40,7 @@ export const UI_COPY = {
   minutes_ago: "{minutes}m yang lalu",
   view_details: "Lihat detail",
   
-  no_insights: "Tidak ada wawasan tersedia",
+  no_insights: "Tidak ada insight tersedia",
   
   // Forecast
   forecast_title: "Prediksi & Analisis",
@@ -89,7 +89,7 @@ export const UI_COPY = {
   
   // Analytics
   analytics_title: "Analitik",
-  analytics_subtitle: "Kesehatan sistem, metrik kepatuhan, dan wawasan AI",
+  analytics_subtitle: "Kesehatan sistem, metrik kepatuhan, dan insight AI",
   system_health: "Kesehatan Sistem",
   degraded: "Terdegradasi",
   healthy: "Sehat",
@@ -103,7 +103,7 @@ export const UI_COPY = {
   compliance_standards: "Standar Kepatuhan",
   compliant: "Patuh",
   violations: "{count} pelanggaran",
-  ai_insights: "Wawasan AI",
+  ai_insights: "Insight AI",
   key_findings: "Temuan Utama",
   summary: "Ringkas",
   facts: "Fakta",

@@ -21,11 +21,11 @@ const classNames = (...classes: (string | undefined | null | false)[]) => classe
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/forecast', label: 'Forecast', icon: LineChart },
-  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/alerts', label: 'Alerts', icon: Bell },
-  { href: '/map', label: 'Map', icon: Map },
-  { href: '/recipients', label: 'Recipients', icon: Users },
+  { href: '/forecast', label: 'Prediksi', icon: LineChart },
+  { href: '/analytics', label: 'Analitik', icon: BarChart3 },
+  { href: '/alerts', label: 'Peringatan', icon: Bell },
+  { href: '/map', label: 'Peta', icon: Map },
+  { href: '/recipients', label: 'Penerima', icon: Users },
   { href: '/cv', label: 'CV Analysis', icon: Camera },
   { href: '/chat', label: 'AI Assistant', icon: MessageSquare },
 ];
