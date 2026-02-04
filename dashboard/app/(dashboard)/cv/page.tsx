@@ -7,11 +7,13 @@ import VideoFileView from "@/app/components/VideoFileView";
 import { GlassPanel } from "@/app/components/ui/GlassPanel";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { Camera, Video, Image as ImageIcon, Sparkles } from "lucide-react";
+import { useFieldMode } from "@/app/context/FieldModeContext";
 
 type Mode = "live" | "video" | "image";
 
 export default function CVAnalysisPage() {
   const [mode, setMode] = useState<Mode>("live");
+  const { isFieldMode } = useFieldMode();
 
   const liveStreamRef = useRef<MediaStream | null>(null);
   const videoObjectUrlRef = useRef<string | null>(null);
@@ -48,40 +50,46 @@ export default function CVAnalysisPage() {
           }
         />
 
-        <div className="flex justify-start">
-          <div className="inline-flex p-1.5 bg-white/40 backdrop-blur-xl border border-white/50 rounded-2xl shadow-lg ring-1 ring-black/5">
+        <div className={isFieldMode ? "flex justify-stretch w-full" : "flex justify-start"}>
+          <div className={`inline-flex p-1.5 bg-white/40 backdrop-blur-xl border border-white/50 rounded-2xl shadow-lg ring-1 ring-black/5 ${isFieldMode ? "w-full grid grid-cols-3 gap-1" : ""}`}>
             <button
               onClick={() => setMode("live")}
-              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-300 ${
+              className={`flex items-center justify-center gap-2.5 rounded-xl font-semibold transition-all duration-300 ${
+                isFieldMode ? "px-4 py-4 text-base flex-col" : "px-6 py-3 text-sm"
+              } ${
                 mode === "live"
                   ? "bg-gradient-to-tr from-teal-500 to-cyan-500 text-white shadow-md"
                   : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
               }`}
             >
-              <Camera className="w-4 h-4" />
-              Live Camera
+              <Camera className={isFieldMode ? "w-6 h-6" : "w-4 h-4"} />
+              {isFieldMode ? "Live" : "Live Camera"}
             </button>
             <button
               onClick={() => setMode("video")}
-              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-300 ${
+              className={`flex items-center justify-center gap-2.5 rounded-xl font-semibold transition-all duration-300 ${
+                isFieldMode ? "px-4 py-4 text-base flex-col" : "px-6 py-3 text-sm"
+              } ${
                 mode === "video"
                   ? "bg-gradient-to-tr from-teal-500 to-cyan-500 text-white shadow-md"
                   : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
               }`}
             >
-              <Video className="w-4 h-4" />
-              Video File
+              <Video className={isFieldMode ? "w-6 h-6" : "w-4 h-4"} />
+              {isFieldMode ? "Video" : "Video File"}
             </button>
             <button
               onClick={() => setMode("image")}
-              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-300 ${
+              className={`flex items-center justify-center gap-2.5 rounded-xl font-semibold transition-all duration-300 ${
+                isFieldMode ? "px-4 py-4 text-base flex-col" : "px-6 py-3 text-sm"
+              } ${
                 mode === "image"
                   ? "bg-gradient-to-tr from-teal-500 to-cyan-500 text-white shadow-md"
                   : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
               }`}
             >
-              <ImageIcon className="w-4 h-4" />
-              Image Upload
+              <ImageIcon className={isFieldMode ? "w-6 h-6" : "w-4 h-4"} />
+              {isFieldMode ? "Image" : "Image Upload"}
             </button>
           </div>
         </div>
@@ -141,10 +149,12 @@ export default function CVAnalysisPage() {
           </GlassPanel>
         </div>
         
-        <div className="mt-2 text-center flex items-center justify-center gap-2 text-xs font-medium text-slate-400 uppercase tracking-widest opacity-60">
-          <Sparkles className="w-3 h-3" />
-          Powered by YOLOv8 • Inference Time &lt;100ms • Accuracy 94%
-        </div>
+        {!isFieldMode && (
+          <div className="mt-2 text-center flex items-center justify-center gap-2 text-xs font-medium text-slate-400 uppercase tracking-widest opacity-60">
+            <Sparkles className="w-3 h-3" />
+            Powered by YOLOv8 • Inference Time &lt;100ms • Accuracy 94%
+          </div>
+        )}
       </div>
     </div>
   );

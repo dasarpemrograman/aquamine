@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Edit2, Trash2, X, AlertTriangle, AlertOctagon, Check, Users, Phone, Mail } from "lucide-react";
-import { useAuth } from "@clerk/nextjs";
+import { Plus, Edit2, Trash2, X, AlertTriangle, AlertOctagon, Check, Users, Phone, Mail, Bell, Send } from "lucide-react";
+import { useAuth, useUser } from "@clerk/nextjs";
 
 import { GlassPanel } from "@/app/components/ui/GlassPanel";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
@@ -25,12 +25,16 @@ interface RecipientFormData {
 
 export default function RecipientsPage() {
   const { getToken } = useAuth();
+  const { user } = useUser();
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRecipient, setEditingRecipient] = useState<Recipient | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<number | null>(null);
+  const [testingRecipientId, setTestingRecipientId] = useState<number | null>(null);
   
+  const isAdmin = user?.publicMetadata?.role === 'admin' || user?.publicMetadata?.role === 'superadmin';
+
   const [formData, setFormData] = useState<RecipientFormData>({
     name: "",
     phone: "",
@@ -42,7 +46,7 @@ export default function RecipientsPage() {
   const [formErrors, setFormErrors] = useState<{[key: string]: string}>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
 
   useEffect(() => {
     loadRecipients();
@@ -55,7 +59,7 @@ export default function RecipientsPage() {
     }
   }, [toast]);
 
-  const showToast = (message: string, type: 'success' | 'error') => {
+  const showToast = (message: string, type: 'success' | 'error' | 'info') => {
     setToast({ message, type });
   };
 
@@ -72,6 +76,17 @@ export default function RecipientsPage() {
       setLoading(false);
     }
   }
+
+  const handleTestNotification = async (recipient: Recipient) => {
+    setTestingRecipientId(recipient.id);
+    showToast(`Sending test notification to ${recipient.name}...`, "info");
+    
+    // Simulate API call
+    setTimeout(() => {
+      setTestingRecipientId(null);
+      showToast(`Test notification sent to ${recipient.name}`, "success");
+    }, 1500);
+  };
 
   const validateForm = () => {
     const errors: {[key: string]: string} = {};
@@ -177,30 +192,54 @@ export default function RecipientsPage() {
     setEditingRecipient(null);
   };
 
+  const renderPreferences = (recipient: Recipient) => (
+    <div className="flex flex-wrap gap-2">
+      {recipient.notify_warning && (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-yellow-100/50 text-yellow-700 border border-yellow-200/50">
+          <AlertTriangle size={14} />
+          Warning
+        </span>
+      )}
+      {recipient.notify_critical && (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-100/50 text-red-700 border border-red-200/50">
+          <AlertOctagon size={14} />
+          Critical
+        </span>
+      )}
+      {!recipient.notify_warning && !recipient.notify_critical && (
+        <span className="text-gray-400 text-xs italic">No notifications</span>
+      )}
+    </div>
+  );
+
 
   return (
-    <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">
+    <div className="min-h-screen px-4 py-6 md:px-8 md:py-10">
       <div className="mx-auto w-full max-w-6xl space-y-8">
         <SectionHeader
           title="Notification Recipients"
           subtitle="Manage who receives alerts and escalation messages"
           icon={Users}
           actions={
-            <button
-              onClick={openAddModal}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl shadow-lg shadow-blue-600/20 flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
-            >
-              <Plus size={18} />
-              Add Recipient
-            </button>
+            isAdmin ? (
+              <button
+                onClick={openAddModal}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl shadow-lg shadow-blue-600/20 flex items-center gap-2 transition-all hover:scale-105 active:scale-95 text-sm md:text-base"
+              >
+                <Plus size={18} />
+                <span className="hidden md:inline">Add Recipient</span>
+                <span className="md:hidden">Add</span>
+              </button>
+            ) : null
           }
         />
 
-        <GlassPanel className="min-h-[50vh]">
+        <GlassPanel className="min-h-[50vh] p-0 md:p-6 overflow-hidden">
           {/* Toast Notification */}
           {toast && (
-            <div className={`fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 text-white transition-opacity ${
-              toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+            <div className={`fixed top-4 right-4 px-4 py-2 rounded shadow-lg z-50 text-white transition-opacity flex items-center gap-2 ${
+              toast.type === 'success' ? 'bg-green-600' : 
+              toast.type === 'error' ? 'bg-red-600' : 'bg-blue-600'
             }`}>
               {toast.message}
             </div>
@@ -214,89 +253,171 @@ export default function RecipientsPage() {
             <div>
               {recipients.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
-                  No recipients found. Add one to get started.
+                  No recipients found. {isAdmin && "Add one to get started."}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-separate border-spacing-y-3">
-                    <thead>
-                      <tr>
-                        <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider">Name</th>
-                        <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider">Contact Info</th>
-                        <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                        <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider">Preferences</th>
-                        <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recipients.map((recipient) => (
-                        <tr key={recipient.id} className="group bg-white/40 hover:bg-white/80 transition-all duration-300 shadow-sm hover:shadow-md hover:scale-[1.005]">
-                          <td className="px-6 py-4 font-medium text-slate-900 first:rounded-l-2xl last:rounded-r-2xl border-y border-l border-white/50 first:border-l last:border-r">
-                            {recipient.name}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-600 border-y border-white/50">
-                            <div className="flex flex-col gap-2">
-                              {recipient.phone && (
-                                <div className="flex items-center gap-2">
-                                  <Phone size={14} className="text-slate-400" />
-                                  <span>{recipient.phone}</span>
-                                </div>
-                              )}
-                              {recipient.email && (
-                                <div className="flex items-center gap-2">
-                                  <Mail size={14} className="text-slate-400" />
-                                  <span>{recipient.email}</span>
-                                </div>
-                              )}
-                              {!recipient.phone && !recipient.email && <span className="text-gray-400">-</span>}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 border-y border-white/50">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
+                <>
+                  {/* Mobile Cards View */}
+                  <div className="grid grid-cols-1 gap-4 p-4 md:hidden">
+                    {recipients.map((recipient) => (
+                      <div key={recipient.id} className="bg-white/40 rounded-2xl p-4 border border-white/50 shadow-sm hover:shadow-md transition-all space-y-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="font-bold text-slate-900">{recipient.name}</h3>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border mt-1 ${
                               recipient.is_active 
                                 ? 'bg-green-100/50 text-green-700 border-green-200' 
                                 : 'bg-gray-100/50 text-gray-600 border-gray-200'
                             }`}>
                               {recipient.is_active ? 'Active' : 'Inactive'}
                             </span>
-                          </td>
-                          <td className="px-6 py-4 border-y border-white/50">
-                            <div className="flex gap-2">
-                              <span title="Notify Warning" className={`p-1.5 rounded-lg transition-colors ${
-                                recipient.notify_warning ? 'text-yellow-600 bg-yellow-100/50' : 'text-gray-300 bg-gray-100/30'
-                              }`}>
-                                <AlertTriangle size={18} />
-                              </span>
-                              <span title="Notify Critical" className={`p-1.5 rounded-lg transition-colors ${
-                                recipient.notify_critical ? 'text-red-600 bg-red-100/50' : 'text-gray-300 bg-gray-100/30'
-                              }`}>
-                                <AlertOctagon size={18} />
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-right first:rounded-l-2xl last:rounded-r-2xl border-y border-r border-white/50 first:border-l last:border-r">
-                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button
-                                onClick={() => openEditModal(recipient)}
-                                className="bg-slate-200/80 hover:bg-slate-300 text-slate-700 p-2 rounded-lg text-sm transition-colors"
-                                title="Edit"
+                          </div>
+                          
+                          <div className="flex gap-1">
+                             <button
+                                onClick={() => handleTestNotification(recipient)}
+                                disabled={testingRecipientId === recipient.id}
+                                className="p-2 bg-blue-100/80 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
+                                title="Test Notification"
                               >
-                                <Edit2 size={16} />
+                                {testingRecipientId === recipient.id ? (
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                                ) : (
+                                  <Bell size={16} />
+                                )}
                               </button>
-                              <button
-                                onClick={() => setDeleteConfirmOpen(recipient.id)}
-                                className="bg-red-100/80 hover:bg-red-200 text-red-600 p-2 rounded-lg text-sm transition-colors"
-                                title="Delete"
-                              >
-                                <Trash2 size={16} />
-                              </button>
+                            {isAdmin && (
+                              <>
+                                <button
+                                  onClick={() => openEditModal(recipient)}
+                                  className="p-2 bg-slate-200/80 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
+                                  title="Edit"
+                                >
+                                  <Edit2 size={16} />
+                                </button>
+                                <button
+                                  onClick={() => setDeleteConfirmOpen(recipient.id)}
+                                  className="p-2 bg-red-100/80 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
+                                  title="Delete"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 text-sm text-gray-600 bg-white/30 p-3 rounded-xl">
+                          {recipient.phone && (
+                            <div className="flex items-center gap-2">
+                              <Phone size={14} className="text-slate-400" />
+                              <span>{recipient.phone}</span>
                             </div>
-                          </td>
+                          )}
+                          {recipient.email && (
+                            <div className="flex items-center gap-2">
+                              <Mail size={14} className="text-slate-400" />
+                              <span>{recipient.email}</span>
+                            </div>
+                          )}
+                          {!recipient.phone && !recipient.email && <span className="text-gray-400 italic">No contact info</span>}
+                        </div>
+
+                        <div className="border-t border-white/50 pt-3">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Preferences</p>
+                          {renderPreferences(recipient)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop Table View */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left border-separate border-spacing-y-3">
+                      <thead>
+                        <tr>
+                          <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider">Name</th>
+                          <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider">Contact Info</th>
+                          <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider">Preferences</th>
+                          <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {recipients.map((recipient) => (
+                          <tr key={recipient.id} className="group bg-white/40 hover:bg-white/80 transition-all duration-300 shadow-sm hover:shadow-md hover:scale-[1.005]">
+                            <td className="px-6 py-4 font-medium text-slate-900 first:rounded-l-2xl last:rounded-r-2xl border-y border-l border-white/50 first:border-l last:border-r">
+                              {recipient.name}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-600 border-y border-white/50">
+                              <div className="flex flex-col gap-2">
+                                {recipient.phone && (
+                                  <div className="flex items-center gap-2">
+                                    <Phone size={14} className="text-slate-400" />
+                                    <span>{recipient.phone}</span>
+                                  </div>
+                                )}
+                                {recipient.email && (
+                                  <div className="flex items-center gap-2">
+                                    <Mail size={14} className="text-slate-400" />
+                                    <span>{recipient.email}</span>
+                                  </div>
+                                )}
+                                {!recipient.phone && !recipient.email && <span className="text-gray-400">-</span>}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 border-y border-white/50">
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
+                                recipient.is_active 
+                                  ? 'bg-green-100/50 text-green-700 border-green-200' 
+                                  : 'bg-gray-100/50 text-gray-600 border-gray-200'
+                              }`}>
+                                {recipient.is_active ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 border-y border-white/50">
+                              {renderPreferences(recipient)}
+                            </td>
+                            <td className="px-6 py-4 text-right first:rounded-l-2xl last:rounded-r-2xl border-y border-r border-white/50 first:border-l last:border-r">
+                              <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => handleTestNotification(recipient)}
+                                  disabled={testingRecipientId === recipient.id}
+                                  className="bg-blue-100/80 hover:bg-blue-200 text-blue-600 p-2 rounded-lg text-sm transition-colors"
+                                  title="Test Notification"
+                                >
+                                  {testingRecipientId === recipient.id ? (
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                                  ) : (
+                                    <Bell size={16} />
+                                  )}
+                                </button>
+                                {isAdmin && (
+                                  <>
+                                    <button
+                                      onClick={() => openEditModal(recipient)}
+                                      className="bg-slate-200/80 hover:bg-slate-300 text-slate-700 p-2 rounded-lg text-sm transition-colors"
+                                      title="Edit"
+                                    >
+                                      <Edit2 size={16} />
+                                    </button>
+                                    <button
+                                      onClick={() => setDeleteConfirmOpen(recipient.id)}
+                                      className="bg-red-100/80 hover:bg-red-200 text-red-600 p-2 rounded-lg text-sm transition-colors"
+                                      title="Delete"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </div>
           )}

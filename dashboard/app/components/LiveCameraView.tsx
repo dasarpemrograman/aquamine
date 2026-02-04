@@ -4,7 +4,8 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { analyzeImage, type AnalysisResponse } from "@/lib/api";
 import CVDetectionOverlay from "./CVDetectionOverlay";
 import { GlassCard } from "@/app/components/ui/GlassCard";
-import { Camera, StopCircle, Play, Square, AlertCircle, RefreshCw, Activity, Clock } from "lucide-react";
+import { Camera, StopCircle, Play, Square, AlertCircle, RefreshCw, Activity, Clock, FileText, Paperclip } from "lucide-react";
+import { useFieldMode } from "../context/FieldModeContext";
 
 interface LiveCameraViewProps {
   onStreamReady?: (stream: MediaStream) => void;
@@ -34,6 +35,7 @@ export default function LiveCameraView({
   const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(null);
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState<Date | null>(null);
   const [inferenceError, setInferenceError] = useState<string>("");
+  const { isFieldMode } = useFieldMode();
 
   useEffect(() => {
     setIsClient(true);
@@ -296,89 +298,101 @@ export default function LiveCameraView({
   const containerWidth = videoRef.current?.clientWidth || 800;
   const containerHeight = videoRef.current?.clientHeight || 600;
 
+  const renderControls = (isFieldMode: boolean) => (
+    <div className={`flex items-center gap-3 ${isFieldMode ? 'w-full justify-between' : ''}`}>
+      {!stream ? (
+        <button
+          onClick={() => void startCamera()}
+          disabled={isStarting}
+          className={`inline-flex items-center gap-2 ${
+            isFieldMode ? 'px-8 py-4 text-lg w-full justify-center' : 'px-5 py-2.5'
+          } bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95`}
+        >
+          {isStarting ? (
+            <RefreshCw className={`animate-spin ${isFieldMode ? 'w-6 h-6' : 'w-4 h-4'}`} />
+          ) : (
+            <Camera className={isFieldMode ? 'w-6 h-6' : 'w-4 h-4'} />
+          )}
+          {isStarting ? "Starting..." : "Start Camera"}
+        </button>
+      ) : (
+        <>
+          <button
+            onClick={stopStream}
+            className={`inline-flex items-center gap-2 ${
+              isFieldMode ? 'px-6 py-4 text-base flex-1 justify-center' : 'px-5 py-2.5'
+            } bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold rounded-xl transition-colors border border-rose-200`}
+          >
+            <StopCircle className={isFieldMode ? 'w-6 h-6' : 'w-4 h-4'} />
+            Stop
+          </button>
+
+          {!isFieldMode && devices.length > 1 && (
+            <select
+              value={selectedDeviceId}
+              onChange={(e) => handleDeviceChange(e.target.value)}
+              className="px-3 py-2.5 bg-white/50 border border-slate-200 rounded-xl text-sm text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
+            >
+              {devices.map((device) => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label || `Camera ${device.deviceId.slice(0, 8)}`}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {!isFieldMode && <div className="h-8 w-px bg-slate-200/60 mx-1" />}
+
+          {!isInferenceActive ? (
+            <button
+              onClick={startInference}
+              className={`inline-flex items-center gap-2 ${
+                isFieldMode ? 'px-8 py-4 text-lg flex-[2] justify-center' : 'px-5 py-2.5'
+              } bg-emerald-50 hover:bg-emerald-100 text-emerald-600 font-semibold rounded-xl transition-colors border border-emerald-200 shadow-sm`}
+            >
+              <Play className={`${isFieldMode ? 'w-6 h-6' : 'w-4 h-4'} fill-current`} />
+              {isFieldMode ? "Start Analysis" : "Start Inference"}
+            </button>
+          ) : (
+            <button
+              onClick={stopInference}
+              className={`inline-flex items-center gap-2 ${
+                isFieldMode ? 'px-8 py-4 text-lg flex-[2] justify-center' : 'px-5 py-2.5'
+              } bg-orange-50 hover:bg-orange-100 text-orange-600 font-semibold rounded-xl transition-colors border border-orange-200 shadow-sm`}
+            >
+              <Square className={`${isFieldMode ? 'w-6 h-6' : 'w-4 h-4'} fill-current`} />
+              {isFieldMode ? "Stop Analysis" : "Stop Inference"}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-6 p-4">
-      <GlassCard className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          {!stream ? (
-              <button
-                onClick={() => void startCamera()}
-                disabled={isStarting}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95"
-              >
-                {isStarting ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Camera className="w-4 h-4" />
-                )}
-                {isStarting ? "Starting..." : "Start Camera"}
-              </button>
-          ) : (
-            <>
-              <button
-                onClick={stopStream}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold rounded-xl transition-colors border border-rose-200"
-              >
-                <StopCircle className="w-4 h-4" />
-                Stop Camera
-              </button>
-
-              {devices.length > 1 && (
-                <select
-                  value={selectedDeviceId}
-                  onChange={(e) => handleDeviceChange(e.target.value)}
-                  className="px-3 py-2.5 bg-white/50 border border-slate-200 rounded-xl text-sm text-slate-700 focus:ring-2 focus:ring-teal-500 outline-none"
-                >
-                  {devices.map((device) => (
-                    <option key={device.deviceId} value={device.deviceId}>
-                      {device.label || `Camera ${device.deviceId.slice(0, 8)}`}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              <div className="h-8 w-px bg-slate-200/60 mx-1" />
-
-              {!isInferenceActive ? (
-                <button
-                  onClick={startInference}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 font-semibold rounded-xl transition-colors border border-emerald-200 shadow-sm"
-                >
-                  <Play className="w-4 h-4 fill-current" />
-                  Start Inference
-                </button>
-              ) : (
-                <button
-                  onClick={stopInference}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-orange-50 hover:bg-orange-100 text-orange-600 font-semibold rounded-xl transition-colors border border-orange-200 shadow-sm"
-                >
-                  <Square className="w-4 h-4 fill-current" />
-                  Stop Inference
-                </button>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="flex items-center gap-4">
-          {isInferenceActive && isAnalyzing && (
-            <div className="flex items-center gap-2 text-sm text-slate-600 bg-white/50 px-3 py-1.5 rounded-full border border-white/60">
-              <div className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+      {!isFieldMode && (
+        <GlassCard className="flex items-center justify-between gap-4 flex-wrap">
+          {renderControls(false)}
+          <div className="flex items-center gap-4">
+            {isInferenceActive && isAnalyzing && (
+              <div className="flex items-center gap-2 text-sm text-slate-600 bg-white/50 px-3 py-1.5 rounded-full border border-white/60">
+                <div className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </div>
+                <span className="font-medium">Analyzing</span>
               </div>
-              <span className="font-medium">Analyzing</span>
-            </div>
-          )}
-
-          {lastAnalyzedAt && (
-            <div className="flex items-center gap-1.5 text-xs text-slate-500">
-              <Clock className="w-3.5 h-3.5" />
-              <span>{lastAnalyzedAt.toLocaleTimeString()}</span>
-            </div>
-          )}
-        </div>
-      </GlassCard>
+            )}
+            {lastAnalyzedAt && (
+              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{lastAnalyzedAt.toLocaleTimeString()}</span>
+              </div>
+            )}
+          </div>
+        </GlassCard>
+      )}
 
       {error && (
         <div className="bg-rose-50/80 backdrop-blur-sm border border-rose-200 rounded-2xl p-4 flex items-start gap-3">
@@ -425,12 +439,12 @@ export default function LiveCameraView({
               <Camera className="w-12 h-12 text-slate-300" />
             </div>
             <p className="text-lg font-medium text-slate-600">Camera Feed Offline</p>
-            <p className="text-sm text-slate-400">Click "Start Camera" to begin analysis</p>
+            <p className="text-sm text-slate-400">Click Start Camera to begin analysis</p>
           </div>
         )}
 
         {stream && analysisResult && (
-          <div className="absolute top-4 right-4 w-64 bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-4 text-white shadow-xl transition-opacity hover:bg-black/50">
+          <div className={`absolute top-4 right-4 ${isFieldMode ? 'w-auto max-w-sm' : 'w-64'} bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-4 text-white shadow-xl transition-opacity hover:bg-black/50`}>
             <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-teal-400" />
@@ -442,24 +456,28 @@ export default function LiveCameraView({
             </div>
             
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-4">
                 <span className="text-slate-300">Detected</span>
                 <span className={`font-semibold ${analysisResult.detected ? "text-amber-400" : "text-emerald-400"}`}>
                   {analysisResult.detected ? "Yes" : "No"}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-4">
                 <span className="text-slate-300">Severity</span>
                 <span className="capitalize font-medium">{analysisResult.severity}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Objects</span>
-                <span className="font-mono">{analysisResult.bboxes.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Confidence</span>
-                <span className="font-mono">{(analysisResult.confidence * 100).toFixed(1)}%</span>
-              </div>
+              {!isFieldMode && (
+                <>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-slate-300">Objects</span>
+                    <span className="font-mono">{analysisResult.bboxes.length}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-slate-300">Confidence</span>
+                    <span className="font-mono">{(analysisResult.confidence * 100).toFixed(1)}%</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -473,6 +491,27 @@ export default function LiveCameraView({
           />
         )}
       </div>
+
+      {isFieldMode && (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t border-slate-200 shadow-2xl z-50 animate-in slide-in-from-bottom-10">
+          <div className="max-w-4xl mx-auto space-y-4">
+            {renderControls(true)}
+            
+            {stream && analysisResult && (
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200/50">
+                <button className="flex flex-col items-center justify-center gap-1 p-3 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 font-medium transition-colors">
+                  <FileText className="w-6 h-6 text-slate-500" />
+                  <span className="text-xs">Buat laporan</span>
+                </button>
+                <button className="flex flex-col items-center justify-center gap-1 p-3 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 font-medium transition-colors">
+                  <Paperclip className="w-6 h-6 text-slate-500" />
+                  <span className="text-xs">Lampirkan</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

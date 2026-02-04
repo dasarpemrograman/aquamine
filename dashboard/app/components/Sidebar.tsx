@@ -221,6 +221,47 @@ export default function Sidebar({
           )}
         </div>
       </aside>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 h-[72px] bg-white/90 backdrop-blur-xl border-t border-slate-200/60 flex justify-around items-center z-40 md:hidden px-2 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(0,0,0,0.04)]">
+        {[
+          { href: '/', label: 'Beranda', icon: LayoutDashboard },
+          { href: '/map', label: 'Peta', icon: Map },
+          { href: '/alerts', label: 'Alert', icon: Bell },
+          { href: '/chat', label: 'Chat', icon: MessageSquare },
+        ].map((item) => {
+          const isActive = pathname === item.href;
+          const Icon = item.icon;
+          
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={classNames(
+                "relative flex flex-col items-center justify-center w-full h-full space-y-1 active:scale-95 transition-transform",
+                isActive ? "text-cyan-600" : "text-slate-400"
+              )}
+            >
+              <div className={classNames(
+                "p-1.5 rounded-2xl transition-all duration-300",
+                isActive ? "bg-cyan-50 shadow-[0_0_12px_rgba(6,182,212,0.2)] translate-y-[-2px]" : "bg-transparent"
+              )}>
+                <Icon 
+                  size={24} 
+                  strokeWidth={isActive ? 2.5 : 2} 
+                  className={isActive ? "text-cyan-600" : "text-slate-400"}
+                />
+              </div>
+              <span className={classNames(
+                "text-[10px] font-medium tracking-wide transition-colors duration-300",
+                isActive ? "text-cyan-700" : "text-slate-500"
+              )}>
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
     </>
   );
 }
