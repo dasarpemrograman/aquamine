@@ -218,7 +218,7 @@ export default function Home() {
                 </Link>
               </div>
               <div className="relative">
-                  <AlertList limit={5} compact={true} />
+                  <AlertList limit={3} compact={true} />
               </div>
 
               {/* Visual Analysis Link - Compact */}

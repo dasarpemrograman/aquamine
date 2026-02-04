@@ -314,7 +314,7 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
                         />
                         {group.count > 1 && (
                           <span 
-                            className="inline-flex items-center justify-center font-semibold rounded-full border border-slate-200 backdrop-blur-sm bg-slate-100 text-slate-600 shadow-sm text-xs px-2 py-0.5 gap-1 cursor-help"
+                            className={`inline-flex items-center justify-center font-semibold rounded-full border border-slate-200 backdrop-blur-sm bg-slate-100 text-slate-600 shadow-sm gap-1 cursor-help whitespace-nowrap ${compact ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2 py-0.5'}`}
                             title={formatString(UI_COPY.similar_alerts_tooltip, { count: group.count - 1 })}
                           >
                             {formatString(UI_COPY.similar_alerts, { count: group.count - 1 })}
