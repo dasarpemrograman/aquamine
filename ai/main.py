@@ -259,9 +259,13 @@ def _calculate_forecast_confidence(
 
 
 def _format_forecast_points(
-    forecast_values: list[dict[str, object]], data_quality: float = 1.0
+    parameter: str,
+    forecast_values: list[dict[str, object]],
+    data_quality: float = 1.0,
 ) -> list[dict[str, object]]:
     points = []
+    pred_key = f"{parameter}_pred"
+    conf_key = f"{parameter}_confidence"
     for point in forecast_values or []:
         if isinstance(point, dict):
             timestamp = point.get("timestamp")
@@ -284,17 +288,38 @@ def _format_forecast_points(
         upper_val = float(upper) if isinstance(upper, (int, float)) else None
         value_val = float(value)
 
-        points.append(
-            {
-                "timestamp": timestamp,
-                "ph_pred": value_val,
-                "confidence": _calculate_forecast_confidence(
-                    value_val, lower_val, upper_val, data_quality=data_quality
-                ),
-            }
+        confidence = _calculate_forecast_confidence(
+            value_val, lower_val, upper_val, data_quality=data_quality
         )
+        payload: dict[str, object] = {
+            "timestamp": timestamp,
+            pred_key: value_val,
+            conf_key: confidence,
+        }
+        if parameter == "ph":
+            payload["confidence"] = confidence
+
+        points.append(payload)
 
     return points
+
+
+def _merge_forecast_points_by_timestamp(
+    *series: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    merged: dict[object, dict[str, object]] = {}
+    for points in series:
+        for point in points or []:
+            ts = point.get("timestamp")
+            if ts is None:
+                continue
+            if ts not in merged:
+                merged[ts] = {"timestamp": ts}
+            merged[ts].update({k: v for k, v in point.items() if k != "timestamp"})
+
+    out = list(merged.values())
+    out.sort(key=lambda p: str(p.get("timestamp") or ""))
+    return out
 
 
 def compute_forecast_window(
@@ -643,8 +668,12 @@ class ForecastCompatibilityRequest(BaseSchema):
 
 class TimelineForecastPoint(BaseSchema):
     timestamp: datetime
-    ph_pred: float
-    confidence: float
+    ph_pred: Optional[float] = None
+    confidence: Optional[float] = None
+    turbidity_pred: Optional[float] = None
+    turbidity_confidence: Optional[float] = None
+    temperature_pred: Optional[float] = None
+    temperature_confidence: Optional[float] = None
 
 
 class TimelineAnomalySummary(BaseSchema):
@@ -1085,60 +1114,29 @@ async def get_forecast_compatibility(
             )
 
     data_window_start = now_utc - timedelta(hours=24)
-    count_result = await db.execute(
-        select(func.count())
-        .select_from(Reading)
-        .where(
-            Reading.sensor_id == payload.sensor_id,
-            Reading.timestamp >= data_window_start,
-            Reading.ph.is_not(None),
-        )
-    )
-    recent_ph_count = int(count_result.scalar_one() or 0)
-    if recent_ph_count < 12:
-        warning = "Insufficient data for pH forecast (need 24h of data)"
-
-        prediction_query = (
-            select(Prediction)
-            .where(Prediction.sensor_id == payload.sensor_id, Prediction.parameter == "ph")
-            .order_by(desc(Prediction.created_at))
-            .limit(1)
-        )
-        result = await db.execute(prediction_query)
-        prediction = result.scalar_one_or_none()
-
-        window_start = getattr(prediction, "forecast_start", None) if prediction else None
-        window_end = (
-            window_start + timedelta(hours=payload.horizon_hours)
-            if window_start
-            else now_utc + timedelta(hours=payload.horizon_hours)
-        )
-        staleness = check_forecast_staleness(prediction, latest_reading, window_end, now_utc)
-
-        latest_snapshot = (
-            LatestReadingSnapshot(
-                timestamp=latest_reading.timestamp,
-                ph=latest_reading.ph,
-                turbidity=latest_reading.turbidity,
-                temperature=latest_reading.temperature,
+    recent_counts: dict[str, int] = {}
+    for param, column in (
+        ("ph", Reading.ph),
+        ("turbidity", Reading.turbidity),
+        ("temperature", Reading.temperature),
+    ):
+        count_result = await db.execute(
+            select(func.count())
+            .select_from(Reading)
+            .where(
+                Reading.sensor_id == payload.sensor_id,
+                Reading.timestamp >= data_window_start,
+                column.is_not(None),
             )
-            if latest_reading
-            else None
         )
-        return {
-            "forecast": [],
-            "anomaly": anomaly_summary,
-            "latest_reading": latest_snapshot,
-            "history_hours": history_hours,
-            "warning": warning,
-            "forecast_generated_at": prediction.created_at if prediction else None,
-            "forecast_start": window_start,
-            "forecast_end": window_end,
-            "forecast_timezone": forecast_timezone,
-            "forecast_is_stale": bool(staleness.get("is_stale")),
-            "forecast_stale_reason": staleness.get("stale_reason"),
-            "source_prediction_id": prediction.id if prediction else None,
-        }
+        recent_counts[param] = int(count_result.scalar_one() or 0)
+
+    insufficient_params = [p for p, c in recent_counts.items() if c < 12]
+    insufficient_warning = (
+        f"Insufficient data for forecast: {', '.join(insufficient_params)} (need 24h of data)"
+        if insufficient_params
+        else None
+    )
 
     prediction_query = (
         select(Prediction)
@@ -1342,10 +1340,45 @@ async def get_forecast_compatibility(
                     forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh skipped (cooldown after failure)"
                 else:
                     forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh skipped"
-    data_quality = min(recent_ph_count / 24.0, 1.0)
-    raw_forecast = _format_forecast_points(
-        prediction.forecast_values if prediction else [], data_quality=data_quality
+    # Fetch latest predictions for all parameters and merge into one timeline.
+    all_predictions_query = (
+        select(Prediction)
+        .where(
+            Prediction.sensor_id == payload.sensor_id,
+            Prediction.parameter.in_(["ph", "turbidity", "temperature"]),
+        )
+        .order_by(desc(Prediction.created_at))
+        .limit(12)
     )
+    all_result = await db.execute(all_predictions_query)
+    all_predictions = all_result.scalars().all()
+
+    latest_by_param: dict[str, Prediction] = {}
+    for pred in all_predictions:
+        if pred.parameter and pred.parameter not in latest_by_param:
+            latest_by_param[pred.parameter] = pred
+
+    prediction_ph = latest_by_param.get("ph")
+    prediction_turbidity = latest_by_param.get("turbidity")
+    prediction_temperature = latest_by_param.get("temperature")
+
+    raw_ph = _format_forecast_points(
+        "ph",
+        prediction_ph.forecast_values if prediction_ph else [],
+        data_quality=min((recent_counts.get("ph", 0) / 24.0), 1.0),
+    )
+    raw_turbidity = _format_forecast_points(
+        "turbidity",
+        prediction_turbidity.forecast_values if prediction_turbidity else [],
+        data_quality=min((recent_counts.get("turbidity", 0) / 24.0), 1.0),
+    )
+    raw_temperature = _format_forecast_points(
+        "temperature",
+        prediction_temperature.forecast_values if prediction_temperature else [],
+        data_quality=min((recent_counts.get("temperature", 0) / 24.0), 1.0),
+    )
+
+    raw_forecast = _merge_forecast_points_by_timestamp(raw_ph, raw_turbidity, raw_temperature)
 
     forecast = (
         _trim_forecast_to_window(raw_forecast, window_start, window_end) if window_start else []
@@ -1356,6 +1389,13 @@ async def get_forecast_compatibility(
             f"{forecast_warning}; Forecast data exists but is outside the current window"
             if forecast_warning
             else "Forecast data exists but is outside the current window"
+        )
+
+    if insufficient_warning:
+        forecast_warning = (
+            f"{insufficient_warning}; {forecast_warning}"
+            if forecast_warning
+            else insufficient_warning
         )
 
     latest_snapshot = (
@@ -1375,13 +1415,13 @@ async def get_forecast_compatibility(
         "latest_reading": latest_snapshot,
         "history_hours": history_hours,
         "warning": forecast_warning,
-        "forecast_generated_at": prediction.created_at if prediction else None,
+        "forecast_generated_at": prediction_ph.created_at if prediction_ph else None,
         "forecast_start": window_start,
         "forecast_end": window_end,
         "forecast_timezone": forecast_timezone,
         "forecast_is_stale": bool(staleness.get("is_stale")),
         "forecast_stale_reason": staleness.get("stale_reason"),
-        "source_prediction_id": prediction.id if prediction else None,
+        "source_prediction_id": prediction_ph.id if prediction_ph else None,
     }
 
 
