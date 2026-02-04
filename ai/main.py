@@ -211,7 +211,14 @@ app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 # Trusted host middleware for production
 if settings.ENVIRONMENT == "production":
     app.add_middleware(
-        TrustedHostMiddleware, allowed_hosts=["aquamine.web.id", "*.aquamine.web.id"]
+        TrustedHostMiddleware, 
+        allowed_hosts=[
+            "aquamine.web.id", 
+            "*.aquamine.web.id", 
+            "localhost", 
+            "127.0.0.1",
+            "api"  # Allow internal docker service name
+        ]
     )
 
 cv_detector = YellowBoyDetector()
