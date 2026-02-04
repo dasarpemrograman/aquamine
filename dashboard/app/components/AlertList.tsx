@@ -272,11 +272,14 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
        )}
 
       {displayAlerts.length === 0 ? (
-        <GlassCard className="flex flex-col items-center justify-center py-12 text-center" variant="flat">
-          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100 shadow-inner">
-            <CheckCircle2 size={32} className="text-slate-300" />
+        <GlassCard 
+          className={`flex flex-col items-center justify-center text-center ${compact ? 'py-6' : 'py-12'}`} 
+          variant="flat"
+        >
+          <div className={`${compact ? 'w-12 h-12 mb-2' : 'w-16 h-16 mb-4'} bg-slate-50 rounded-full flex items-center justify-center border border-slate-100 shadow-inner`}>
+            <CheckCircle2 size={compact ? 24 : 32} className="text-slate-300" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-700">{formatString(UI_COPY.no_alerts_title, { status: activeTab === 'active' ? UI_COPY.tab_active : activeTab === 'acknowledged' ? UI_COPY.tab_acknowledged : UI_COPY.tab_resolved })}</h3>
+          <h3 className={`${compact ? 'text-base' : 'text-lg'} font-semibold text-slate-700`}>{formatString(UI_COPY.no_alerts_title, { status: activeTab === 'active' ? UI_COPY.tab_active : activeTab === 'acknowledged' ? UI_COPY.tab_acknowledged : UI_COPY.tab_resolved })}</h3>
           <p className="text-slate-400 mt-1 max-w-xs mx-auto">{UI_COPY.system_normal}</p>
         </GlassCard>
       ) : (
@@ -291,41 +294,44 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
                   : 'hover:bg-white/60'
                }`}
                variant="flat"
-               padding="md"
+               padding={compact ? "sm" : "md"}
              >
               <div className="flex flex-col sm:flex-row items-start gap-4">
                 <div className="flex-shrink-0 mt-1">
                   {getSeverityIcon(group.severity)}
                 </div>
-                
-                <div className="flex-grow min-w-0">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-mono font-medium text-slate-400 uppercase tracking-wider">
-                        #{group.id} • {group.sensor_id}
-                      </span>
-                      <StatusChip 
-                        status={getStatusVariant(group.severity)} 
-                        label={getSeverityLabel(group.severity)} 
-                        size="sm" 
-                      />
-                      {group.count > 1 && (
-                        <span className="text-xs font-bold text-slate-600 bg-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-                          {formatString(UI_COPY.similar_alerts, { count: group.count - 1 })}
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-xs font-medium text-slate-400 whitespace-nowrap bg-slate-100/50 px-2 py-1 rounded-md">
-                      {formatWIB(group.created_at)}
-                    </span>
-                  </div>
-                  
-                  <h4 className="text-base font-semibold text-slate-800 leading-snug mb-1">
-                    {group.message}
-                  </h4>
 
-                   {!compact && (
-                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100/50">
+                  <div className="flex-grow min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-y-2 gap-x-4 mb-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-mono font-medium text-slate-400 uppercase tracking-wider mr-1">
+                          #{group.id} • {group.sensor_id}
+                        </span>
+                        <StatusChip 
+                          status={getStatusVariant(group.severity)} 
+                          label={getSeverityLabel(group.severity)} 
+                          size="sm" 
+                        />
+                        {group.count > 1 && (
+                          <span 
+                            className="inline-flex items-center justify-center font-semibold rounded-full border border-slate-200 backdrop-blur-sm bg-slate-100 text-slate-600 shadow-sm text-xs px-2 py-0.5 gap-1 cursor-help"
+                            title={formatString(UI_COPY.similar_alerts_tooltip, { count: group.count - 1 })}
+                          >
+                            {formatString(UI_COPY.similar_alerts, { count: group.count - 1 })}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs font-medium text-slate-400 whitespace-nowrap bg-slate-100/50 px-2 py-1 rounded-md self-start sm:self-auto">
+                        {formatWIB(group.created_at)}
+                      </span>
+                    </div>
+                    
+                    <h4 className="text-base font-semibold text-slate-800 leading-snug mb-2">
+                      {group.message}
+                    </h4>
+
+                    {!compact && (
+                      <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-100/50">
                        {activeTab === 'active' && (
                          <button 
                            onClick={(e) => handleAcknowledge(group.id, e)}
@@ -388,12 +394,12 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
               </div>
 
               {expandedGroups.has(group.id) && group.childAlerts.length > 0 && (
-                <div className="mt-4 pl-14 space-y-3 border-l-2 border-slate-100 ml-5">
+                <div className="mt-3 pl-14 space-y-3 border-l-2 border-slate-100/60">
                   {group.childAlerts.map(child => (
-                    <div key={child.id} className="relative">
+                    <div key={child.id} className="relative pl-4">
                       <div className="flex justify-between items-start text-sm">
                         <span className="text-slate-600">{child.message}</span>
-                        <span className="text-xs text-slate-400">{formatWIB(child.created_at)}</span>
+                        <span className="text-xs text-slate-400 whitespace-nowrap ml-2">{formatWIB(child.created_at)}</span>
                       </div>
                     </div>
                   ))}

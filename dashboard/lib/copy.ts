@@ -83,7 +83,8 @@ export const UI_COPY = {
   tab_active: "Aktif",
   tab_acknowledged: "Dibaca",
   tab_resolved: "Selesai",
-  similar_alerts: "+{count} serupa",
+  similar_alerts: "+{count} alert serupa",
+  similar_alerts_tooltip: "Menandakan ada {count} alert serupa (sensor & tipe sama) yang dikelompokkan. Klik 'Lihat Riwayat' untuk melihat detail.",
   saving: "Menyimpan...",
   
   // Analytics
