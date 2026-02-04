@@ -147,9 +147,15 @@ export default function ChatThreadLayout() {
   };
 
   return (
-    <div className="glass-panel flex h-[calc(100vh-80px)] min-h-[600px] rounded-3xl overflow-hidden shadow-2xl" data-testid="chat-thread-layout">
+    <div className="glass-panel flex h-full min-h-[500px] md:min-h-[600px] rounded-xl md:rounded-3xl overflow-hidden shadow-2xl" data-testid="chat-thread-layout">
       {/* Sidebar */}
-      <div className="w-72 flex flex-col border-r border-white/20 bg-white/10" data-testid="chat-thread-sidebar">
+      <div 
+        className={`
+          flex flex-col border-r border-white/20 bg-white/10 transition-all duration-300
+          ${selectedThreadId ? 'hidden md:flex md:w-72' : 'w-full md:w-72'}
+        `} 
+        data-testid="chat-thread-sidebar"
+      >
         {/* Header */}
         <div className="p-4 border-b border-white/20">
           <button
@@ -259,12 +265,22 @@ export default function ChatThreadLayout() {
         </div>
       </div>
 
+      {/* Desktop Divider */}
+      <div className="hidden md:block w-px bg-white/20 shadow-[0_0_10px_rgba(255,255,255,0.1)]" />
+
       {/* Main Chat Area */}
-      <div className="flex-1 bg-white/5 h-full overflow-hidden" data-testid="chat-main">
+      <div 
+        className={`
+          flex-1 bg-white/5 h-full overflow-hidden
+          ${selectedThreadId ? 'w-full block' : 'hidden md:block'}
+        `} 
+        data-testid="chat-main"
+      >
         {selectedThreadId ? (
           <ChatInterface 
             threadId={selectedThreadId} 
             onThreadActivity={fetchThreads}
+            onMobileBack={() => setSelectedThreadId(null)}
             className="rounded-none border-none shadow-none bg-transparent backdrop-blur-none" 
           />
         ) : (

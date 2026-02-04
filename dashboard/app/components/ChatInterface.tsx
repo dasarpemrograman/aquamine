@@ -4,7 +4,7 @@ import { useMemo, useState, FormEvent, useEffect, useRef } from "react";
 import { useAuth } from "@clerk/nextjs";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Volume2, VolumeX, Send } from "lucide-react";
+import { Volume2, VolumeX, Send, ArrowLeft, ClipboardCheck } from "lucide-react";
 import { GlassPanel } from "@/app/components/ui/GlassPanel";
 import { sendChatMessage } from "@/lib/api";
 
@@ -16,20 +16,29 @@ interface ChatMessage {
 interface ChatInterfaceProps {
   threadId: string;
   onThreadActivity?: () => void;
+  onMobileBack?: () => void;
   className?: string;
 }
 
-export default function ChatInterface({ threadId, onThreadActivity, className }: ChatInterfaceProps) {
+export default function ChatInterface({ threadId, onThreadActivity, onMobileBack, className }: ChatInterfaceProps) {
   const { getToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [input, setInput] = useState("");
   const [isCompactionRequired, setIsCompactionRequired] = useState(false);
   const [isTTSEnabled, setIsTTSEnabled] = useState(false);
+  const [isFieldMode, setIsFieldMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastSpokenIndexRef = useRef<number>(-1);
 
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8181";
+
+  const SUGGESTED_PROMPTS = [
+    "Analisis tren pH di Pit A minggu ini",
+    "Buat laporan insiden kekeruhan tinggi",
+    "Cek status sensor di Station 4",
+    "Rekomendasi mitigasi untuk curah hujan tinggi"
+  ];
 
   // Fetch messages when thread changes
   useEffect(() => {
@@ -161,7 +170,11 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
         },
-        body: JSON.stringify({ content: trimmed }),
+        body: JSON.stringify({ 
+          content: isFieldMode 
+            ? `${trimmed} \n\n(Mode: Ringkas Lapangan - Berikan status 1 baris, 3 langkah mitigasi, dan checklist bukti)` 
+            : trimmed 
+        }),
       });
 
       if (response.ok) {
@@ -203,11 +216,49 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
 
   return (
     <GlassPanel className={`h-full flex flex-col ${className || ''}`} data-testid="chat-interface" data-thread-id={threadId}>
+      {/* Header Mobile & Field Mode */}
+      <div className="flex items-center justify-between p-3 border-b border-white/20 bg-white/5">
+        <div className="flex items-center gap-2">
+          {onMobileBack && (
+            <button 
+              onClick={onMobileBack}
+              className="md:hidden p-2 hover:bg-white/10 rounded-full transition-colors"
+              aria-label="Back to threads"
+            >
+              <ArrowLeft className="w-5 h-5 text-slate-600" />
+            </button>
+          )}
+        </div>
+        
+        <button
+          onClick={() => setIsFieldMode(!isFieldMode)}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+            isFieldMode 
+              ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20" 
+              : "bg-white/10 text-slate-500 hover:bg-white/20"
+          }`}
+        >
+          <ClipboardCheck className="w-3.5 h-3.5" />
+          Ringkas Lapangan
+        </button>
+      </div>
+
       {/* Messages */}
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
         {messages.length === 0 && !isLoading && (
-          <div className="text-center text-slate-400 mt-10" data-testid="chat-empty-state">
-            Mulai percakapan dengan mengirim pesan...
+          <div className="flex flex-col items-center justify-center h-full text-center text-slate-400 p-6" data-testid="chat-empty-state">
+            <p className="mb-6 text-lg font-medium">Mulai percakapan dengan mengirim pesan...</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
+              {SUGGESTED_PROMPTS.map((prompt, i) => (
+                <button
+                  key={i}
+                  onClick={() => setInput(prompt)}
+                  className="p-3 text-sm text-left bg-white/40 hover:bg-white/60 border border-white/40 rounded-xl transition-all hover:scale-[1.02] text-slate-700 shadow-sm"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         
@@ -258,7 +309,7 @@ export default function ChatInterface({ threadId, onThreadActivity, className }:
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="p-4 border-t border-white/50" data-testid="chat-composer">
+      <form onSubmit={handleSubmit} className="p-4 border-t border-white/50 bg-white/5" data-testid="chat-composer">
         <div className="flex gap-2">
           <div className="flex-1">
             <input
