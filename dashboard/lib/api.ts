@@ -1,3 +1,11 @@
+import {
+  alertOfflineQueue,
+  OFFLINE_QUEUED_MESSAGE,
+  isLikelyNetworkError,
+  type AlertActionPayload,
+  type AlertActionType,
+} from "@/lib/offlineQueue";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8181";
 
 export interface BoundingBox {
@@ -66,7 +74,20 @@ export interface Alert {
   created_at: string;
   acknowledged_at: string | null;
   acknowledged_by: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  resolution_note: string | null;
+  reopened_at: string | null;
+  reopened_by: string | null;
 }
+
+export interface AlertActionStatusResponse {
+  status: "acknowledged" | "resolved" | "reopened";
+}
+
+export type OfflineAwareResult<T> =
+  | { status: "success"; data: T }
+  | { status: "queued"; queuedId: string; message: string };
 
 export interface Sensor {
   id: number;
@@ -77,6 +98,17 @@ export interface Sensor {
   is_active: boolean;
   created_at?: string;
   current_state?: string | null;
+}
+
+export interface Reading {
+  id: number;
+  sensor_id: number;
+  timestamp: string;
+  ph: number | null;
+  turbidity: number | null;
+  temperature: number | null;
+  battery_voltage: number | null;
+  signal_strength: number | null;
 }
 
 export interface RecipientBase {
@@ -92,7 +124,7 @@ export interface Recipient extends RecipientBase {
   id: number;
 }
 
-export interface RecipientCreate extends RecipientBase {}
+export type RecipientCreate = RecipientBase;
 
 export async function analyzeImage(file: File): Promise<AnalysisResponse> {
   const formData = new FormData();
@@ -235,7 +267,33 @@ export async function fetchSensors(token?: string | null): Promise<Sensor[]> {
   return response.json();
 }
 
-export async function acknowledgeAlert(alertId: number, token?: string | null): Promise<Alert> {
+export async function fetchReadings(
+  sensorId: number,
+  hours: number = 24,
+  token?: string | null
+): Promise<Reading[]> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(
+    `${API_BASE}/api/v1/sensors/${sensorId}/readings?hours=${hours}`,
+    { headers }
+  );
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`,
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function acknowledgeAlert(alertId: number, token?: string | null): Promise<AlertActionStatusResponse> {
   const headers: Record<string, string> = {};
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
@@ -255,6 +313,126 @@ export async function acknowledgeAlert(alertId: number, token?: string | null): 
   }
 
   return response.json();
+}
+
+export async function resolveAlert(
+  alertId: number,
+  payload?: { resolution_note?: string | null },
+  token?: string | null
+): Promise<AlertActionStatusResponse> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/alerts/${alertId}/resolve`, {
+    method: "POST",
+    headers,
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`,
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function reopenAlert(alertId: number, token?: string | null): Promise<AlertActionStatusResponse> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/alerts/${alertId}/reopen`, {
+    method: "POST",
+    headers,
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`,
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+async function enqueueAlertAction(actionType: AlertActionType, payload: AlertActionPayload) {
+  const item = await alertOfflineQueue.enqueue(actionType, payload);
+  return {
+    status: "queued" as const,
+    queuedId: item.id,
+    message: OFFLINE_QUEUED_MESSAGE,
+  };
+}
+
+function shouldEnqueueNow() {
+  return typeof window !== "undefined" && typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+export async function acknowledgeAlertOffline(
+  alertId: number,
+  token?: string | null
+): Promise<OfflineAwareResult<AlertActionStatusResponse>> {
+  if (shouldEnqueueNow()) {
+    return enqueueAlertAction("acknowledge", { alertId });
+  }
+
+  try {
+    const data = await acknowledgeAlert(alertId, token);
+    return { status: "success", data };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      return enqueueAlertAction("acknowledge", { alertId });
+    }
+    throw err;
+  }
+}
+
+export async function resolveAlertOffline(
+  alertId: number,
+  payload?: { resolution_note?: string | null },
+  token?: string | null
+): Promise<OfflineAwareResult<AlertActionStatusResponse>> {
+  if (shouldEnqueueNow()) {
+    return enqueueAlertAction("resolve", { alertId, resolution_note: payload?.resolution_note ?? null });
+  }
+
+  try {
+    const data = await resolveAlert(alertId, payload, token);
+    return { status: "success", data };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      return enqueueAlertAction("resolve", { alertId, resolution_note: payload?.resolution_note ?? null });
+    }
+    throw err;
+  }
+}
+
+export async function reopenAlertOffline(
+  alertId: number,
+  token?: string | null
+): Promise<OfflineAwareResult<AlertActionStatusResponse>> {
+  if (shouldEnqueueNow()) {
+    return enqueueAlertAction("reopen", { alertId });
+  }
+
+  try {
+    const data = await reopenAlert(alertId, token);
+    return { status: "success", data };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      return enqueueAlertAction("reopen", { alertId });
+    }
+    throw err;
+  }
 }
 
 export async function fetchRecipients(token?: string | null): Promise<Recipient[]> {
