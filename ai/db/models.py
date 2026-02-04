@@ -99,6 +99,11 @@ class Alert(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     acknowledged_by: Mapped[Optional[str]] = mapped_column(String(100))
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    resolved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    resolution_note: Mapped[Optional[str]] = mapped_column(Text)
+    reopened_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    reopened_by: Mapped[Optional[str]] = mapped_column(String(100))
 
     sensor: Mapped["Sensor"] = relationship(back_populates="alerts")
 

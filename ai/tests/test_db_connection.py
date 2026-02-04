@@ -11,8 +11,14 @@ DB_HOST = "localhost"
 DB_PORT = "5432"
 
 
+RUN_POSTGRES_TESTS = os.getenv("AQUAMINE_RUN_POSTGRES_TESTS") == "1"
+
+
 def test_timescaledb_extension_loaded():
     """Verify that TimescaleDB extension is installed and loaded."""
+    if not RUN_POSTGRES_TESTS:
+        pytest.skip("Postgres/Timescale integration tests disabled")
+
     conn_str = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
     # Simple retry logic for CI/local startup

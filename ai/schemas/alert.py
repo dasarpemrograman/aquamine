@@ -16,11 +16,20 @@ class AlertCreate(AlertBase):
     pass
 
 
+class AlertResolveRequest(BaseSchema):
+    resolution_note: Optional[str] = None
+
+
 class AlertResponse(AlertBase):
     id: int
     created_at: datetime
     acknowledged_at: Optional[datetime] = None
     acknowledged_by: Optional[str] = None
+    resolved_at: Optional[datetime] = None
+    resolved_by: Optional[str] = None
+    resolution_note: Optional[str] = None
+    reopened_at: Optional[datetime] = None
+    reopened_by: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

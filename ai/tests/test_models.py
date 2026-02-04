@@ -1,14 +1,25 @@
 import pytest
+import os
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from ai.db.connection import engine, Base
+
+
+RUN_POSTGRES_TESTS = os.getenv("AQUAMINE_RUN_POSTGRES_TESTS") == "1"
 
 
 @pytest.mark.asyncio
 async def test_create_tables():
     """Test that tables are created successfully."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+    if not RUN_POSTGRES_TESTS:
+        pytest.skip("Postgres integration tests disabled")
+
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
+    except OperationalError as e:
+        pytest.fail(f"Could not connect to database: {e}")
 
     # Verify tables exist
     async with engine.connect() as conn:
@@ -29,6 +40,9 @@ async def test_create_tables():
 @pytest.mark.asyncio
 async def test_hypertable_creation():
     """Test that readings table is converted to hypertable."""
+    if not RUN_POSTGRES_TESTS:
+        pytest.skip("Postgres/Timescale integration tests disabled")
+
     # This might fail if TimescaleDB extension is not loaded or if we are not on a real DB
     async with engine.connect() as conn:
         try:

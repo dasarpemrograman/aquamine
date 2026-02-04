@@ -65,6 +65,7 @@ from .schemas.forecast import PredictionResponse
 from .schemas.alert import (
     AlertResponse,
     AlertCreate,
+    AlertResolveRequest,
     AnomalyResponse,
     RecipientBase,
     RecipientCreate,
@@ -1600,6 +1601,48 @@ async def acknowledge_alert(
     alert.acknowledged_by = user_id
     await db.commit()
     return {"status": "acknowledged"}
+
+
+@app.post("/api/v1/alerts/{alert_id}/resolve")
+async def resolve_alert(
+    alert_id: int,
+    request: AlertResolveRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    result = await db.execute(select(Alert).where(Alert.id == alert_id))
+    alert = result.scalar_one_or_none()
+
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    alert.resolved_at = datetime.now(timezone.utc)
+    alert.resolved_by = user_id
+    if request is not None and request.resolution_note is not None:
+        alert.resolution_note = request.resolution_note
+    await db.commit()
+    return {"status": "resolved"}
+
+
+@app.post("/api/v1/alerts/{alert_id}/reopen")
+async def reopen_alert(
+    alert_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    result = await db.execute(select(Alert).where(Alert.id == alert_id))
+    alert = result.scalar_one_or_none()
+
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    alert.resolved_at = None
+    alert.resolved_by = None
+    alert.resolution_note = None
+    alert.reopened_at = datetime.now(timezone.utc)
+    alert.reopened_by = user_id
+    await db.commit()
+    return {"status": "reopened"}
 
 
 # --- Chat Thread Endpoints ---
