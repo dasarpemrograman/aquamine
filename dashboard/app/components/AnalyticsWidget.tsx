@@ -51,6 +51,13 @@ function formatPercent(value: number | null | undefined): string {
   return `${value.toFixed(1)}%`;
 }
 
+function getComplianceColorClass(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "text-slate-500";
+  if (value >= 80) return "text-emerald-600";
+  if (value >= 60) return "text-amber-600";
+  return "text-rose-600";
+}
+
 export default function AnalyticsWidget() {
   const { user } = useUser();
   const [summary, setSummary] = useState<AnalyticsSummaryResponse | null>(null);
@@ -166,19 +173,19 @@ export default function AnalyticsWidget() {
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="bg-slate-50 rounded-lg p-2 text-center">
           <div className="text-xs text-slate-500 mb-1">pH</div>
-          <div className={`text-sm font-semibold ${phCompliance && phCompliance >= 80 ? "text-emerald-600" : phCompliance && phCompliance >= 60 ? "text-amber-600" : "text-rose-600"}`}>
+          <div className={`text-sm font-semibold ${getComplianceColorClass(phCompliance)}`}>
             {formatPercent(phCompliance)}
           </div>
         </div>
         <div className="bg-slate-50 rounded-lg p-2 text-center">
           <div className="text-xs text-slate-500 mb-1">Turbidity</div>
-          <div className={`text-sm font-semibold ${turbidityCompliance && turbidityCompliance >= 80 ? "text-emerald-600" : turbidityCompliance && turbidityCompliance >= 60 ? "text-amber-600" : "text-rose-600"}`}>
+          <div className={`text-sm font-semibold ${getComplianceColorClass(turbidityCompliance)}`}>
             {formatPercent(turbidityCompliance)}
           </div>
         </div>
         <div className="bg-slate-50 rounded-lg p-2 text-center">
           <div className="text-xs text-slate-500 mb-1">Temp</div>
-          <div className={`text-sm font-semibold ${temperatureCompliance && temperatureCompliance >= 80 ? "text-emerald-600" : temperatureCompliance && temperatureCompliance >= 60 ? "text-amber-600" : "text-rose-600"}`}>
+          <div className={`text-sm font-semibold ${getComplianceColorClass(temperatureCompliance)}`}>
             {formatPercent(temperatureCompliance)}
           </div>
         </div>

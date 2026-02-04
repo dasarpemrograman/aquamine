@@ -484,7 +484,7 @@ async def get_analytics_compliance(period: str = "7d", db: AsyncSession = Depend
         hours_res = await db.execute(hours_stmt)
         violation_hours = float(sum(int(r.v or 0) for r in hours_res.all()))
     except Exception:
-        # Avoid failing the entire endpoint on Timescale-specific quirks.
+        logger.warning("Failed to compute violation hours", exc_info=True)
         violation_hours = 0.0
 
     # Trend: compare violation hours in first/second half.
@@ -500,6 +500,7 @@ async def get_analytics_compliance(period: str = "7d", db: AsyncSession = Depend
             res = await db.execute(stmt)
             return float(sum(int(r.v or 0) for r in res.all()))
         except Exception:
+            logger.warning("Failed to compute violation hours for period", exc_info=True)
             return 0.0
 
     first_half = await _violation_hours_between(start, mid)
