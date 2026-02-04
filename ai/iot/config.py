@@ -9,6 +9,7 @@ class MQTTConfig(BaseModel):
     client_id: str = os.getenv("MQTT_CLIENT_ID", "aquamine_backend_listener")
     username: str = os.getenv("MQTT_USERNAME", "")
     password: str = os.getenv("MQTT_PASSWORD", "")
+    tls_insecure: bool = os.getenv("MQTT_TLS_INSECURE", "").lower() == "true"
 
     @property
     def use_tls(self) -> bool:

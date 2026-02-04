@@ -63,9 +63,13 @@ async def main_loop():
 
     if mqtt_config.use_tls:
         client = mqtt.Client(client_id=mqtt_config.client_id)
-        client.tls_set(cert_reqs=ssl.CERT_NONE)
-        client.tls_insecure_set(True)
-        logger.info("TLS enabled for MQTT connection")
+        if mqtt_config.tls_insecure:
+            client.tls_set(cert_reqs=ssl.CERT_NONE)
+            client.tls_insecure_set(True)
+            logger.warning("MQTT TLS certificate verification DISABLED - insecure mode")
+        else:
+            client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
+            logger.info("TLS enabled for MQTT connection with certificate verification")
     else:
         client = mqtt.Client(client_id=mqtt_config.client_id)
 
