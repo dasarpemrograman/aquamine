@@ -1,9 +1,8 @@
 import pytest
-import pytest_asyncio
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch, AsyncMock
 from ai.main import app
-from ai.schemas.sensor import SensorDataIngest, SensorResponse
+from ai.schemas.sensor import SensorResponse
 from datetime import datetime, timezone
 
 
@@ -19,7 +18,7 @@ def mock_db():
 
 
 @pytest.mark.asyncio
-async def test_list_sensors(client):
+async def test_list_sensors():
     # Skip complex async dependency override test for now due to TestClient limitations
     # We will rely on integration tests later
     pass

@@ -11,7 +11,7 @@ context: Any = importlib.import_module("alembic.context")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from ai.db.models import Base
+from ai.db.models import Base  # noqa: E402
 
 config = context.config
 

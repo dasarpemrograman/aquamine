@@ -1,5 +1,4 @@
-import pandas as pd
-from typing import List, Dict, Optional
+from typing import Dict, List
 from datetime import datetime
 from ai.schemas.alert import AnomalyCreate
 

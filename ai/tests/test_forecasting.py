@@ -1,7 +1,6 @@
 import pytest
 import pandas as pd
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 from unittest.mock import MagicMock, patch
 from ai.forecasting.timegpt_client import TimeGPTClient
 from ai.schemas.forecast import ForecastPoint
@@ -91,7 +90,7 @@ class TestComputeForecastWindow:
     def test_naive_datetime_treated_as_utc(self):
         """Test that naive datetimes are treated as UTC"""
         now_naive = datetime(2026, 2, 1, 12, 0, 0)
-        window_start, window_end = compute_forecast_window(now_naive)
+        window_start, _window_end = compute_forecast_window(now_naive)
 
         expected_start = datetime(2026, 1, 31, 17, 0, 0, tzinfo=timezone.utc)
         assert window_start == expected_start
@@ -181,7 +180,7 @@ class TestCheckForecastStaleness:
     def test_fresh_prediction_is_not_stale(self):
         """Test that fresh prediction is not stale"""
         now_utc = datetime(2026, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
-        window_start, window_end = compute_forecast_window(now_utc)
+        _window_start, window_end = compute_forecast_window(now_utc)
 
         prediction = MagicMock()
         prediction.created_at = now_utc

@@ -3,13 +3,12 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 import pandas as pd
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 # Add parent dir to path to import ai modules
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
-from ai.db.connection import AsyncSessionLocal, engine, Base
+from ai.db.connection import AsyncSessionLocal
 from ai.db.models import Sensor, Reading
 from ai.data_generator.synthetic import AMDWaterQualityGenerator
 
@@ -73,13 +72,13 @@ async def seed_database():
         print(f"Inserting {len(df_final)} readings into TimescaleDB hypertable...")
 
         readings = []
-        for _, row in df_final.iterrows():
+        for row in df_final.itertuples(index=False):
             reading = Reading(
                 sensor_id=sensor.id,
-                timestamp=row["timestamp"],
-                ph=float(row["ph"]),
-                turbidity=float(row["turbidity"]),
-                temperature=float(row["temperature"]),
+                timestamp=getattr(row, "timestamp"),
+                ph=float(getattr(row, "ph")),
+                turbidity=float(getattr(row, "turbidity")),
+                temperature=float(getattr(row, "temperature")),
                 battery_voltage=3.7 + random.uniform(-0.1, 0.1),  # Add slight noise
                 signal_strength=-65 + random.randint(-5, 5),
             )

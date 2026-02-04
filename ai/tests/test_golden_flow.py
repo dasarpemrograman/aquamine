@@ -1,15 +1,15 @@
+# pyright: reportAttributeAccessIssue=false
+
 import pytest
 import pytest_asyncio
-import asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 from ai.main import app, get_db
-from ai.db.models import Base, Sensor, Reading, Alert, Anomaly
-from ai.schemas.sensor import SensorDataIngest
+from ai.db.models import Base, Sensor, Reading, Alert
 from ai.realtime.websocket import manager as ws_manager
 
 # Use SQLite for testing
@@ -76,7 +76,7 @@ async def client(test_db_session):
         app.state.limiter.enabled = False
 
     # Mock Redis listener to prevent connection attempts
-    with patch.object(ws_manager, "start_redis_listener", new_callable=AsyncMock) as mock_redis:
+    with patch.object(ws_manager, "start_redis_listener", new_callable=AsyncMock):
         # Mock Ingest Key
         with patch("os.getenv", return_value="test_ingest_key"):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -109,7 +109,7 @@ async def test_golden_flow(client, test_db_session):
     # Mock WebSocket manager to verify broadcast
     with patch.object(ws_manager, "publish_update", new_callable=AsyncMock) as mock_ws_publish:
         # Mock NotificationService to avoid real sends
-        with patch("ai.main.notifier.send_notifications", new_callable=AsyncMock) as mock_notify:
+        with patch("ai.main.notifier.send_notifications", new_callable=AsyncMock):
             # 1. POST to /api/v1/sensors/ingest with critical pH reading
             # pH 3.0 is critical (< 4.0 typically, or based on thresholds)
             payload = {
@@ -174,7 +174,7 @@ async def test_golden_flow(client, test_db_session):
 
             # Check for alert broadcast
             alert_calls = [
-                args for args, kwargs in mock_ws_publish.call_args_list if args[0] == "alert"
+                args for args, _kwargs in mock_ws_publish.call_args_list if args[0] == "alert"
             ]
             assert len(alert_calls) > 0, "WebSocket 'alert' message not published"
             assert alert_calls[0][1]["severity"] == "critical"
@@ -182,7 +182,7 @@ async def test_golden_flow(client, test_db_session):
             # Check for reading broadcast
             reading_calls = [
                 args
-                for args, kwargs in mock_ws_publish.call_args_list
+                for args, _kwargs in mock_ws_publish.call_args_list
                 if args[0] == "sensor_reading"
             ]
             assert len(reading_calls) > 0, "WebSocket 'sensor_reading' message not published"

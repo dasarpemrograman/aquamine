@@ -1,11 +1,13 @@
 import pytest
 from fastapi.testclient import TestClient
-from ai.main import app, INGEST_API_KEY, get_current_user
+from ai.main import app, get_current_user
 from ai.db.connection import get_db
 
 
 class DummySession:
     async def execute(self, stmt):
+        _ = stmt
+
         class Result:
             def scalars(self):
                 class Scalars:
@@ -20,12 +22,14 @@ class DummySession:
         return Result()
 
     def add(self, obj):
+        _ = obj
         pass
 
     async def commit(self):
         pass
 
     async def refresh(self, obj):
+        _ = obj
         pass
 
 
@@ -47,6 +51,7 @@ def mock_db():
 
 
 def test_ingest_rejects_missing_key(client, mock_db):
+    _ = mock_db
     response = client.post(
         "/api/v1/sensors/ingest",
         json={"sensor_id": 1, "timestamp": "2023-01-01T00:00:00Z", "readings": {}},
@@ -56,6 +61,7 @@ def test_ingest_rejects_missing_key(client, mock_db):
 
 
 def test_ingest_rejects_invalid_key(client, mock_db, monkeypatch):
+    _ = mock_db
     # We need to patch verify_ingest_token or INGEST_API_KEY.
     # Since INGEST_API_KEY is global, it's hard to patch after import without reloading.
     # But verify_ingest_token reads it.
@@ -74,6 +80,7 @@ def test_ingest_rejects_invalid_key(client, mock_db, monkeypatch):
 
 
 def test_ingest_accepts_valid_key(client, mock_db, monkeypatch):
+    _ = mock_db
     import ai.main
 
     monkeypatch.setattr(ai.main, "INGEST_API_KEY", "secret-key")
@@ -89,12 +96,15 @@ def test_ingest_accepts_valid_key(client, mock_db, monkeypatch):
 
 
 def test_recipients_rejects_unauthenticated(client, mock_db):
+    _ = mock_db
     app.dependency_overrides = {}
     response = client.get("/api/v1/recipients")
     assert response.status_code in [401, 403]
 
 
 def test_recipients_accepts_authenticated(client, mock_db):
+    _ = mock_db
+
     def override_get_current_user():
         return "test-user"
 
@@ -105,12 +115,15 @@ def test_recipients_accepts_authenticated(client, mock_db):
 
 
 def test_alerts_rejects_unauthenticated(client, mock_db):
+    _ = mock_db
     app.dependency_overrides = {}
     response = client.get("/api/v1/alerts")
     assert response.status_code in [401, 403]
 
 
 def test_alerts_accepts_authenticated(client, mock_db):
+    _ = mock_db
+
     def override_get_current_user():
         return "test-user"
 
@@ -121,6 +134,7 @@ def test_alerts_accepts_authenticated(client, mock_db):
 
 
 def test_acknowledge_alert_rejects_unauthenticated(client, mock_db):
+    _ = mock_db
     app.dependency_overrides = {}
     response = client.post("/api/v1/alerts/1/acknowledge")
     assert response.status_code in [401, 403]

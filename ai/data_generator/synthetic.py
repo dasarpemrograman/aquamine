@@ -1,8 +1,9 @@
 import pandas as pd
 import numpy as np
+from pandas import DataFrame
 from datetime import datetime, timedelta, timezone
 import random
-from typing import List, Dict, Optional, Literal
+from typing import List
 
 
 class AMDWaterQualityGenerator:
@@ -123,7 +124,7 @@ class AMDWaterQualityGenerator:
         df.loc[error_point:, parameter] = df.loc[error_point:, parameter] + offset
         return df
 
-    def to_timegpt_format(self, df: pd.DataFrame, unique_id: str = "sensor_1") -> pd.DataFrame:
+    def to_timegpt_format(self, df: DataFrame, unique_id: str = "sensor_1") -> DataFrame:
         """Convert to Nixtla TimeGPT format (unique_id, ds, y)."""
         long_df = pd.melt(
             df,
@@ -134,7 +135,10 @@ class AMDWaterQualityGenerator:
         )
         long_df["ds"] = long_df["timestamp"]
         long_df["unique_id"] = unique_id + "_" + long_df["parameter"]
-        return long_df[["unique_id", "ds", "y"]]
+        result = long_df[["unique_id", "ds", "y"]]
+        if isinstance(result, DataFrame):
+            return result
+        return DataFrame(result)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+# pyright: reportUnusedParameter=false
+
 import asyncio
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
@@ -78,7 +80,6 @@ from .schemas.chat import (
     ThreadUpdate,
     ThreadResponse,
     ThreadListResponse,
-    MessageCreate,
     MessageResponse,
     MessageListResponse,
     SendMessageRequest,
@@ -87,7 +88,6 @@ from .schemas.chat import (
     CompactionPreviewResponse,
     CompactionCommitRequest,
     CompactionCommitResponse,
-    SegmentResponse,
 )
 from .auth.clerk import get_current_user
 from .iot.mqtt_bridge import process_mqtt_message
@@ -161,8 +161,20 @@ async def lifespan(app: FastAPI):
     app.state.redis_listener_task = task
 
     def task_done_callback(t):
-        if t.exception():
-            logger.error(f"Redis listener task crashed: {t.exception()}")
+        if t.cancelled():
+            return
+
+        try:
+            exc = t.exception()
+        except asyncio.CancelledError:
+            # Task cancellation during lifespan shutdown is expected.
+            return
+
+        if exc is not None:
+            logger.error(
+                "Redis listener task crashed",
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
 
     task.add_done_callback(task_done_callback)
 
@@ -323,8 +335,8 @@ def check_forecast_staleness(
     Rule order:
     1) no_prediction
     2) forecast_end_before_window_end
-    3) newer_reading_exists
-    4) created_before_today_wib
+    3) created_before_today_wib
+    4) newer_reading_exists
 
     Naive datetimes are treated as UTC.
     """
@@ -354,13 +366,6 @@ def check_forecast_staleness(
     if forecast_end_utc is None or forecast_end_utc < window_end_utc:
         return {"is_stale": True, "stale_reason": "forecast_end_before_window_end"}
 
-    latest_ts_utc = None
-    if latest_reading is not None:
-        latest_ts_utc = _as_utc_optional(getattr(latest_reading, "timestamp", None))
-
-    if latest_ts_utc is not None and created_at_utc is not None and latest_ts_utc > created_at_utc:
-        return {"is_stale": True, "stale_reason": "newer_reading_exists"}
-
     if created_at_utc is None:
         return {"is_stale": True, "stale_reason": "created_before_today_wib"}
 
@@ -368,6 +373,13 @@ def check_forecast_staleness(
     today_date_wib = now_utc_utc.astimezone(wib).date()
     if created_date_wib < today_date_wib:
         return {"is_stale": True, "stale_reason": "created_before_today_wib"}
+
+    latest_ts_utc = None
+    if latest_reading is not None:
+        latest_ts_utc = _as_utc_optional(getattr(latest_reading, "timestamp", None))
+
+    if latest_ts_utc is not None and created_at_utc is not None and latest_ts_utc > created_at_utc:
+        return {"is_stale": True, "stale_reason": "newer_reading_exists"}
 
     return {"is_stale": False, "stale_reason": None}
 
@@ -933,7 +945,9 @@ async def ingest_sensor_data(
 
                     # Fetch recipients
                     recipients_result = await db.execute(
-                        select(NotificationRecipient).where(NotificationRecipient.is_active == True)
+                        select(NotificationRecipient).where(
+                            NotificationRecipient.is_active.is_(True)
+                        )
                     )
                     recipients = recipients_result.scalars().all()
 
@@ -986,7 +1000,7 @@ async def ingest_sensor_data(
 
                 # Fetch recipients
                 recipients_result = await db.execute(
-                    select(NotificationRecipient).where(NotificationRecipient.is_active == True)
+                    select(NotificationRecipient).where(NotificationRecipient.is_active.is_(True))
                 )
                 recipients = recipients_result.scalars().all()
 
@@ -2083,7 +2097,7 @@ async def preview_compaction(
     db: AsyncSession = Depends(get_db),
 ):
     """Generate a summary preview for compaction."""
-    from .chatbot.token_budget import calculate_context_stats, estimate_message_tokens
+    from .chatbot.token_budget import calculate_context_stats
 
     # Verify thread ownership
     thread_stmt = (

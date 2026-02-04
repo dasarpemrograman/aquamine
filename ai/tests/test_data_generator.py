@@ -1,6 +1,4 @@
-import pytest
 import pandas as pd
-import numpy as np
 from datetime import datetime, timezone
 from ai.data_generator.synthetic import AMDWaterQualityGenerator
 
@@ -40,7 +38,7 @@ def test_ph_turbidity_correlation():
     generator = AMDWaterQualityGenerator(start_date=datetime.now(timezone.utc), days=7)
     df = generator.generate_critical_data()
 
-    corr = df["ph"].corr(df["turbidity"])
+    corr = pd.Series(df["ph"]).corr(pd.Series(df["turbidity"]))
     assert corr < -0.3
 
 

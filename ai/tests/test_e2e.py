@@ -10,6 +10,11 @@ from ai.main import process_mqtt_message
 from ai.schemas.alert import RecipientBase
 from ai.schemas.sensor import SensorDataIngest
 
+from ai.main import ws_manager as _ws_manager
+
+
+_ws_manager.start_redis_listener = AsyncMock()
+
 
 @pytest.mark.asyncio
 async def test_full_flow_ingest_to_alert():
@@ -93,7 +98,7 @@ async def test_full_flow_ingest_to_alert():
 
 
 @pytest.mark.asyncio
-async def test_websocket_integration():
+async def test_websocket_integration(client):
     """Test that data ingestion triggers websocket broadcast."""
 
     payload = {
@@ -103,36 +108,44 @@ async def test_websocket_integration():
         "metadata": {},
     }
 
-    from ai.main import ingest_sensor_data, ws_manager
+    from ai.main import get_db, ws_manager
 
-    with patch("ai.main.process_mqtt_message", new_callable=AsyncMock):
-        with patch.object(ws_manager, "publish_update", new_callable=AsyncMock) as mock_pub:
-            # Build an async-session-like mock
-            mock_db = AsyncMock()
-            mock_db.add = MagicMock()
-            mock_db.commit = AsyncMock()
-            mock_db.rollback = AsyncMock()
+    # Build an async-session-like mock
+    mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+    mock_db.commit = AsyncMock()
+    mock_db.rollback = AsyncMock()
 
-            mock_sensor = MagicMock()
-            mock_sensor.id = 1
-            mock_sensor.sensor_id = "WS_TEST"
+    mock_sensor = MagicMock()
+    mock_sensor.id = 1
+    mock_sensor.sensor_id = "WS_TEST"
 
-            # First execute() returns Sensor; second returns SensorAlertState (None -> create default)
-            res_sensor = MagicMock()
-            res_sensor.scalar_one_or_none.return_value = mock_sensor
-            res_state = MagicMock()
-            res_state.scalar_one_or_none.return_value = None
-            mock_db.execute = AsyncMock(side_effect=[res_sensor, res_state])
+    # First execute() returns Sensor; second returns SensorAlertState (None -> create default)
+    res_sensor = MagicMock()
+    res_sensor.scalar_one_or_none.return_value = mock_sensor
+    res_state = MagicMock()
+    res_state.scalar_one_or_none.return_value = None
+    mock_db.execute = AsyncMock(side_effect=[res_sensor, res_state])
 
-            await ingest_sensor_data(
-                cast(Any, MagicMock()),
-                SensorDataIngest(**payload),
-                cast(Any, MagicMock()),
-                cast(Any, mock_db),
-                "test-key",
-            )
+    async def override_get_db():
+        yield mock_db
 
-            mock_pub.assert_called_once()
-            args = mock_pub.call_args
-            assert args[0][0] == "sensor_reading"
-            assert args[0][1]["sensor_id"] == "WS_TEST"
+    client.app.dependency_overrides[get_db] = override_get_db
+    try:
+        with patch("ai.main.INGEST_API_KEY", "test-ingest-key"):
+            with patch("ai.main.process_mqtt_message", new_callable=AsyncMock):
+                with patch.object(ws_manager, "publish_update", new_callable=AsyncMock) as mock_pub:
+                    resp = client.post(
+                        "/api/v1/sensors/ingest",
+                        json=payload,
+                        headers={"X-Ingest-Key": "test-ingest-key"},
+                    )
+
+                    assert resp.status_code == 200
+
+                    mock_pub.assert_called_once()
+                    args = mock_pub.call_args
+                    assert args[0][0] == "sensor_reading"
+                    assert args[0][1]["sensor_id"] == "WS_TEST"
+    finally:
+        client.app.dependency_overrides.pop(get_db, None)

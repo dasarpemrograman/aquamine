@@ -1,5 +1,4 @@
 import pytest
-import json
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch, AsyncMock
 from ai.iot.mqtt_bridge import process_mqtt_message
