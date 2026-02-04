@@ -4,6 +4,13 @@ import { test, expect, type Page } from '@playwright/test';
 // Run serially to avoid cross-test interference.
 test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
+const storageStatePath = process.env.PLAYWRIGHT_STORAGE_STATE;
+
+test.skip(
+  !storageStatePath,
+  'E2E requires a real Clerk session. Set PLAYWRIGHT_STORAGE_STATE=./e2e/.auth/storageState.json'
+);
+
 /**
  * E2E tests for core AI Assistant (chat) flows.
  *

@@ -30,7 +30,7 @@ export default function DashboardLayout({
       >
         <TopBar onMenuClick={() => setMobileOpen(true)} />
         
-        <main className="flex-1 w-full p-4 md:p-8 max-w-[1600px] mx-auto">
+        <main className="flex-1 w-full p-4 pb-24 md:p-8 md:pb-8 max-w-[1600px] mx-auto">
           {children}
         </main>
       </div>
