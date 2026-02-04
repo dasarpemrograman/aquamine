@@ -22,12 +22,19 @@ async def test_engine():
     # This enables AUTOINCREMENT on 'id' which is not supported on composite PKs in SQLite.
     from sqlalchemy import PrimaryKeyConstraint
 
-    reading_pk = Reading.__table__.primary_key
+    table = Reading.__table__
+    original_pk = table.primary_key
+    original_pk_columns = tuple(original_pk.columns)
+    original_pk_name = original_pk.name
+
+    reading_pk = table.primary_key
     if len(reading_pk.columns) > 1:
-        Reading.__table__.constraints.remove(reading_pk)
-        new_pk = PrimaryKeyConstraint(Reading.__table__.c.id)
-        Reading.__table__.append_constraint(new_pk)
-        Reading.__table__.primary_key = new_pk
+        if "timestamp" in table.c:
+            table.c.timestamp.primary_key = False
+        table.constraints.remove(reading_pk)
+        new_pk = PrimaryKeyConstraint(table.c.id, name=original_pk_name)
+        table.append_constraint(new_pk)
+        table.primary_key = new_pk
 
     # Create async engine with StaticPool for in-memory SQLite
     engine = create_async_engine(
@@ -40,11 +47,30 @@ async def test_engine():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    yield engine
+    try:
+        yield engine
+    finally:
+        # Ensure we don't leak PK changes into later tests (e.g. Postgres/Timescale).
+        pk_column_names = {col.name for col in table.primary_key.columns}
+        if "timestamp" in table.c and "timestamp" not in pk_column_names:
+            table.c.id.primary_key = True
+            table.c.timestamp.primary_key = True
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await engine.dispose()
+            current_pk = table.primary_key
+            if current_pk in table.constraints:
+                table.constraints.remove(current_pk)
+
+            restored_pk_columns = original_pk_columns
+            if "timestamp" not in {col.name for col in restored_pk_columns}:
+                restored_pk_columns = (table.c.id, table.c.timestamp)
+
+            restored_pk = PrimaryKeyConstraint(*restored_pk_columns, name=original_pk_name)
+            table.append_constraint(restored_pk)
+            table.primary_key = restored_pk
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="function")
