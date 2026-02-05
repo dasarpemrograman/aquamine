@@ -157,7 +157,7 @@ def test_analytics_compliance_includes_standard_values(client, monkeypatch):
         data = resp.json()
 
         assert data["period"] == "7d"
-        assert data["standard"]["source"] == "Kepmenkes/PROPER"
+        assert data["standard"]["source"] == "KepMen LH 113/2003"
         assert data["standard"]["ph_min"] == 6.5
         assert data["standard"]["ph_max"] == 8.5
         assert data["standard"]["turbidity_max_ntu"] == 50
@@ -185,7 +185,7 @@ def test_analytics_insights_uses_redis_cache(client, monkeypatch):
         "period": "24h",
         "generated_at": "2026-01-01T00:00:00Z",
         "standard": {
-            "source": "Kepmenkes/PROPER",
+            "source": "KepMen LH 113/2003",
             "ph_min": 6.5,
             "ph_max": 8.5,
             "turbidity_max_ntu": 50,
