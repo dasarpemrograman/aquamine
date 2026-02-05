@@ -192,25 +192,31 @@ export default function RecipientsPage() {
     setEditingRecipient(null);
   };
 
-  const renderPreferences = (recipient: Recipient) => (
-    <div className="flex flex-wrap gap-2">
-      {recipient.notify_warning && (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-yellow-100/50 text-yellow-700 border border-yellow-200/50">
-          <AlertTriangle size={14} />
-          Warning
-        </span>
-      )}
-      {recipient.notify_critical && (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-100/50 text-red-700 border border-red-200/50">
-          <AlertOctagon size={14} />
-          Critical
-        </span>
-      )}
-      {!recipient.notify_warning && !recipient.notify_critical && (
-        <span className="text-gray-400 text-xs italic">No notifications</span>
-      )}
-    </div>
-  );
+  const renderPreferences = (recipient: Recipient) => {
+    const hasPhone = !!recipient.phone;
+    const hasEmail = !!recipient.email;
+    
+    if (!hasPhone && !hasEmail) {
+       return <span className="text-gray-400 text-xs italic">No channels</span>;
+    }
+
+    return (
+      <div className="flex flex-wrap gap-2">
+        {hasPhone && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-green-100/50 text-green-700 border border-green-200/50">
+            <Check size={12} strokeWidth={3} />
+            WhatsApp
+          </span>
+        )}
+        {hasEmail && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-100/50 text-blue-700 border border-blue-200/50">
+            <Check size={12} strokeWidth={3} />
+            Email
+          </span>
+        )}
+      </div>
+    );
+  };
 
 
   return (
@@ -252,80 +258,98 @@ export default function RecipientsPage() {
           ) : (
             <div>
               {recipients.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
-                  No recipients found. {isAdmin && "Add one to get started."}
+                <div className="flex flex-col items-center justify-center py-20 px-4 text-center border-2 border-dashed border-slate-200/60 rounded-3xl bg-white/20">
+                  <div className="bg-slate-100 p-4 rounded-full mb-4 shadow-sm">
+                    <Users size={32} className="text-slate-400" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900 mb-2">Belum ada penerima notifikasi</h3>
+                  <p className="text-slate-500 max-w-sm mb-8 leading-relaxed">
+                    Tambahkan penerima untuk mulai menerima alert dan notifikasi dari sistem monitoring.
+                  </p>
+                  {isAdmin && (
+                    <button
+                      onClick={openAddModal}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl shadow-lg shadow-blue-600/20 flex items-center gap-2 transition-all hover:scale-105 active:scale-95 font-medium"
+                    >
+                      <Plus size={18} />
+                      Tambah Penerima
+                    </button>
+                  )}
                 </div>
               ) : (
                 <>
                   {/* Mobile Cards View */}
                   <div className="grid grid-cols-1 gap-4 p-4 md:hidden">
                     {recipients.map((recipient) => (
-                      <div key={recipient.id} className="bg-white/40 rounded-2xl p-4 border border-white/50 shadow-sm hover:shadow-md transition-all space-y-4">
+                      <div key={recipient.id} className="bg-white/60 backdrop-blur-md rounded-2xl p-5 border border-white/50 shadow-sm hover:shadow-md transition-all space-y-5">
                         <div className="flex justify-between items-start">
                           <div>
-                            <h3 className="font-bold text-slate-900">{recipient.name}</h3>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border mt-1 ${
-                              recipient.is_active 
-                                ? 'bg-green-100/50 text-green-700 border-green-200' 
-                                : 'bg-gray-100/50 text-gray-600 border-gray-200'
-                            }`}>
-                              {recipient.is_active ? 'Active' : 'Inactive'}
-                            </span>
-                          </div>
-                          
-                          <div className="flex gap-1">
-                             <button
-                                onClick={() => handleTestNotification(recipient)}
-                                disabled={testingRecipientId === recipient.id}
-                                className="p-2 bg-blue-100/80 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
-                                title="Test Notification"
-                              >
-                                {testingRecipientId === recipient.id ? (
-                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-                                ) : (
-                                  <Bell size={16} />
-                                )}
-                              </button>
-                            {isAdmin && (
-                              <>
-                                <button
-                                  onClick={() => openEditModal(recipient)}
-                                  className="p-2 bg-slate-200/80 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors"
-                                  title="Edit"
-                                >
-                                  <Edit2 size={16} />
-                                </button>
-                                <button
-                                  onClick={() => setDeleteConfirmOpen(recipient.id)}
-                                  className="p-2 bg-red-100/80 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
-                                  title="Delete"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </>
-                            )}
+                            <h3 className="font-bold text-slate-900 text-lg">{recipient.name}</h3>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className={`flex h-2 w-2 rounded-full ${recipient.is_active ? 'bg-green-500' : 'bg-slate-300'}`} />
+                              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                                {recipient.is_active ? 'Aktif' : 'Non-Aktif'}
+                              </span>
+                            </div>
                           </div>
                         </div>
 
-                        <div className="space-y-2 text-sm text-gray-600 bg-white/30 p-3 rounded-xl">
+                        <div className="space-y-3">
                           {recipient.phone && (
-                            <div className="flex items-center gap-2">
-                              <Phone size={14} className="text-slate-400" />
-                              <span>{recipient.phone}</span>
+                            <div className="flex items-center gap-3 text-sm text-slate-700">
+                              <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center text-green-600 shrink-0">
+                                <Phone size={16} />
+                              </div>
+                              <span className="font-mono">{recipient.phone}</span>
                             </div>
                           )}
                           {recipient.email && (
-                            <div className="flex items-center gap-2">
-                              <Mail size={14} className="text-slate-400" />
-                              <span>{recipient.email}</span>
+                            <div className="flex items-center gap-3 text-sm text-slate-700">
+                              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
+                                <Mail size={16} />
+                              </div>
+                              <span className="font-mono truncate">{recipient.email}</span>
                             </div>
                           )}
-                          {!recipient.phone && !recipient.email && <span className="text-gray-400 italic">No contact info</span>}
+                          {!recipient.phone && !recipient.email && <span className="text-gray-400 italic text-sm pl-1">No contact info</span>}
                         </div>
 
-                        <div className="border-t border-white/50 pt-3">
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Preferences</p>
+                        <div className="pt-1">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Notifikasi</p>
                           {renderPreferences(recipient)}
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100">
+                           <button
+                              onClick={() => handleTestNotification(recipient)}
+                              disabled={testingRecipientId === recipient.id}
+                              className="col-span-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold hover:bg-blue-100 transition-colors"
+                            >
+                              {testingRecipientId === recipient.id ? (
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
+                              ) : (
+                                <Bell size={14} />
+                              )}
+                              Uji
+                            </button>
+                          {isAdmin && (
+                            <>
+                              <button
+                                onClick={() => openEditModal(recipient)}
+                                className="col-span-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors"
+                              >
+                                <Edit2 size={14} />
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirmOpen(recipient.id)}
+                                className="col-span-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-colors"
+                              >
+                                <Trash2 size={14} />
+                                Hapus
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -336,44 +360,47 @@ export default function RecipientsPage() {
                     <table className="w-full text-left border-separate border-spacing-y-3">
                       <thead>
                         <tr>
-                          <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider">Name</th>
-                          <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider">Contact Info</th>
-                          <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                          <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider">Preferences</th>
-                          <th className="px-6 py-3 text-sm font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Name</th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Contact Info</th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Status</th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Channels</th>
+                          <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {recipients.map((recipient) => (
                           <tr key={recipient.id} className="group bg-white/40 hover:bg-white/80 transition-all duration-300 shadow-sm hover:shadow-md hover:scale-[1.005]">
-                            <td className="px-6 py-4 font-medium text-slate-900 first:rounded-l-2xl last:rounded-r-2xl border-y border-l border-white/50 first:border-l last:border-r">
+                            <td className="px-6 py-4 font-bold text-slate-900 first:rounded-l-2xl last:rounded-r-2xl border-y border-l border-white/50 first:border-l last:border-r">
                               {recipient.name}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-600 border-y border-white/50">
-                              <div className="flex flex-col gap-2">
+                              <div className="flex flex-col gap-1.5">
                                 {recipient.phone && (
-                                  <div className="flex items-center gap-2">
-                                    <Phone size={14} className="text-slate-400" />
-                                    <span>{recipient.phone}</span>
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-6 h-6 rounded bg-green-50 flex items-center justify-center text-green-600">
+                                      <Phone size={12} />
+                                    </div>
+                                    <span className="font-mono text-xs">{recipient.phone}</span>
                                   </div>
                                 )}
                                 {recipient.email && (
-                                  <div className="flex items-center gap-2">
-                                    <Mail size={14} className="text-slate-400" />
-                                    <span>{recipient.email}</span>
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-6 h-6 rounded bg-blue-50 flex items-center justify-center text-blue-600">
+                                      <Mail size={12} />
+                                    </div>
+                                    <span className="font-mono text-xs">{recipient.email}</span>
                                   </div>
                                 )}
-                                {!recipient.phone && !recipient.email && <span className="text-gray-400">-</span>}
+                                {!recipient.phone && !recipient.email && <span className="text-gray-400 text-xs italic">No contact info</span>}
                               </div>
                             </td>
                             <td className="px-6 py-4 border-y border-white/50">
-                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
-                                recipient.is_active 
-                                  ? 'bg-green-100/50 text-green-700 border-green-200' 
-                                  : 'bg-gray-100/50 text-gray-600 border-gray-200'
-                              }`}>
-                                {recipient.is_active ? 'Active' : 'Inactive'}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className={`flex h-2 w-2 rounded-full ${recipient.is_active ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-slate-300'}`} />
+                                <span className={`text-xs font-medium ${recipient.is_active ? 'text-slate-700' : 'text-slate-400'}`}>
+                                  {recipient.is_active ? 'Active' : 'Inactive'}
+                                </span>
+                              </div>
                             </td>
                             <td className="px-6 py-4 border-y border-white/50">
                               {renderPreferences(recipient)}
