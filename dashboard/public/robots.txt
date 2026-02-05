@@ -2,7 +2,7 @@ User-agent: *
 Allow: /
 
 # Sitemap
-Sitemap: https://aquamine.app/sitemap.xml
+Sitemap: https://aquamine.web.id/sitemap.xml
 
 # Crawl rate
 Crawl-delay: 1
@@ -18,4 +18,3 @@ Disallow: /not-authorized
 # Allow public pages
 Allow: /
 Allow: /privacy-policy
-Allow: /help

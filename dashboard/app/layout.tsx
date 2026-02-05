@@ -8,7 +8,7 @@ import { bootstrapSuperadmin } from "@/lib/bootstrap";
 import { FieldModeProvider } from "./context/FieldModeContext";
 import { ThemeProvider } from "./context/ThemeContext";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://aquamine.app";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://aquamine.web.id";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -84,15 +84,15 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/aquamine-favicon.png", type: "image/png", sizes: "32x32" },
-      { url: "/aquamine-favicon.png", type: "image/png", sizes: "16x16" },
+      { url: "/favicon-32x32.webp", type: "image/webp", sizes: "32x32" },
+      { url: "/favicon-16x16.webp", type: "image/webp", sizes: "16x16" },
     ],
-    shortcut: "/aquamine-favicon.png",
-    apple: "/aquamine-favicon.png",
+    shortcut: "/favicon-32x32.webp",
+    apple: "/favicon-32x32.webp",
     other: [
       {
         rel: "mask-icon",
-        url: "/aquamine-favicon.png",
+        url: "/favicon-32x32.webp",
       },
     ],
   },
