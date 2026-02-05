@@ -239,7 +239,7 @@ export default function ChatInterface({ threadId, onThreadActivity, onMobileBack
           }`}
         >
           <ClipboardCheck className="w-3.5 h-3.5" />
-          Ringkas Lapangan
+          Field Summary Mode
         </button>
       </div>
 

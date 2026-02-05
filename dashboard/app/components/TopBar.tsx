@@ -306,13 +306,6 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
             size="sm" 
             title={`Status Keamanan (paling buruk):\n• Normal: semua sensor aman\n• Warning: minimal 1 sensor berstatus Warning\n• Critical: minimal 1 sensor berstatus Critical`}
           />
-          <button 
-            onClick={triggerReplay} 
-            type="button" 
-            title={`Queue Sinkronisasi:\n• Aksi (Ack/Resolve) disimpan saat offline\n• Klik untuk coba kirim ulang`}
-          >
-            <StatusChip status={syncStatus} label={syncLabel} size="sm" />
-          </button>
           
           <LegendDropdown />
         </div>
@@ -330,13 +323,6 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
             size="sm"
             title="Status Keamanan"
           />
-          <button 
-            onClick={triggerReplay} 
-            type="button" 
-            title="Queue Sinkronisasi"
-          >
-            <StatusChip status={syncStatus} label={syncLabelMobile} size="sm" />
-          </button>
           <LegendDropdown />
         </div>
 
