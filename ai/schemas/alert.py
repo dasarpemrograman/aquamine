@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 from pydantic import ConfigDict
 
 from .base import BaseSchema
@@ -7,7 +7,7 @@ from .base import BaseSchema
 
 class AlertBase(BaseSchema):
     sensor_id: int
-    severity: str  # warning, critical
+    severity: str
     previous_state: Optional[str] = None
     message: Optional[str] = None
 
@@ -20,6 +20,24 @@ class AlertResolveRequest(BaseSchema):
     resolution_note: Optional[str] = None
 
 
+class AlertEvidenceBase(BaseSchema):
+    alert_id: int
+    image_data: str
+    analysis_result: Optional[dict[str, Any]] = None
+    attached_by: Optional[str] = None
+
+
+class AlertEvidenceCreate(AlertEvidenceBase):
+    pass
+
+
+class AlertEvidenceResponse(AlertEvidenceBase):
+    id: int
+    attached_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class AlertResponse(AlertBase):
     id: int
     created_at: datetime
@@ -30,6 +48,7 @@ class AlertResponse(AlertBase):
     resolution_note: Optional[str] = None
     reopened_at: Optional[datetime] = None
     reopened_by: Optional[str] = None
+    evidence_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
