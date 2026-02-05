@@ -6,7 +6,7 @@ import LiveCameraView from "@/app/components/LiveCameraView";
 import VideoFileView from "@/app/components/VideoFileView";
 import { GlassPanel } from "@/app/components/ui/GlassPanel";
 import { SectionHeader } from "@/app/components/ui/SectionHeader";
-import { Camera, Video, Image as ImageIcon, Sparkles } from "lucide-react";
+import { Camera, Video, Image as ImageIcon } from "lucide-react";
 import { useFieldMode } from "@/app/context/FieldModeContext";
 
 type Mode = "live" | "video" | "image";
@@ -33,80 +33,75 @@ export default function CVAnalysisPage() {
   }, [mode]);
 
   return (
-    <div className="min-h-screen px-6 py-8 md:px-8 md:py-10 selection:bg-teal-500/30">
-      <div className="mx-auto w-full max-w-6xl space-y-8">
+    <div className="min-h-screen px-4 py-6 md:px-8 md:py-10 selection:bg-teal-500/30">
+      <div className="mx-auto w-full max-w-6xl space-y-6">
         <SectionHeader
-          title="Visual Analysis"
-          subtitle="Advanced detection of Yellow Boy precipitates using texture analysis and color signature profiling"
+          title="Analisis Visual"
+          subtitle="Deteksi presipitat Yellow Boy menggunakan analisis tekstur dan profil warna"
           icon={Camera}
           actions={
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-teal-200/50 bg-white/40 backdrop-blur-md shadow-sm text-teal-800 text-xs font-semibold">
+            <div className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-teal-200/50 bg-white/40 backdrop-blur-md shadow-sm text-teal-800 text-xs font-semibold">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
               </span>
-              Computer Vision System v1.0
+              Sistem CV Aktif
             </div>
           }
         />
 
         <div className={isFieldMode ? "flex justify-stretch w-full" : "flex justify-start"}>
-          <div className={`inline-flex p-1.5 bg-white/40 backdrop-blur-xl border border-white/50 rounded-2xl shadow-lg ring-1 ring-black/5 ${isFieldMode ? "w-full grid grid-cols-3 gap-1" : ""}`}>
+          <div className={`inline-flex p-1 bg-white/40 backdrop-blur-xl border border-white/50 rounded-xl shadow-sm ring-1 ring-black/5 ${isFieldMode ? "w-full grid grid-cols-3 gap-1" : ""}`}>
             <button
               onClick={() => setMode("live")}
-              className={`flex items-center justify-center gap-2.5 rounded-xl font-semibold transition-all duration-300 ${
-                isFieldMode ? "px-4 py-4 text-base flex-col" : "px-6 py-3 text-sm"
+              className={`flex items-center justify-center gap-2 rounded-lg font-semibold transition-all duration-300 ${
+                isFieldMode ? "px-2 py-3 text-sm flex-col" : "px-4 py-2 text-sm"
               } ${
                 mode === "live"
-                  ? "bg-gradient-to-tr from-teal-500 to-cyan-500 text-white shadow-md"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                  ? "bg-white text-teal-700 shadow-sm ring-1 ring-black/5"
+                  : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
               }`}
             >
-              <Camera className={isFieldMode ? "w-6 h-6" : "w-4 h-4"} />
-              {isFieldMode ? "Live" : "Live Camera"}
+              <Camera className={isFieldMode ? "w-5 h-5" : "w-4 h-4"} />
+              {isFieldMode ? "Kamera" : "Kamera Langsung"}
             </button>
             <button
               onClick={() => setMode("video")}
-              className={`flex items-center justify-center gap-2.5 rounded-xl font-semibold transition-all duration-300 ${
-                isFieldMode ? "px-4 py-4 text-base flex-col" : "px-6 py-3 text-sm"
+              className={`flex items-center justify-center gap-2 rounded-lg font-semibold transition-all duration-300 ${
+                isFieldMode ? "px-2 py-3 text-sm flex-col" : "px-4 py-2 text-sm"
               } ${
                 mode === "video"
-                  ? "bg-gradient-to-tr from-teal-500 to-cyan-500 text-white shadow-md"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                   ? "bg-white text-teal-700 shadow-sm ring-1 ring-black/5"
+                  : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
               }`}
             >
-              <Video className={isFieldMode ? "w-6 h-6" : "w-4 h-4"} />
-              {isFieldMode ? "Video" : "Video File"}
+              <Video className={isFieldMode ? "w-5 h-5" : "w-4 h-4"} />
+              {isFieldMode ? "Video" : "File Video"}
             </button>
             <button
               onClick={() => setMode("image")}
-              className={`flex items-center justify-center gap-2.5 rounded-xl font-semibold transition-all duration-300 ${
-                isFieldMode ? "px-4 py-4 text-base flex-col" : "px-6 py-3 text-sm"
+              className={`flex items-center justify-center gap-2 rounded-lg font-semibold transition-all duration-300 ${
+                isFieldMode ? "px-2 py-3 text-sm flex-col" : "px-4 py-2 text-sm"
               } ${
                 mode === "image"
-                  ? "bg-gradient-to-tr from-teal-500 to-cyan-500 text-white shadow-md"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                   ? "bg-white text-teal-700 shadow-sm ring-1 ring-black/5"
+                  : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
               }`}
             >
-              <ImageIcon className={isFieldMode ? "w-6 h-6" : "w-4 h-4"} />
-              {isFieldMode ? "Image" : "Image Upload"}
+              <ImageIcon className={isFieldMode ? "w-5 h-5" : "w-4 h-4"} />
+              {isFieldMode ? "Foto" : "Unggah Foto"}
             </button>
           </div>
         </div>
 
-        <div className="relative min-h-[600px] transition-all duration-500 ease-in-out">
-          <GlassPanel className="min-h-[600px] bg-white/40 backdrop-blur-xl border-white/60 shadow-xl shadow-teal-900/5">
+        <div className="relative min-h-[500px] transition-all duration-500 ease-in-out">
+          <GlassPanel className="min-h-[500px] bg-white/60 backdrop-blur-xl border-white/60 shadow-xl shadow-teal-900/5 p-4 md:p-6">
             <div className="h-full">
               {mode === "live" && (
-                <div className="animate-in fade-in zoom-in-95 duration-500">
-                  <div className="flex items-center gap-3 mb-6 px-2">
-                    <div className="p-2 bg-teal-100/50 rounded-lg text-teal-700">
-                      <Camera className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-slate-800">Real-time Inference</h3>
-                      <p className="text-sm text-slate-500">Connect a camera to detect contaminants in real-time</p>
-                    </div>
+                <div className="animate-in fade-in zoom-in-95 duration-500 h-full">
+                  <div className="mb-4 hidden md:block">
+                     <h3 className="text-lg font-semibold text-slate-800">Deteksi Real-time</h3>
+                     <p className="text-sm text-slate-500">Arahkan kamera ke area genangan air tambang untuk analisis otomatis</p>
                   </div>
                   <LiveCameraView onStreamReady={(s) => (liveStreamRef.current = s)} />
                 </div>
@@ -114,15 +109,10 @@ export default function CVAnalysisPage() {
               
               {mode === "video" && (
                 <div className="animate-in fade-in zoom-in-95 duration-500">
-                  <div className="flex items-center gap-3 mb-6 px-2">
-                    <div className="p-2 bg-teal-100/50 rounded-lg text-teal-700">
-                      <Video className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-slate-800">Video Analysis</h3>
-                      <p className="text-sm text-slate-500">Process recorded footage for detailed inspection</p>
-                    </div>
-                  </div>
+                   <div className="mb-4 hidden md:block">
+                      <h3 className="text-lg font-semibold text-slate-800">Analisis Video</h3>
+                      <p className="text-sm text-slate-500">Proses rekaman video untuk inspeksi mendetail</p>
+                   </div>
                   <VideoFileView
                     onVideoUrlChange={(url) => {
                       videoObjectUrlRef.current = url;
@@ -133,28 +123,16 @@ export default function CVAnalysisPage() {
               
               {mode === "image" && (
                 <div className="animate-in fade-in zoom-in-95 duration-500">
-                  <div className="flex items-center gap-3 mb-6 px-2">
-                    <div className="p-2 bg-teal-100/50 rounded-lg text-teal-700">
-                      <ImageIcon className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-slate-800">Static Analysis</h3>
-                      <p className="text-sm text-slate-500">High-resolution analysis of single capture frames</p>
-                    </div>
-                  </div>
+                   <div className="mb-4 hidden md:block">
+                      <h3 className="text-lg font-semibold text-slate-800">Analisis Statis</h3>
+                      <p className="text-sm text-slate-500">Analisis resolusi tinggi dari file gambar</p>
+                   </div>
                   <ImageUploader />
                 </div>
               )}
             </div>
           </GlassPanel>
         </div>
-        
-        {!isFieldMode && (
-          <div className="mt-2 text-center flex items-center justify-center gap-2 text-xs font-medium text-slate-400 uppercase tracking-widest opacity-60">
-            <Sparkles className="w-3 h-3" />
-            Powered by YOLOv8 • Inference Time &lt;100ms • Accuracy 94%
-          </div>
-        )}
       </div>
     </div>
   );
