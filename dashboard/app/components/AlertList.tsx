@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Info, CheckCircle2, MapPin, Check, RotateCcw, ChevronDown } from "lucide-react";
+import { AlertTriangle, Info, CheckCircle2, MapPin, Check, RotateCcw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
 import { formatRelativeTime } from "@/lib/dateUtils";
 import { GlassCard } from "@/app/components/ui/GlassCard";
@@ -38,7 +38,8 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [activeTab, setActiveTab] = useState<'active' | 'acknowledged' | 'resolved'>('active');
   const [loadingId, setLoadingId] = useState<number | null>(null);
-  const [visibleCount, setVisibleCount] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   type QueuedNotice = { action: "acknowledge" | "resolve" | "reopen"; message: string };
   const [queuedNoticeById, setQueuedNoticeById] = useState<Record<number, QueuedNotice>>({});
@@ -48,7 +49,7 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
   const [resolutionNote, setResolutionNote] = useState("");
 
   useEffect(() => {
-    setVisibleCount(50);
+    setCurrentPage(1);
   }, [activeTab, severityFilter, timeRange]);
 
   async function loadAlerts() {
@@ -323,11 +324,18 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
     return isResolved;
   });
 
+  useEffect(() => {
+    const maxPage = Math.ceil(filteredAlerts.length / ITEMS_PER_PAGE);
+    if (currentPage > maxPage && maxPage > 0) {
+      setCurrentPage(maxPage);
+    }
+  }, [filteredAlerts.length, currentPage]);
+
+  const totalPages = Math.ceil(filteredAlerts.length / ITEMS_PER_PAGE);
+
   const displayAlerts = limit 
     ? filteredAlerts.slice(0, limit) 
-    : filteredAlerts.slice(0, visibleCount);
-
-  const hasMore = !limit && filteredAlerts.length > displayAlerts.length;
+    : filteredAlerts.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   return (
     <div className="space-y-4">
@@ -486,14 +494,77 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
         })
       )}
 
-      {hasMore && (
-        <button
-          onClick={() => setVisibleCount((prev) => prev + 50)}
-          className="w-full py-4 mt-4 flex items-center justify-center gap-2 text-sm font-semibold text-slate-600 bg-white/50 backdrop-blur-sm border border-slate-200 rounded-xl hover:bg-white hover:text-cyan-700 hover:border-cyan-300 transition-all shadow-sm group"
-        >
-          <span>Muat lebih banyak</span>
-          <ChevronDown size={16} className="group-hover:translate-y-0.5 transition-transform" />
-        </button>
+      {!limit && totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-slate-200">
+          <div className="text-sm text-slate-500 font-medium">
+            Halaman <span className="font-medium text-slate-900">{currentPage}</span> dari <span className="font-medium text-slate-900">{totalPages}</span> <span className="text-slate-300 mx-2">|</span> Menampilkan {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredAlerts.length)} dari <span className="font-medium text-slate-900">{filteredAlerts.length}</span> alert
+          </div>
+          
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100/50 rounded-lg border border-slate-200">
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="p-2 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:shadow-none transition-all text-slate-600"
+              title="Awal"
+            >
+              <ChevronsLeft size={16} />
+            </button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-2 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:shadow-none transition-all text-slate-600"
+              title="Sebelumnya"
+            >
+              <ChevronLeft size={16} />
+            </button>
+
+            <div className="flex items-center gap-1 px-2">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let p = currentPage;
+                if (totalPages <= 5) {
+                    p = i + 1;
+                } else if (currentPage <= 3) {
+                    p = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                    p = totalPages - 4 + i;
+                } else {
+                    p = currentPage - 2 + i;
+                }
+                
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setCurrentPage(p)}
+                    className={`w-8 h-8 flex items-center justify-center rounded-md text-sm font-semibold transition-all ${
+                      currentPage === p
+                        ? "bg-cyan-600 text-white shadow-md shadow-cyan-200"
+                        : "text-slate-600 hover:bg-white hover:shadow-sm"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:shadow-none transition-all text-slate-600"
+              title="Berikutnya"
+            >
+              <ChevronRight size={16} />
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:shadow-none transition-all text-slate-600"
+              title="Akhir"
+            >
+              <ChevronsRight size={16} />
+            </button>
+          </div>
+        </div>
       )}
       {isResolveModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm">
