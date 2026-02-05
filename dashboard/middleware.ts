@@ -13,7 +13,7 @@ const isAccessPendingRoute = createRouteMatcher(["/access-pending(.*)"]);
 export default clerkMiddleware(async (auth, req) => {
   const { userId, sessionClaims } = await auth();
 
-  if (userId && req.nextUrl.pathname.startsWith('/login')) {
+  if (userId && req.nextUrl.pathname === '/login') {
     return NextResponse.redirect(new URL("/", req.url));
   }
 
