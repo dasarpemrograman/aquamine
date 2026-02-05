@@ -67,7 +67,7 @@ export const metadata: Metadata = {
       "Intelligent early warning system for Acid Mine Drainage monitoring with real-time IoT telemetry and AI-powered analysis.",
     images: [
       {
-        url: "/og-image.png",
+        url: "/og-image.webp",
         width: 1200,
         height: 630,
         alt: "AquaMine Dashboard - Acid Mine Drainage Monitoring",
@@ -79,7 +79,7 @@ export const metadata: Metadata = {
     title: "AquaMine - Acid Mine Drainage Monitoring System",
     description:
       "Intelligent early warning system for Acid Mine Drainage monitoring with real-time IoT telemetry and AI-powered analysis.",
-    images: ["/og-image.png"],
+    images: ["/og-image.webp"],
     creator: "@aquamine",
   },
   icons: {
