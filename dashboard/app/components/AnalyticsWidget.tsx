@@ -160,10 +160,13 @@ export default function AnalyticsWidget() {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Activity className="w-5 h-5 text-cyan-600" />
-          <h3 className="font-semibold text-slate-800">{UI_COPY.analytics_title}</h3>
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <div className="flex items-center gap-2">
+            <Activity className="w-5 h-5 text-cyan-600" />
+            <h3 className="font-semibold text-slate-800">{UI_COPY.analytics_title}</h3>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5 ml-7">Agregat dari semua sensor aktif</p>
         </div>
         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(executiveStatus)}`}>
           {getStatusIcon(executiveStatus)}
@@ -171,7 +174,7 @@ export default function AnalyticsWidget() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      <div className="grid grid-cols-3 gap-2 mb-4 mt-3">
         <div className="bg-slate-50 rounded-lg p-2 text-center">
           <div className="text-xs text-slate-500 mb-1">pH</div>
           <div className={`text-sm font-semibold ${getComplianceColorClass(phCompliance)}`}>

@@ -326,10 +326,6 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
           <LegendDropdown />
         </div>
 
-        <div className="hidden md:block">
-          <ThemeToggle />
-        </div>
-
         <NotificationDropdown />
         
         <Link 
