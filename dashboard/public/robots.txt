@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://aquamine.app/sitemap.xml
+
+# Crawl rate
+Crawl-delay: 1
+
+# Disallow admin and auth paths
+Disallow: /admin/
+Disallow: /api/
+Disallow: /sign-in
+Disallow: /login
+Disallow: /access-pending
+Disallow: /not-authorized
+
+# Allow public pages
+Allow: /
+Allow: /privacy-policy
+Allow: /help
