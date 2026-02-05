@@ -1,3 +1,11 @@
+import {
+  alertOfflineQueue,
+  OFFLINE_QUEUED_MESSAGE,
+  isLikelyNetworkError,
+  type AlertActionPayload,
+  type AlertActionType,
+} from "@/lib/offlineQueue";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8181";
 
 export interface BoundingBox {
@@ -60,13 +68,37 @@ export interface UserSettingsUpdate {
 export interface Alert {
   id: number;
   sensor_id: number;
+  sensor_name: string | null;
   severity: string;
   previous_state: string | null;
   message: string | null;
   created_at: string;
   acknowledged_at: string | null;
   acknowledged_by: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  resolution_note: string | null;
+  reopened_at: string | null;
+  reopened_by: string | null;
+  evidence_count: number;
 }
+
+export interface AlertEvidence {
+  id: number;
+  alert_id: number;
+  image_data: string;
+  analysis_result: AnalysisResponse | null;
+  attached_by: string | null;
+  attached_at: string;
+}
+
+export interface AlertActionStatusResponse {
+  status: "acknowledged" | "resolved" | "reopened";
+}
+
+export type OfflineAwareResult<T> =
+  | { status: "success"; data: T }
+  | { status: "queued"; queuedId: string; message: string };
 
 export interface Sensor {
   id: number;
@@ -77,6 +109,17 @@ export interface Sensor {
   is_active: boolean;
   created_at?: string;
   current_state?: string | null;
+}
+
+export interface Reading {
+  id: number;
+  sensor_id: number;
+  timestamp: string;
+  ph: number | null;
+  turbidity: number | null;
+  temperature: number | null;
+  battery_voltage: number | null;
+  signal_strength: number | null;
 }
 
 export interface RecipientBase {
@@ -92,7 +135,7 @@ export interface Recipient extends RecipientBase {
   id: number;
 }
 
-export interface RecipientCreate extends RecipientBase {}
+export type RecipientCreate = RecipientBase;
 
 export async function analyzeImage(file: File): Promise<AnalysisResponse> {
   const formData = new FormData();
@@ -216,6 +259,60 @@ export async function fetchAlerts(token?: string | null): Promise<Alert[]> {
   return response.json();
 }
 
+export async function attachEvidenceToAlert(
+  alertId: number,
+  imageData: string,
+  analysisResult: AnalysisResponse | null,
+  token: string | null
+): Promise<AlertEvidence> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/alerts/${alertId}/evidence`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      alert_id: alertId,
+      image_data: imageData,
+      analysis_result: analysisResult,
+    }),
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function getAlertEvidence(
+  alertId: number,
+  token: string | null
+): Promise<AlertEvidence[]> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/alerts/${alertId}/evidence`, { headers });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
 export async function fetchSensors(token?: string | null): Promise<Sensor[]> {
   const headers: Record<string, string> = {};
   if (token) {
@@ -235,7 +332,33 @@ export async function fetchSensors(token?: string | null): Promise<Sensor[]> {
   return response.json();
 }
 
-export async function acknowledgeAlert(alertId: number, token?: string | null): Promise<Alert> {
+export async function fetchReadings(
+  sensorId: number,
+  hours: number = 24,
+  token?: string | null
+): Promise<Reading[]> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(
+    `${API_BASE}/api/v1/sensors/${sensorId}/readings?hours=${hours}`,
+    { headers }
+  );
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`,
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function acknowledgeAlert(alertId: number, token?: string | null): Promise<AlertActionStatusResponse> {
   const headers: Record<string, string> = {};
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
@@ -255,6 +378,126 @@ export async function acknowledgeAlert(alertId: number, token?: string | null): 
   }
 
   return response.json();
+}
+
+export async function resolveAlert(
+  alertId: number,
+  payload?: { resolution_note?: string | null },
+  token?: string | null
+): Promise<AlertActionStatusResponse> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/alerts/${alertId}/resolve`, {
+    method: "POST",
+    headers,
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`,
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function reopenAlert(alertId: number, token?: string | null): Promise<AlertActionStatusResponse> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/alerts/${alertId}/reopen`, {
+    method: "POST",
+    headers,
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`,
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+async function enqueueAlertAction(actionType: AlertActionType, payload: AlertActionPayload) {
+  const item = await alertOfflineQueue.enqueue(actionType, payload);
+  return {
+    status: "queued" as const,
+    queuedId: item.id,
+    message: OFFLINE_QUEUED_MESSAGE,
+  };
+}
+
+function shouldEnqueueNow() {
+  return typeof window !== "undefined" && typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+export async function acknowledgeAlertOffline(
+  alertId: number,
+  token?: string | null
+): Promise<OfflineAwareResult<AlertActionStatusResponse>> {
+  if (shouldEnqueueNow()) {
+    return enqueueAlertAction("acknowledge", { alertId });
+  }
+
+  try {
+    const data = await acknowledgeAlert(alertId, token);
+    return { status: "success", data };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      return enqueueAlertAction("acknowledge", { alertId });
+    }
+    throw err;
+  }
+}
+
+export async function resolveAlertOffline(
+  alertId: number,
+  payload?: { resolution_note?: string | null },
+  token?: string | null
+): Promise<OfflineAwareResult<AlertActionStatusResponse>> {
+  if (shouldEnqueueNow()) {
+    return enqueueAlertAction("resolve", { alertId, resolution_note: payload?.resolution_note ?? null });
+  }
+
+  try {
+    const data = await resolveAlert(alertId, payload, token);
+    return { status: "success", data };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      return enqueueAlertAction("resolve", { alertId, resolution_note: payload?.resolution_note ?? null });
+    }
+    throw err;
+  }
+}
+
+export async function reopenAlertOffline(
+  alertId: number,
+  token?: string | null
+): Promise<OfflineAwareResult<AlertActionStatusResponse>> {
+  if (shouldEnqueueNow()) {
+    return enqueueAlertAction("reopen", { alertId });
+  }
+
+  try {
+    const data = await reopenAlert(alertId, token);
+    return { status: "success", data };
+  } catch (err) {
+    if (isLikelyNetworkError(err)) {
+      return enqueueAlertAction("reopen", { alertId });
+    }
+    throw err;
+  }
 }
 
 export async function fetchRecipients(token?: string | null): Promise<Recipient[]> {
@@ -458,20 +701,43 @@ export interface InsightFinding {
   evidence: EvidenceCitation[];
 }
 
+export interface AnalyticsInsightsEvidence {
+  compliance: {
+    ph: { percent: number; ok: number; total: number };
+    turbidity: { percent: number; ok: number; total: number };
+    temperature: { percent: number; ok: number; total: number };
+  };
+  standard: {
+    ph_min: number;
+    ph_max: number;
+    turbidity_max_ntu: number;
+    temperature_max_c: number;
+  };
+}
+
 export interface AnalyticsInsightsResponse {
   generated_at: string;
   period: string;
   executive_summary: InsightsExecutiveSummary;
   key_findings: InsightFinding[];
+  evidence?: AnalyticsInsightsEvidence;
 }
 
-export async function fetchAnalyticsSummary(token?: string | null): Promise<AnalyticsSummaryResponse> {
+export async function fetchAnalyticsSummary(
+  sensorId?: number,
+  token?: string | null
+): Promise<AnalyticsSummaryResponse> {
   const headers: Record<string, string> = {};
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}/api/v1/analytics/summary?period=24h`, { headers });
+  const params = new URLSearchParams({ period: "24h" });
+  if (sensorId) {
+    params.append("sensor_id", sensorId.toString());
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/analytics/summary?${params}`, { headers });
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({
@@ -486,6 +752,7 @@ export async function fetchAnalyticsSummary(token?: string | null): Promise<Anal
 
 export async function fetchAnalyticsCompliance(
   period: string = "7d",
+  sensorId?: number,
   token?: string | null
 ): Promise<AnalyticsComplianceResponse> {
   const headers: Record<string, string> = {};
@@ -493,7 +760,12 @@ export async function fetchAnalyticsCompliance(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}/api/v1/analytics/compliance?period=${period}`, { headers });
+  const params = new URLSearchParams({ period });
+  if (sensorId) {
+    params.append("sensor_id", sensorId.toString());
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/analytics/compliance?${params}`, { headers });
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({
@@ -535,13 +807,25 @@ export async function fetchAnalyticsTrends(
   return response.json();
 }
 
-export async function fetchAnalyticsInsights(token?: string | null): Promise<AnalyticsInsightsResponse> {
+export async function fetchAnalyticsInsights(
+  sensorId?: number,
+  token?: string | null,
+  options?: { refresh?: boolean }
+): Promise<AnalyticsInsightsResponse> {
   const headers: Record<string, string> = {};
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}/api/v1/analytics/insights?period=24h`, { headers });
+  const params = new URLSearchParams({ period: "24h" });
+  if (sensorId) {
+    params.append("sensor_id", sensorId.toString());
+  }
+  if (options?.refresh) {
+    params.set("refresh", "true");
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/analytics/insights?${params}`, { headers });
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({

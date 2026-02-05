@@ -9,7 +9,8 @@ import React, {
 } from "react";
 import { analyzeImage, type AnalysisResponse } from "@/lib/api";
 import CVDetectionOverlay from "./CVDetectionOverlay";
-import { Upload, FileVideo, Play, Square, AlertCircle, Activity, X } from "lucide-react";
+import { Upload, FileVideo, Play, Square, AlertCircle, Activity, X, FileText, Paperclip } from "lucide-react";
+import { useFieldMode } from "../context/FieldModeContext";
 
 export type VideoFileViewHandle = {
   clearVideo: () => void;
@@ -37,6 +38,7 @@ const VideoFileView = React.forwardRef<VideoFileViewHandle, VideoFileViewProps>(
   const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(null);
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState<Date | null>(null);
   const [inferenceError, setInferenceError] = useState<string>("");
+  const { isFieldMode } = useFieldMode();
 
   const stopInference = useCallback(() => {
     if (intervalRef.current) {
@@ -217,69 +219,80 @@ const VideoFileView = React.forwardRef<VideoFileViewHandle, VideoFileViewProps>(
   const containerWidth = videoRef.current?.clientWidth || 800;
   const containerHeight = videoRef.current?.clientHeight || 600;
 
-  return (
-    <div className="space-y-6 p-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap bg-white/40 backdrop-blur-md p-4 rounded-2xl border border-white/60 shadow-sm">
-        <div className="flex items-center gap-3 flex-1">
-          <label
-            htmlFor="video-upload"
-            className="inline-flex items-center gap-3 px-4 py-2.5 bg-white/50 hover:bg-white/80 border border-slate-200 hover:border-teal-300 rounded-xl cursor-pointer transition-all shadow-sm group"
-          >
-            <div className="p-1.5 bg-slate-100 rounded-lg group-hover:bg-teal-50 group-hover:text-teal-600 transition-colors">
-              <Upload className="w-4 h-4 text-slate-500 group-hover:text-teal-600" />
-            </div>
-            <div className="flex flex-col items-start">
-              <span className="text-sm font-medium text-slate-700 group-hover:text-teal-800 transition-colors">
-                {videoName ? "Change video" : "Choose video"}
-              </span>
-              {videoName && (
-                <span className="text-[10px] text-slate-400 truncate max-w-[12rem]">
-                  {videoName}
-                </span>
-              )}
-            </div>
-          </label>
-
-          <input
-            id="video-upload"
-            type="file"
-            accept="video/mp4,video/webm,video/mov,video/quicktime,.mp4,.webm,.mov"
-            onChange={handleFileChange}
-            className="sr-only"
-          />
-
-          <div className="h-8 w-px bg-slate-200/60 mx-1" />
-
-          {!isInferenceActive ? (
-            <button
-              onClick={startInference}
-              disabled={!videoUrl}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all shadow-md"
-            >
-              <Play className="w-4 h-4 fill-current" />
-              Start Inference
-            </button>
-          ) : (
-            <button
-              onClick={stopInference}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-orange-50 hover:bg-orange-100 text-orange-600 font-semibold rounded-xl transition-colors border border-orange-200 shadow-sm"
-            >
-              <Square className="w-4 h-4 fill-current" />
-              Stop Inference
-            </button>
+  const renderControls = (isFieldMode: boolean) => (
+    <div className={`flex items-center gap-3 ${isFieldMode ? 'w-full justify-between' : 'flex-1'}`}>
+      <label
+        htmlFor="video-upload"
+        className={`inline-flex items-center gap-3 ${
+          isFieldMode ? 'px-8 py-4 text-lg w-full justify-center' : 'px-4 py-2.5'
+        } bg-white/50 hover:bg-white/80 border border-slate-200 hover:border-teal-300 rounded-xl cursor-pointer transition-all shadow-sm group`}
+      >
+        <div className={`p-1.5 bg-slate-100 rounded-lg group-hover:bg-teal-50 group-hover:text-teal-600 transition-colors ${isFieldMode ? 'p-2' : ''}`}>
+          <Upload className={`${isFieldMode ? 'w-6 h-6' : 'w-4 h-4'} text-slate-500 group-hover:text-teal-600`} />
+        </div>
+        <div className="flex flex-col items-start">
+          <span className={`font-medium text-slate-700 group-hover:text-teal-800 transition-colors ${isFieldMode ? 'text-lg' : 'text-sm'}`}>
+            {videoName ? "Change video" : "Choose video"}
+          </span>
+          {videoName && (
+            <span className="text-[10px] text-slate-400 truncate max-w-[12rem]">
+              {videoName}
+            </span>
           )}
         </div>
+      </label>
 
-        {isInferenceActive && isAnalyzing && (
-          <div className="flex items-center gap-2 text-sm text-slate-600 bg-white/50 px-3 py-1.5 rounded-full border border-white/60">
-            <div className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+      <input
+        id="video-upload"
+        type="file"
+        accept="video/mp4,video/webm,video/mov,video/quicktime,.mp4,.webm,.mov"
+        onChange={handleFileChange}
+        className="sr-only"
+      />
+
+      {!isFieldMode && <div className="h-8 w-px bg-slate-200/60 mx-1" />}
+
+      {!isInferenceActive ? (
+        <button
+          onClick={startInference}
+          disabled={!videoUrl}
+          className={`inline-flex items-center gap-2 ${
+            isFieldMode ? 'px-8 py-4 text-lg flex-[2] justify-center' : 'px-5 py-2.5'
+          } bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all shadow-md`}
+        >
+          <Play className={`${isFieldMode ? 'w-6 h-6' : 'w-4 h-4'} fill-current`} />
+          {isFieldMode ? "Start Analysis" : "Start Inference"}
+        </button>
+      ) : (
+        <button
+          onClick={stopInference}
+          className={`inline-flex items-center gap-2 ${
+            isFieldMode ? 'px-8 py-4 text-lg flex-[2] justify-center' : 'px-5 py-2.5'
+          } bg-orange-50 hover:bg-orange-100 text-orange-600 font-semibold rounded-xl transition-colors border border-orange-200 shadow-sm`}
+        >
+          <Square className={`${isFieldMode ? 'w-6 h-6' : 'w-4 h-4'} fill-current`} />
+          {isFieldMode ? "Stop Analysis" : "Stop Inference"}
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="space-y-6 p-4">
+      {!isFieldMode && (
+        <div className="flex items-center justify-between gap-4 flex-wrap bg-white/40 backdrop-blur-md p-4 rounded-2xl border border-white/60 shadow-sm">
+          {renderControls(false)}
+          {isInferenceActive && isAnalyzing && (
+            <div className="flex items-center gap-2 text-sm text-slate-600 bg-white/50 px-3 py-1.5 rounded-full border border-white/60">
+              <div className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </div>
+              <span className="font-medium">Analyzing Frame...</span>
             </div>
-            <span className="font-medium">Analyzing Frame...</span>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="bg-rose-50/80 backdrop-blur-sm border border-rose-200 rounded-2xl p-4 flex items-start gap-3">
@@ -322,7 +335,7 @@ const VideoFileView = React.forwardRef<VideoFileViewHandle, VideoFileViewProps>(
         )}
 
         {videoUrl && analysisResult && (
-          <div className="absolute top-4 right-4 w-64 bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-4 text-white shadow-xl transition-opacity hover:bg-black/50 z-10 pointer-events-none">
+          <div className={`absolute top-4 right-4 ${isFieldMode ? 'w-auto max-w-sm' : 'w-64'} bg-black/40 backdrop-blur-md border border-white/10 rounded-2xl p-4 text-white shadow-xl transition-opacity hover:bg-black/50 z-10 pointer-events-none`}>
             <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-teal-400" />
@@ -334,24 +347,28 @@ const VideoFileView = React.forwardRef<VideoFileViewHandle, VideoFileViewProps>(
             </div>
             
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-4">
                 <span className="text-slate-300">Detected</span>
                 <span className={`font-semibold ${analysisResult.detected ? "text-amber-400" : "text-emerald-400"}`}>
                   {analysisResult.detected ? "Yes" : "No"}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-4">
                 <span className="text-slate-300">Severity</span>
                 <span className="capitalize font-medium">{analysisResult.severity}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Objects</span>
-                <span className="font-mono">{analysisResult.bboxes.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Confidence</span>
-                <span className="font-mono">{(analysisResult.confidence * 100).toFixed(1)}%</span>
-              </div>
+              {!isFieldMode && (
+                <>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-slate-300">Objects</span>
+                    <span className="font-mono">{analysisResult.bboxes.length}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-slate-300">Confidence</span>
+                    <span className="font-mono">{(analysisResult.confidence * 100).toFixed(1)}%</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -365,6 +382,27 @@ const VideoFileView = React.forwardRef<VideoFileViewHandle, VideoFileViewProps>(
           />
         )}
       </div>
+
+      {isFieldMode && (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t border-slate-200 shadow-2xl z-50 animate-in slide-in-from-bottom-10">
+          <div className="max-w-4xl mx-auto space-y-4">
+            {renderControls(true)}
+            
+            {videoUrl && analysisResult && (
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200/50">
+                <button className="flex flex-col items-center justify-center gap-1 p-3 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 font-medium transition-colors">
+                  <FileText className="w-6 h-6 text-slate-500" />
+                  <span className="text-xs">Buat laporan</span>
+                </button>
+                <button className="flex flex-col items-center justify-center gap-1 p-3 rounded-xl bg-slate-100 active:bg-slate-200 text-slate-700 font-medium transition-colors">
+                  <Paperclip className="w-6 h-6 text-slate-500" />
+                  <span className="text-xs">Lampirkan</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 });

@@ -7,9 +7,12 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   TrendingUp, 
-  Info, 
   RefreshCw,
-  Zap
+  Zap,
+  CheckSquare,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList
 } from "lucide-react";
 import { 
   ResponsiveContainer, 
@@ -29,12 +32,15 @@ import {
   fetchAnalyticsTrends, 
   fetchAnalyticsCompliance, 
   fetchAnalyticsInsights,
+  fetchSensors,
   AnalyticsSummaryResponse,
   AnalyticsTrendsResponse,
   AnalyticsComplianceResponse,
   AnalyticsInsightsResponse,
+  Sensor,
 } from "@/lib/api";
 import { formatWIB } from "@/lib/dateUtils";
+import { UI_COPY, formatString, getSeverityLabel } from "@/lib/copy";
 
 export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
@@ -45,16 +51,32 @@ export default function AnalyticsPage() {
   const [trends, setTrends] = useState<AnalyticsTrendsResponse | null>(null);
   const [compliance, setCompliance] = useState<AnalyticsComplianceResponse | null>(null);
   const [insights, setInsights] = useState<AnalyticsInsightsResponse | null>(null);
+  const [sensors, setSensors] = useState<Sensor[]>([]);
+  const [selectedSensorId, setSelectedSensorId] = useState<number | undefined>(undefined);
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const formatEvidenceKey = (key: string) => {
+    const map: Record<string, string> = {
+      "compliance.ph_percent": "Kepatuhan pH (%)",
+      "compliance.turbidity_percent": "Kepatuhan Kekeruhan (%)",
+      "compliance.temperature_percent": "Kepatuhan Suhu (%)",
+      "overall.ph_turbidity_correlation": "Korelasi pH-Kekeruhan",
+      "trend.ph_slope": "Tren pH (Slope)",
+      "trend.turbidity_slope": "Tren Kekeruhan (Slope)",
+    };
+    if (map[key]) return map[key];
+    return key.split('.').pop()?.replace(/_/g, ' ') || key;
+  };
+
+  const loadData = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
     try {
       const [summaryData, trendsData, complianceData, insightsData] = await Promise.all([
-        fetchAnalyticsSummary(),
-        fetchAnalyticsTrends(),
-        fetchAnalyticsCompliance(),
-        fetchAnalyticsInsights()
+        fetchAnalyticsSummary(selectedSensorId),
+        fetchAnalyticsTrends("7d", "hourly", selectedSensorId),
+        fetchAnalyticsCompliance("24h", selectedSensorId),
+        fetchAnalyticsInsights(selectedSensorId, undefined, { refresh: forceRefresh })
       ]);
 
       setSummary(summaryData);
@@ -68,6 +90,10 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
+  }, [selectedSensorId]);
+
+  useEffect(() => {
+    fetchSensors().then(setSensors).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -81,6 +107,13 @@ export default function AnalyticsPage() {
     return "text-rose-500";
   };
 
+  const getComplianceLabel = (percent: number | null) => {
+    if (percent === null) return "--";
+    if (percent >= 80) return UI_COPY.compliant;
+    if (percent >= 60) return UI_COPY.warn_short;
+    return "Tidak Patuh";
+  };
+
   const formatTrendDate = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' });
@@ -90,18 +123,41 @@ export default function AnalyticsPage() {
     <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">
       <div className="mx-auto w-full max-w-6xl space-y-8">
         <SectionHeader
-          title="Analytics"
-          subtitle="System health, compliance metrics, and AI-driven insights"
+          title={UI_COPY.analytics_title}
+          subtitle={
+            selectedSensorId 
+              ? `${UI_COPY.analytics_subtitle} • ${sensors.find(s => s.id === selectedSensorId)?.name || 'Sensor #' + selectedSensorId}`
+              : UI_COPY.analytics_subtitle
+          }
           icon={BarChart3}
           actions={
             <div className="flex items-center gap-3">
+              <select
+                value={selectedSensorId ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSelectedSensorId(value ? Number(value) : undefined);
+                }}
+                className="pl-3 pr-8 py-2 bg-white/50 border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 appearance-none cursor-pointer hover:bg-white/80 transition-colors"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                  backgroundPosition: "right 0.5rem center",
+                  backgroundRepeat: "no-repeat",
+                  backgroundSize: "1.5em 1.5em"
+                }}
+              >
+                <option value="">Semua Sensor</option>
+                {sensors.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
               {lastRefreshed && (
                 <span className="text-xs text-slate-500 hidden sm:inline-block">
-                  Updated: {lastRefreshed.toLocaleTimeString()}
+                  {UI_COPY.updated}: {lastRefreshed.toLocaleTimeString()}
                 </span>
               )}
               <button
-                onClick={loadData}
+                onClick={() => loadData(true)}
                 disabled={loading}
                 className="p-2 hover:bg-white/50 rounded-lg transition-colors text-slate-600 disabled:opacity-50"
                 title="Refresh Data"
@@ -118,10 +174,10 @@ export default function AnalyticsPage() {
               <AlertTriangle size={20} />
               <p>{error}</p>
               <button 
-                onClick={loadData}
+                onClick={() => loadData()}
                 className="ml-auto px-4 py-1.5 bg-white/50 hover:bg-white/80 rounded-lg text-sm font-medium transition-colors"
               >
-                Retry
+                {UI_COPY.retry}
               </button>
             </div>
           </GlassCard>
@@ -140,7 +196,7 @@ export default function AnalyticsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <GlassCard className="p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-500">System Health</span>
+                    <span className="text-sm font-medium text-slate-500">{UI_COPY.system_health}</span>
                     <Activity size={16} className="text-slate-400" />
                   </div>
                   <div>
@@ -150,19 +206,19 @@ export default function AnalyticsPage() {
                       </span>
                       <StatusChip 
                         status={summary.system_health.offline_sensors > 0 ? "warning" : "active"} 
-                        label={summary.system_health.offline_sensors > 0 ? "Degraded" : "Healthy"}
+                        label={summary.system_health.offline_sensors > 0 ? UI_COPY.degraded : UI_COPY.healthy}
                         size="sm"
                       />
                     </div>
                     <p className="text-xs text-slate-500">
-                      {summary.system_health.active_sensors} of {summary.system_health.total_sensors} sensors online
+                      {formatString(UI_COPY.online_sensors, { active: summary.system_health.active_sensors, total: summary.system_health.total_sensors })}
                     </p>
                   </div>
                 </GlassCard>
 
                 <GlassCard className="p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-500">Alerts (24h)</span>
+                    <span className="text-sm font-medium text-slate-500">{UI_COPY.alerts_24h}</span>
                     <AlertTriangle size={16} className="text-slate-400" />
                   </div>
                   <div>
@@ -170,16 +226,16 @@ export default function AnalyticsPage() {
                       {summary.alerts.total_24h}
                     </div>
                     <div className="flex items-center gap-2 text-xs">
-                      <span className="text-rose-600 font-medium">{summary.alerts.critical} Critical</span>
+                      <span className="text-rose-600 font-medium">{summary.alerts.critical} {getSeverityLabel('critical')}</span>
                       <span className="text-slate-300">|</span>
-                      <span className="text-amber-600 font-medium">{summary.alerts.warning} Warning</span>
+                      <span className="text-amber-600 font-medium">{summary.alerts.warning} {getSeverityLabel('warning')}</span>
                     </div>
                   </div>
                 </GlassCard>
 
                 <GlassCard className="p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-500">Water Quality</span>
+                    <span className="text-sm font-medium text-slate-500">{UI_COPY.water_quality}</span>
                     <CheckCircle2 size={16} className="text-slate-400" />
                   </div>
                   <div>
@@ -192,14 +248,14 @@ export default function AnalyticsPage() {
                       </span>
                     </div>
                     <p className="text-xs text-slate-500">
-                      {summary.water_quality.ph.percent_compliance}% compliance (24h)
+                      {formatString(UI_COPY.compliance_24h, { percent: summary.water_quality.ph.percent_compliance ?? 0 })}
                     </p>
                   </div>
                 </GlassCard>
 
                 <GlassCard className="p-5 flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-500">Data Points</span>
+                    <span className="text-sm font-medium text-slate-500">{UI_COPY.data_points}</span>
                     <TrendingUp size={16} className="text-slate-400" />
                   </div>
                   <div>
@@ -207,7 +263,7 @@ export default function AnalyticsPage() {
                       {trends?.points.length ?? 0}
                     </div>
                     <p className="text-xs text-slate-500">
-                      Recorded in last {summary.period}
+                      {formatString(UI_COPY.recorded_in_last, { period: summary.period })}
                     </p>
                   </div>
                 </GlassCard>
@@ -217,11 +273,11 @@ export default function AnalyticsPage() {
             {trends && trends.points.length > 0 && (
               <GlassCard className="p-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-semibold text-slate-800">Water Quality Trends</h3>
+                  <h3 className="text-lg font-semibold text-slate-800">{UI_COPY.water_quality_trends}</h3>
                   <div className="flex items-center gap-2 text-sm text-slate-500">
                     <span className="w-3 h-3 rounded-full bg-cyan-500"></span> pH
-                    <span className="w-3 h-3 rounded-full bg-amber-500 ml-2"></span> Turbidity
-                    <span className="w-3 h-3 rounded-full bg-indigo-500 ml-2"></span> Temp
+                    <span className="w-3 h-3 rounded-full bg-amber-500 ml-2"></span> {UI_COPY.turbidity}
+                    <span className="w-3 h-3 rounded-full bg-indigo-500 ml-2"></span> {UI_COPY.temperature}
                   </div>
                 </div>
                 <div className="h-[350px] w-full">
@@ -304,7 +360,10 @@ export default function AnalyticsPage() {
               {compliance && (
                 <GlassCard className="p-6">
                   <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-semibold text-slate-800">Compliance Standards</h3>
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-800">{UI_COPY.compliance_standards}</h3>
+                      <p className="text-xs text-slate-500">24 jam terakhir</p>
+                    </div>
                     <div className="text-xs px-2 py-1 bg-slate-100 rounded text-slate-500">
                       {compliance.standard.source}
                     </div>
@@ -315,7 +374,7 @@ export default function AnalyticsPage() {
                       <div className="flex justify-between items-center text-sm">
                         <span className="font-medium text-slate-700">pH Levels</span>
                         <span className={`font-bold ${getComplianceColor(compliance.ph.percent_compliance)}`}>
-                          {compliance.ph.percent_compliance}% Compliant
+                          {compliance.ph.percent_compliance}% {getComplianceLabel(compliance.ph.percent_compliance)}
                         </span>
                       </div>
                       <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -325,16 +384,16 @@ export default function AnalyticsPage() {
                         />
                       </div>
                       <div className="flex justify-between text-xs text-slate-500">
-                        <span>Standard: {compliance.standard.ph_min} - {compliance.standard.ph_max}</span>
-                        <span>{compliance.ph.violation_count} violations</span>
+                        <span>{UI_COPY.standard}: {compliance.standard.ph_min} - {compliance.standard.ph_max}</span>
+                        <span>{formatString(UI_COPY.violations, { count: compliance.ph.violation_count })}</span>
                       </div>
                     </div>
 
                     <div className="space-y-2">
                       <div className="flex justify-between items-center text-sm">
-                        <span className="font-medium text-slate-700">Turbidity</span>
+                        <span className="font-medium text-slate-700">{UI_COPY.turbidity}</span>
                         <span className={`font-bold ${getComplianceColor(compliance.turbidity.percent_compliance)}`}>
-                          {compliance.turbidity.percent_compliance}% Compliant
+                          {compliance.turbidity.percent_compliance}% {getComplianceLabel(compliance.turbidity.percent_compliance)}
                         </span>
                       </div>
                       <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -344,16 +403,16 @@ export default function AnalyticsPage() {
                         />
                       </div>
                       <div className="flex justify-between text-xs text-slate-500">
-                        <span>Max: {compliance.standard.turbidity_max_ntu} NTU</span>
-                        <span>{compliance.turbidity.violation_count} violations</span>
+                        <span>{UI_COPY.max}: {compliance.standard.turbidity_max_ntu} NTU</span>
+                        <span>{formatString(UI_COPY.violations, { count: compliance.turbidity.violation_count })}</span>
                       </div>
                     </div>
 
                     <div className="space-y-2">
                       <div className="flex justify-between items-center text-sm">
-                        <span className="font-medium text-slate-700">Temperature</span>
+                        <span className="font-medium text-slate-700">{UI_COPY.temperature}</span>
                         <span className={`font-bold ${getComplianceColor(compliance.temperature.percent_compliance)}`}>
-                          {compliance.temperature.percent_compliance}% Compliant
+                          {compliance.temperature.percent_compliance}% {getComplianceLabel(compliance.temperature.percent_compliance)}
                         </span>
                       </div>
                       <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
@@ -363,8 +422,8 @@ export default function AnalyticsPage() {
                         />
                       </div>
                       <div className="flex justify-between text-xs text-slate-500">
-                        <span>Max: {compliance.standard.temperature_max_c}°C</span>
-                        <span>{compliance.temperature.violation_count} violations</span>
+                        <span>{UI_COPY.max}: {compliance.standard.temperature_max_c}°C</span>
+                        <span>{formatString(UI_COPY.violations, { count: compliance.temperature.violation_count })}</span>
                       </div>
                     </div>
                   </div>
@@ -374,52 +433,85 @@ export default function AnalyticsPage() {
               {insights && (
                 <GlassCard className="p-6">
                   <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-semibold text-slate-800">AI Insights</h3>
+                    <h3 className="text-lg font-semibold text-slate-800">{UI_COPY.ai_insights}</h3>
                     <StatusChip 
                       status={insights.executive_summary.status === "NORMAL" ? "active" : insights.executive_summary.status === "WARNING" ? "warning" : "critical"}
-                      label={insights.executive_summary.status}
+                      label={getSeverityLabel(insights.executive_summary.status)}
                       size="sm"
                     />
                   </div>
 
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 mb-6">
-                    <div className="flex gap-3">
-                      <Zap className="text-amber-500 shrink-0 mt-0.5" size={18} />
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-800 mb-1">{insights.executive_summary.headline}</h4>
-                        <p className="text-sm text-slate-600 leading-relaxed">
-                          {insights.executive_summary.recommendation}
-                        </p>
+                  <div className="p-5 rounded-xl bg-slate-50 border border-slate-100 mb-6">
+                    <div className="flex flex-col gap-6">
+                      <div className="flex gap-4">
+                        <Zap className="text-amber-500 shrink-0 mt-1" size={20} />
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">{UI_COPY.summary}</h4>
+                          <p className="text-base font-bold text-slate-800 leading-relaxed mb-3">
+                            {insights.executive_summary.headline}
+                          </p>
+                          
+                          <div className="bg-white/60 p-3 rounded-lg border border-slate-200/60">
+                            <h5 className="text-xs font-semibold text-slate-500 mb-1">Kondisi Saat Ini</h5>
+                            <p className="text-sm text-slate-700 leading-relaxed">
+                              {insights.executive_summary.recommendation}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-4 pt-4 border-t border-slate-200">
+                         <ClipboardList className="text-emerald-500 shrink-0 mt-1" size={20} />
+                         <div className="w-full">
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">{UI_COPY.action_checklist}</h4>
+                            <ul className="space-y-2">
+                              {Array.from(new Set(insights.key_findings.flatMap(f => f.recommended_actions)))
+                                .slice(0, 5)
+                                .map((action, i) => (
+                                <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                                  <CheckSquare size={16} className="text-emerald-500 shrink-0 mt-0.5" />
+                                  <span>{action}</span>
+                                </li>
+                              ))}
+                            </ul>
+                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Key Findings</h4>
-                    {insights.key_findings.map((finding, idx) => (
-                      <div key={idx} className="flex gap-3 group">
-                        <div className="mt-1">
-                          <Info size={16} className="text-cyan-600" />
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                      <button 
+                        onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
+                        className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors"
+                      >
+                        <span className="text-sm font-medium text-slate-600">Detail Teknis & Korelasi</span>
+                        {showTechnicalDetails ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+                      </button>
+                      
+                      {showTechnicalDetails && (
+                        <div className="p-4 bg-white space-y-4">
+                            {insights.key_findings.map((finding, idx) => (
+                              <div key={idx} className="pb-3 border-b border-slate-100 last:border-0 last:pb-0">
+                                <p className="text-sm font-medium text-slate-800">
+                                  {finding.title}
+                                </p>
+                                <p className="text-xs text-slate-500 mt-0.5 mb-2">
+                                  {finding.description}
+                                </p>
+                                {finding.evidence.length > 0 && (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                    {finding.evidence.map((ev, i) => (
+                                      <div key={i} className="flex justify-between items-center px-3 py-2 bg-slate-50 rounded border border-slate-100 text-xs">
+                                        <span className="text-slate-500">{formatEvidenceKey(ev.key)}</span>
+                                        <span className="font-mono font-medium text-slate-700">{ev.value}{ev.unit}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-slate-800 group-hover:text-cyan-700 transition-colors">
-                            {finding.title}
-                          </p>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            {finding.description}
-                          </p>
-                          {finding.evidence.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {finding.evidence.map((ev, i) => (
-                                <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-medium border border-slate-200">
-                                  {ev.key}: {ev.value}{ev.unit}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      )}
                   </div>
                 </GlassCard>
               )}

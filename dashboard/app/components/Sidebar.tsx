@@ -21,11 +21,11 @@ const classNames = (...classes: (string | undefined | null | false)[]) => classe
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/forecast', label: 'Forecast', icon: LineChart },
-  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/alerts', label: 'Alerts', icon: Bell },
-  { href: '/map', label: 'Map', icon: Map },
-  { href: '/recipients', label: 'Recipients', icon: Users },
+  { href: '/forecast', label: 'Prediksi', icon: LineChart },
+  { href: '/analytics', label: 'Analitik', icon: BarChart3 },
+  { href: '/alerts', label: 'Peringatan', icon: Bell },
+  { href: '/map', label: 'Peta', icon: Map },
+  { href: '/recipients', label: 'Penerima', icon: Users },
   { href: '/cv', label: 'CV Analysis', icon: Camera },
   { href: '/chat', label: 'AI Assistant', icon: MessageSquare },
 ];
@@ -82,8 +82,12 @@ export default function Sidebar({
           collapsed ? "px-0 justify-center" : "px-8 justify-between"
         )}>
           <Link href="/" className="flex items-center gap-3 group overflow-hidden">
-            <div className="w-8 h-8 min-w-[32px] rounded-xl bg-gradient-to-tr from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/20 flex items-center justify-center text-white font-bold text-lg">
-              A
+            <div className="w-8 h-8 min-w-[32px] rounded-xl overflow-hidden shadow-lg shadow-cyan-500/20 flex items-center justify-center">
+              <img 
+                src="/aquamine-icon.png" 
+                alt="AquaMine Logo"
+                className="w-full h-full object-contain"
+              />
             </div>
             <span className={classNames(
               "font-bold text-xl tracking-tight text-slate-800 group-hover:text-blue-600 transition-all duration-300 whitespace-nowrap",
@@ -221,6 +225,47 @@ export default function Sidebar({
           )}
         </div>
       </aside>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 h-[72px] bg-white/90 backdrop-blur-xl border-t border-slate-200/60 flex justify-around items-center z-40 md:hidden px-2 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(0,0,0,0.04)]">
+        {[
+          { href: '/', label: 'Beranda', icon: LayoutDashboard },
+          { href: '/map', label: 'Peta', icon: Map },
+          { href: '/alerts', label: 'Alert', icon: Bell },
+          { href: '/chat', label: 'Chat', icon: MessageSquare },
+        ].map((item) => {
+          const isActive = pathname === item.href;
+          const Icon = item.icon;
+          
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={classNames(
+                "relative flex flex-col items-center justify-center w-full h-full space-y-1 active:scale-95 transition-transform",
+                isActive ? "text-cyan-600" : "text-slate-400"
+              )}
+            >
+              <div className={classNames(
+                "p-1.5 rounded-2xl transition-all duration-300",
+                isActive ? "bg-cyan-50 shadow-[0_0_12px_rgba(6,182,212,0.2)] translate-y-[-2px]" : "bg-transparent"
+              )}>
+                <Icon 
+                  size={24} 
+                  strokeWidth={isActive ? 2.5 : 2} 
+                  className={isActive ? "text-cyan-600" : "text-slate-400"}
+                />
+              </div>
+              <span className={classNames(
+                "text-[10px] font-medium tracking-wide transition-colors duration-300",
+                isActive ? "text-cyan-700" : "text-slate-500"
+              )}>
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
     </>
   );
 }

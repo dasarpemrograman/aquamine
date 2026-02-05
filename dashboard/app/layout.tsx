@@ -5,11 +5,15 @@ import "./globals.css";
 import "leaflet/dist/leaflet.css";
 
 import { bootstrapSuperadmin } from "@/lib/bootstrap";
+import { FieldModeProvider } from "./context/FieldModeContext";
+import { ThemeProvider } from "./context/ThemeContext";
 
 export const metadata: Metadata = {
   title: "AquaMine Dashboard",
   description: "Acid Mine Drainage Monitoring and Analysis",
 };
+
+export const dynamic = "force-dynamic";
 
 export default async function RootLayout({
   children,
@@ -37,7 +41,11 @@ export default async function RootLayout({
         <body
           className={`${plusJakartaSans.variable} antialiased text-slate-900 bg-slate-50`}
         >
-          {children}
+          <FieldModeProvider>
+            <ThemeProvider>
+              {children}
+            </ThemeProvider>
+          </FieldModeProvider>
         </body>
       </html>
     </ClerkProvider>

@@ -1,9 +1,9 @@
 "use client";
 
 import { SignIn, useAuth } from "@clerk/nextjs";
-import { Waves } from "lucide-react";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function LoginPage() {
   const { isSignedIn } = useAuth();
@@ -27,8 +27,12 @@ export default function LoginPage() {
       <div className="w-full max-w-[440px] relative z-10 flex flex-col items-center gap-6 animate-in fade-in zoom-in duration-700 slide-in-from-bottom-4">
         
         <div className="text-center space-y-2 mb-2">
-            <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-gradient-to-br from-cyan-500 to-teal-600 shadow-lg shadow-cyan-500/25 mb-4 group transform transition-all hover:scale-105">
-                <Waves className="w-8 h-8 text-white" />
+            <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-white/80 shadow-lg shadow-cyan-500/25 mb-4 group transform transition-all hover:scale-105">
+                <img 
+                  src="/aquamine-icon.png" 
+                  alt="AquaMine Logo"
+                  className="w-16 h-16 object-contain"
+                />
             </div>
             <h1 className="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600 tracking-tight">
                 AquaMine AI
@@ -66,8 +70,18 @@ export default function LoginPage() {
         />
         
         <div className="flex gap-6 text-sm text-slate-400 font-medium">
-            <span className="hover:text-cyan-600 transition-colors cursor-pointer">Help & Support</span>
-            <span className="hover:text-cyan-600 transition-colors cursor-pointer">Privacy Policy</span>
+            <a 
+              href="mailto:arqilasp@gmail.com?subject=AquaMine Support Request&body=Hello AquaMine Team,%0D%0A%0D%0AI need help with:%0D%0A%0D%0A"
+              className="hover:text-cyan-600 transition-colors cursor-pointer"
+            >
+              Help & Support
+            </a>
+            <Link 
+              href="/privacy-policy"
+              className="hover:text-cyan-600 transition-colors cursor-pointer"
+            >
+              Privacy Policy
+            </Link>
         </div>
       </div>
     </div>

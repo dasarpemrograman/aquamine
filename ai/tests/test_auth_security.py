@@ -19,6 +19,9 @@ class DummySession:
             def scalar_one_or_none(self):
                 return None
 
+            def all(self):
+                return []
+
         return Result()
 
     def add(self, obj):

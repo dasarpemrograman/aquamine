@@ -99,8 +99,31 @@ class Alert(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     acknowledged_by: Mapped[Optional[str]] = mapped_column(String(100))
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    resolved_by: Mapped[Optional[str]] = mapped_column(String(100))
+    resolution_note: Mapped[Optional[str]] = mapped_column(Text)
+    reopened_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    reopened_by: Mapped[Optional[str]] = mapped_column(String(100))
 
     sensor: Mapped["Sensor"] = relationship(back_populates="alerts")
+    evidence_attachments: Mapped[List["AlertEvidence"]] = relationship(
+        back_populates="alert", cascade="all, delete-orphan"
+    )
+
+
+class AlertEvidence(Base):
+    __tablename__ = "alert_evidence"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    alert_id: Mapped[int] = mapped_column(ForeignKey("alerts.id"), nullable=False)
+    image_data: Mapped[str] = mapped_column(Text, nullable=False)
+    analysis_result: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
+    attached_by: Mapped[Optional[str]] = mapped_column(String(100))
+    attached_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    alert: Mapped["Alert"] = relationship(back_populates="evidence_attachments")
 
 
 class NotificationRecipient(Base):

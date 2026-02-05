@@ -1,12 +1,12 @@
 import React from 'react';
 
-interface StatusChipProps {
+interface StatusChipProps extends React.HTMLAttributes<HTMLSpanElement> {
   status: 'active' | 'inactive' | 'warning' | 'critical' | 'info';
   label: string;
   size?: 'sm' | 'md';
 }
 
-export function StatusChip({ status, label, size = 'md' }: StatusChipProps) {
+export function StatusChip({ status, label, size = 'md', className, ...props }: StatusChipProps) {
   const styles = {
     active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
     inactive: 'bg-slate-100 text-slate-600 border-slate-200',
@@ -22,11 +22,13 @@ export function StatusChip({ status, label, size = 'md' }: StatusChipProps) {
 
   return (
     <span
+      {...props}
       className={`
         inline-flex items-center justify-center font-semibold rounded-full border
-        backdrop-blur-sm bg-opacity-80 shadow-sm
+        backdrop-blur-sm bg-opacity-80 shadow-sm whitespace-nowrap
         ${styles[status]}
         ${sizeStyles[size]}
+        ${className || ''}
       `}
     >
       <span className={`rounded-full bg-current opacity-60 ${size === 'sm' ? 'w-1 h-1' : 'w-1.5 h-1.5'}`} />

@@ -8,14 +8,15 @@ import {
   Activity, 
   AlertTriangle, 
   Camera, 
-  Zap, 
   Clock, 
   Waves,
   ArrowRight,
-  Map
+  Map,
+  Maximize2
 } from "lucide-react";
 
-import SensorStatus from "@/app/components/SensorStatus";
+import FieldSensorStatus from "@/app/components/FieldSensorStatus";
+import FieldTaskActions from "@/app/components/FieldTaskActions";
 import AlertList from "@/app/components/AlertList";
 import AnalyticsWidget from "@/app/components/AnalyticsWidget";
 import BerkeleyPitMap from "@/app/components/map/BerkeleyPitMap";
@@ -24,6 +25,7 @@ import { SectionHeader } from "@/app/components/ui/SectionHeader";
 import { StatusChip } from "@/app/components/ui/StatusChip";
 import { IconBadge } from "@/app/components/ui/IconBadge";
 import { fetchSensors, Sensor } from "@/lib/api";
+import { UI_COPY, getSeverityLabel } from "@/lib/copy";
 
 export default function Home() {
   const { getToken } = useAuth();
@@ -91,8 +93,8 @@ export default function Home() {
     <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">
       <div className="mx-auto w-full max-w-6xl space-y-8">
         <SectionHeader
-          title="System Overview"
-          subtitle="Real-time AMD monitoring and environmental analysis"
+          title={UI_COPY.system_overview}
+          subtitle={UI_COPY.system_subtitle}
           icon={LayoutDashboard}
           actions={<span className="text-xs text-slate-400 font-medium px-2">v2.4.0</span>}
         />
@@ -103,13 +105,13 @@ export default function Home() {
                   <Activity size={48} />
               </div>
               <div className="space-y-2">
-                  <p className="text-sm font-medium text-slate-500">Sensor Availability</p>
+                  <p className="text-sm font-medium text-slate-500">{UI_COPY.sensor_availability}</p>
                   <div className="flex items-end gap-2">
                       <span className="text-4xl font-bold bg-gradient-to-r from-cyan-500 to-teal-500 bg-clip-text text-transparent">
                           {stats.healthScore}%
                       </span>
                       <span className={`text-sm font-medium mb-1 ${stats.healthScore > 90 ? 'text-teal-600' : 'text-amber-600'}`}>
-                          {stats.healthScore > 90 ? 'All Online' : stats.healthScore > 0 ? 'Partial' : 'Offline'}
+                          {stats.healthScore > 90 ? UI_COPY.all_online : stats.healthScore > 0 ? UI_COPY.partial : UI_COPY.offline}
                       </span>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-2">
@@ -129,7 +131,7 @@ export default function Home() {
               <div>
                   <span className="text-3xl font-bold text-slate-800">{stats.activeSensors}</span>
                   <span className="text-slate-400 text-sm ml-1">/ {stats.totalSensors}</span>
-                  <p className="text-sm text-slate-500 mt-1">Active Sensors</p>
+                  <p className="text-sm text-slate-500 mt-1">{UI_COPY.active_sensors}</p>
               </div>
           </GlassCard>
 
@@ -148,9 +150,9 @@ export default function Home() {
                     stats.currentStatus === 'warning' ? 'text-amber-600' : 
                     stats.currentStatus === 'normal' ? 'text-emerald-600' : 'text-slate-800'
                   }`}>
-                      {stats.currentStatus}
+                      {getSeverityLabel(stats.currentStatus)}
                   </span>
-                  <p className="text-sm text-slate-500 mt-1">Current Status</p>
+                  <p className="text-sm text-slate-500 mt-1">{UI_COPY.current_status}</p>
               </div>
           </GlassCard>
 
@@ -160,88 +162,82 @@ export default function Home() {
               </div>
               <div>
                   <span className="text-2xl font-bold text-slate-800">{stats.lastUpdate}</span>
-                  <p className="text-sm text-slate-500 mt-1">Last Update</p>
+                  <p className="text-sm text-slate-500 mt-1">{UI_COPY.last_update}</p>
               </div>
           </GlassCard>
         </div>
 
-        <Link href="/map" className="block">
-          <GlassCard className="hover:border-cyan-300 transition-all duration-300 group cursor-pointer relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            <div className="relative z-10">
-              <div className="flex justify-between items-start mb-4">
-                <IconBadge icon={Map} variant="aqua" size="lg" />
-                <ArrowRight className="text-slate-300 group-hover:text-cyan-500 transition-colors" />
-              </div>
-              <h3 className="text-lg font-bold text-slate-800 group-hover:text-cyan-700 transition-colors mb-2">Site Map</h3>
-              <div className="h-[200px] rounded-lg overflow-hidden">
-                <BerkeleyPitMap sensors={sensors} height="200px" showPolygon={true} />
-              </div>
-            </div>
-          </GlassCard>
-        </Link>
+        {/* Field Actions - Prominent placement for Field View */}
+        <FieldTaskActions />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Column */}
           <div className="lg:col-span-2 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Link href="/cv" className="block h-full">
-                    <GlassCard className="h-full hover:border-cyan-300 transition-all duration-300 group cursor-pointer relative overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-br from-cyan-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                        <div className="relative z-10 flex flex-col h-full">
-                            <div className="flex justify-between items-start">
-                                <IconBadge icon={Camera} variant="aqua" size="lg" />
-                                <ArrowRight className="text-slate-300 group-hover:text-cyan-500 transition-colors" />
-                            </div>
-                            <div className="mt-6">
-                                <h3 className="text-lg font-bold text-slate-800 group-hover:text-cyan-700 transition-colors">Visual Analysis</h3>
-                                <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-                                    Upload water source images to detect Yellow Boy precipitates using Computer Vision.
-                                </p>
-                            </div>
-                        </div>
-                    </GlassCard>
-                </Link>
-
-                <GlassCard className="h-full flex flex-col">
-                    <div className="flex-1 flex flex-col">
-                        <div className="flex items-center gap-3 mb-4">
-                            <Zap className="text-amber-500" size={20} />
-                            <h3 className="text-lg font-bold text-slate-800">Quick Actions</h3>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 flex-1">
-                            <Link href="/forecast" className="block h-full">
-                                <div className="p-3 rounded-lg bg-white/50 border border-white/60 hover:bg-white hover:border-cyan-200 transition-all text-sm font-medium text-slate-600 flex flex-col items-center justify-center gap-2 group cursor-pointer h-full min-h-[100px]">
-                                    <Waves size={18} className="text-cyan-600 group-hover:scale-110 transition-transform" />
-                                    <span>Forecast</span>
-                                </div>
-                            </Link>
-                            <Link href="/alerts" className="block h-full">
-                                <div className="p-3 rounded-lg bg-white/50 border border-white/60 hover:bg-white hover:border-rose-200 transition-all text-sm font-medium text-slate-600 flex flex-col items-center justify-center gap-2 group cursor-pointer h-full min-h-[100px]">
-                                    <AlertTriangle size={18} className="text-rose-500 group-hover:scale-110 transition-transform" />
-                                    <span>Alerts</span>
-                                </div>
-                            </Link>
-                        </div>
+            
+            {/* Map Section */}
+            <div className="relative">
+               <GlassCard className="flex flex-col">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex items-center gap-3">
+                      <IconBadge icon={Map} variant="aqua" size="lg" />
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-800">{UI_COPY.field_map}</h3>
+                        <p className="text-xs text-slate-400">{UI_COPY.tap_expand}</p>
+                      </div>
                     </div>
-                </GlassCard>
+                    <Link
+                      href="/map"
+                      className="p-2 hover:bg-slate-100 rounded-full text-slate-500 hover:text-cyan-600 transition-colors"
+                      aria-label="Buka peta lengkap"
+                    >
+                      <Maximize2 size={24} />
+                    </Link>
+                  </div>
+                 <div className="rounded-lg overflow-hidden h-[300px]">
+                   <BerkeleyPitMap sensors={sensors} height="100%" showPolygon={true} />
+                 </div>
+               </GlassCard>
             </div>
 
+            {/* Prominent Sensor Status */}
             <div>
-                <SectionHeader title="Sensor Status" icon={Activity} />
+                <SectionHeader title={UI_COPY.sensor_status} icon={Activity} />
                 <div className="relative">
-                    <SensorStatus />
+                    <FieldSensorStatus sensors={sensors} />
                 </div>
             </div>
           </div>
 
+          {/* Right Column / Triage */}
           <div className="space-y-6">
-              <SectionHeader title="Recent Alerts" icon={AlertTriangle} />
-              <div className="relative">
-                  <AlertList />
+              <div className="flex items-center justify-between mb-2">
+                <SectionHeader title={UI_COPY.priority_alerts} icon={AlertTriangle} />
+                <Link href="/alerts" className="text-xs text-cyan-600 font-medium hover:underline">
+                    {UI_COPY.view_all}
+                </Link>
               </div>
+              <div className="relative">
+                  <AlertList limit={3} compact={true} />
+              </div>
+
+              {/* Visual Analysis Link - Compact */}
+              <Link href="/cv" className="block">
+                  <GlassCard className="hover:border-cyan-300 transition-all duration-300 group cursor-pointer relative overflow-hidden">
+                      <div className="flex justify-between items-center">
+                          <div className="flex items-center gap-3">
+                              <IconBadge icon={Camera} variant="aqua" />
+                              <div>
+                                  <h3 className="font-bold text-slate-800 group-hover:text-cyan-700">{UI_COPY.visual_analysis}</h3>
+                                  <p className="text-xs text-slate-500">{UI_COPY.check_water_quality}</p>
+                              </div>
+                          </div>
+                          <ArrowRight className="text-slate-300 group-hover:text-cyan-500 transition-colors" />
+                      </div>
+                  </GlassCard>
+              </Link>
+              
               <AnalyticsWidget />
           </div>
-           <div className="absolute right-0 bottom-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl -mr-8 -mb-8" />
         </div>
       </div>
     </div>

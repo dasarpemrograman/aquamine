@@ -539,6 +539,7 @@ async def get_analytics_compliance(period: str = "7d", db: AsyncSession = Depend
 async def get_analytics_insights(
     period: str = "24h",
     sensor_id: Optional[int] = None,
+    refresh: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     if period != "24h":
@@ -549,17 +550,18 @@ async def get_analytics_insights(
         f"analytics:insights:{period}:sensor:{sensor_id if sensor_id is not None else 'all'}"
     )
 
-    try:
-        cached = await redis.get(cache_key)
-    except Exception:
-        cached = None
-
-    if cached:
+    if not refresh:
         try:
-            payload = json.loads(cached.decode("utf-8"))
-            return AnalyticsInsightsResponse.model_validate(payload)
+            cached = await redis.get(cache_key)
         except Exception:
-            pass
+            cached = None
+
+        if cached:
+            try:
+                payload = json.loads(cached.decode("utf-8"))
+                return AnalyticsInsightsResponse.model_validate(payload)
+            except Exception:
+                pass
 
     now = _now_utc()
     evidence = await build_insights_evidence(db, period=period, sensor_id=sensor_id, now=now)

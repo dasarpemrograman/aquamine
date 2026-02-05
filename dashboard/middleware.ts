@@ -5,6 +5,7 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/login(.*)",
   "/not-authorized(.*)",
+  "/privacy-policy(.*)",
 ]);
 
 const isAccessPendingRoute = createRouteMatcher(["/access-pending(.*)"]);

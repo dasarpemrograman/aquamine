@@ -2,7 +2,8 @@
 
 import { useState, useRef, ChangeEvent, DragEvent } from "react";
 import { analyzeImage, AnalysisResponse } from "@/lib/api";
-import { Upload, X, Play, AlertTriangle, CheckCircle2, FileImage, Sparkles } from "lucide-react";
+import { Upload, X, Play, AlertTriangle, CheckCircle2, FileImage, Sparkles, FileText, Paperclip } from "lucide-react";
+import { useFieldMode } from "../context/FieldModeContext";
 
 export default function ImageUploader() {
   const [file, setFile] = useState<File | null>(null);
@@ -11,6 +12,7 @@ export default function ImageUploader() {
   const [result, setResult] = useState<AnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const { isFieldMode } = useFieldMode();
   
   const imgRef = useRef<HTMLImageElement>(null);
   const [renderedSize, setRenderedSize] = useState({ width: 0, height: 0 });
@@ -171,9 +173,11 @@ export default function ImageUploader() {
                     e.stopPropagation();
                     if (file) analyze(file);
                   }}
-                  className="px-8 py-3 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white font-semibold rounded-full shadow-lg transform transition-all hover:scale-105 active:scale-95 flex items-center gap-2 backdrop-blur-md"
+                  className={`${
+                    isFieldMode ? "px-10 py-5 text-xl rounded-2xl" : "px-8 py-3 rounded-full"
+                  } bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white font-semibold shadow-lg transform transition-all hover:scale-105 active:scale-95 flex items-center gap-2 backdrop-blur-md`}
                 >
-                  <Play className="w-5 h-5 fill-current" />
+                  <Play className={`${isFieldMode ? "w-8 h-8" : "w-5 h-5"} fill-current`} />
                   <span>Run Analysis</span>
                 </button>
               </div>
@@ -291,6 +295,19 @@ export default function ImageUploader() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {result && !loading && isFieldMode && (
+        <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-bottom-6 duration-700 delay-200 fill-mode-backwards">
+          <button className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-teal-600 text-white font-bold shadow-lg shadow-teal-900/10 active:scale-95 transition-transform">
+            <FileText className="w-8 h-8" />
+            <span className="text-lg">Buat Laporan</span>
+          </button>
+          <button className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold shadow-sm active:bg-slate-50 transition-colors">
+            <Paperclip className="w-8 h-8 text-slate-500" />
+            <span className="text-lg">Lampirkan</span>
+          </button>
         </div>
       )}
     </div>

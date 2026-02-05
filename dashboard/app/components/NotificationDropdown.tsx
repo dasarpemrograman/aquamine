@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Bell, Check, AlertTriangle, AlertOctagon, Info, X, ExternalLink } from "lucide-react";
 import Link from "next/link";
-import { useUser } from "@clerk/nextjs";
-import { fetchAlerts, acknowledgeAlert, fetchSettings, updateSettings, Alert, UserSettings } from "@/lib/api";
+import { useAuth, useUser } from "@clerk/nextjs";
+import { fetchAlerts, fetchSettings, updateSettings, Alert, UserSettings, acknowledgeAlertOffline } from "@/lib/api";
 
 interface NotificationDropdownProps {
   onCountChange?: (count: { unread: number; new: number }) => void;
@@ -12,6 +12,7 @@ interface NotificationDropdownProps {
 
 export default function NotificationDropdown({ onCountChange }: NotificationDropdownProps) {
   const { user } = useUser();
+  const { getToken } = useAuth();
   const userId = user?.id || "anonymous";
   
   const [isOpen, setIsOpen] = useState(false);
@@ -19,6 +20,7 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = alerts.filter(a => !a.acknowledged_at).length;
@@ -59,6 +61,23 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
 
   const refreshMs = (settings?.refresh_interval_seconds ?? 10) * 1000;
 
+  const loadData = useCallback(async () => {
+    try {
+      const token = await getToken();
+      const [alertsData, settingsData] = await Promise.all([
+        fetchAlerts(token),
+        fetchSettings(userId, token)
+      ]);
+      setAlerts(alertsData);
+      setSettings(settingsData);
+      setError(null);
+      setInfo(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load notifications";
+      setError(message);
+    }
+  }, [getToken, userId]);
+
   useEffect(() => {
     loadData();
 
@@ -67,7 +86,7 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
     }, refreshMs);
 
     return () => clearInterval(interval);
-  }, [userId, refreshMs]);
+  }, [loadData, refreshMs]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -80,32 +99,19 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const loadData = async () => {
-    try {
-      const [alertsData, settingsData] = await Promise.all([
-        fetchAlerts(),
-        fetchSettings(userId)
-      ]);
-      setAlerts(alertsData);
-      setSettings(settingsData);
-      setError(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to load notifications";
-      setError(message);
-    }
-  };
-
   const handleOpen = async () => {
     setIsOpen(true);
     setLoading(true);
     setError(null);
+    setInfo(null);
     
     try {
+      const token = await getToken();
       await updateSettings(userId, {
         last_notification_seen_at: new Date().toISOString()
-      });
+      }, token);
       
-      const updatedSettings = await fetchSettings(userId);
+      const updatedSettings = await fetchSettings(userId, token);
       setSettings(updatedSettings);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update settings";
@@ -119,7 +125,15 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
     const unreadAlerts = alerts.filter(a => !a.acknowledged_at);
     
     try {
-      await Promise.all(unreadAlerts.map(alert => acknowledgeAlert(alert.id)));
+      const token = await getToken();
+      const results = await Promise.all(unreadAlerts.map(alert => acknowledgeAlertOffline(alert.id, token)));
+      const anyQueued = results.some(r => r.status === 'queued');
+
+      if (anyQueued) {
+        setInfo(results.find(r => r.status === 'queued')?.message ?? null);
+        return;
+      }
+
       await loadData();
     } catch (err) {
       console.error("Error marking all as read:", err);
@@ -128,7 +142,13 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
 
   const handleMarkRead = async (alertId: number) => {
     try {
-      await acknowledgeAlert(alertId);
+      const token = await getToken();
+      const result = await acknowledgeAlertOffline(alertId, token);
+      if (result.status === 'queued') {
+        setInfo(result.message);
+        return;
+      }
+
       await loadData();
     } catch (err) {
       console.error("Error marking alert as read:", err);
@@ -179,9 +199,6 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
         className="relative p-2.5 rounded-xl text-slate-500 hover:bg-white/60 hover:text-cyan-600 hover:shadow-sm transition-all duration-200 group"
       >
         <Bell size={20} />
-        {showNewBadge && (
-          <span className="absolute top-2 right-2.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
-        )}
         {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-xs font-medium text-white bg-rose-500 rounded-full">
             {unreadCount > 99 ? '99+' : unreadCount}
@@ -212,6 +229,11 @@ export default function NotificationDropdown({ onCountChange }: NotificationDrop
           </div>
 
           <div className="max-h-80 overflow-y-auto bg-slate-50/50">
+            {info && !error && (
+              <div className="px-4 py-2 text-xs font-medium text-slate-600 bg-white border-b border-slate-100">
+                {info}
+              </div>
+            )}
             {error ? (
               <div className="flex flex-col items-center justify-center h-32 text-red-500 px-4">
                 <AlertTriangle className="w-8 h-8 mb-2" />

@@ -59,16 +59,20 @@ from .db.models import (
     ChatThread,
     ChatSessionSegment,
     ChatMessage,
+    AlertEvidence,
 )
 from .schemas.sensor import SensorResponse, ReadingResponse, SensorDataIngest
 from .schemas.forecast import PredictionResponse
 from .schemas.alert import (
     AlertResponse,
     AlertCreate,
+    AlertResolveRequest,
     AnomalyResponse,
     RecipientBase,
     RecipientCreate,
     RecipientResponse,
+    AlertEvidenceCreate,
+    AlertEvidenceResponse,
 )
 from .schemas.settings import UserSettingsResponse, UserSettingsUpdate
 from .schemas.help import FaqItem, FaqResponse
@@ -258,9 +262,13 @@ def _calculate_forecast_confidence(
 
 
 def _format_forecast_points(
-    forecast_values: list[dict[str, object]], data_quality: float = 1.0
+    parameter: str,
+    forecast_values: list[dict[str, object]],
+    data_quality: float = 1.0,
 ) -> list[dict[str, object]]:
     points = []
+    pred_key = f"{parameter}_pred"
+    conf_key = f"{parameter}_confidence"
     for point in forecast_values or []:
         if isinstance(point, dict):
             timestamp = point.get("timestamp")
@@ -283,17 +291,38 @@ def _format_forecast_points(
         upper_val = float(upper) if isinstance(upper, (int, float)) else None
         value_val = float(value)
 
-        points.append(
-            {
-                "timestamp": timestamp,
-                "ph_pred": value_val,
-                "confidence": _calculate_forecast_confidence(
-                    value_val, lower_val, upper_val, data_quality=data_quality
-                ),
-            }
+        confidence = _calculate_forecast_confidence(
+            value_val, lower_val, upper_val, data_quality=data_quality
         )
+        payload: dict[str, object] = {
+            "timestamp": timestamp,
+            pred_key: value_val,
+            conf_key: confidence,
+        }
+        if parameter == "ph":
+            payload["confidence"] = confidence
+
+        points.append(payload)
 
     return points
+
+
+def _merge_forecast_points_by_timestamp(
+    *series: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    merged: dict[object, dict[str, object]] = {}
+    for points in series:
+        for point in points or []:
+            ts = point.get("timestamp")
+            if ts is None:
+                continue
+            if ts not in merged:
+                merged[ts] = {"timestamp": ts}
+            merged[ts].update({k: v for k, v in point.items() if k != "timestamp"})
+
+    out = list(merged.values())
+    out.sort(key=lambda p: str(p.get("timestamp") or ""))
+    return out
 
 
 def compute_forecast_window(
@@ -642,8 +671,12 @@ class ForecastCompatibilityRequest(BaseSchema):
 
 class TimelineForecastPoint(BaseSchema):
     timestamp: datetime
-    ph_pred: float
-    confidence: float
+    ph_pred: Optional[float] = None
+    confidence: Optional[float] = None
+    turbidity_pred: Optional[float] = None
+    turbidity_confidence: Optional[float] = None
+    temperature_pred: Optional[float] = None
+    temperature_confidence: Optional[float] = None
 
 
 class TimelineAnomalySummary(BaseSchema):
@@ -746,7 +779,7 @@ def get_faq() -> FaqResponse:
 
 
 @app.post("/api/v1/chat")
-@limiter.limit("30/minute")
+@limiter.limit("200/minute")
 async def chat(
     request: Request, body: ChatRequest, user_id: str = Depends(get_current_user)
 ) -> dict[str, Any]:
@@ -766,7 +799,7 @@ async def chat(
 
 
 @app.post("/api/v1/cv/analyze")
-@limiter.limit("10/minute")
+@limiter.limit("300/minute")
 async def analyze_image(request: Request, file: Optional[UploadFile] = File(None)):
     if file is None:
         return error_response(
@@ -873,7 +906,7 @@ async def get_sensor_readings(sensor_id: int, hours: int = 24, db: AsyncSession 
 
 
 @app.post("/api/v1/sensors/ingest")
-@limiter.limit("100/minute")
+@limiter.limit("1000/minute")
 async def ingest_sensor_data(
     request: Request,
     payload: SensorDataIngest,
@@ -1084,60 +1117,29 @@ async def get_forecast_compatibility(
             )
 
     data_window_start = now_utc - timedelta(hours=24)
-    count_result = await db.execute(
-        select(func.count())
-        .select_from(Reading)
-        .where(
-            Reading.sensor_id == payload.sensor_id,
-            Reading.timestamp >= data_window_start,
-            Reading.ph.is_not(None),
-        )
-    )
-    recent_ph_count = int(count_result.scalar_one() or 0)
-    if recent_ph_count < 12:
-        warning = "Insufficient data for pH forecast (need 24h of data)"
-
-        prediction_query = (
-            select(Prediction)
-            .where(Prediction.sensor_id == payload.sensor_id, Prediction.parameter == "ph")
-            .order_by(desc(Prediction.created_at))
-            .limit(1)
-        )
-        result = await db.execute(prediction_query)
-        prediction = result.scalar_one_or_none()
-
-        window_start = getattr(prediction, "forecast_start", None) if prediction else None
-        window_end = (
-            window_start + timedelta(hours=payload.horizon_hours)
-            if window_start
-            else now_utc + timedelta(hours=payload.horizon_hours)
-        )
-        staleness = check_forecast_staleness(prediction, latest_reading, window_end, now_utc)
-
-        latest_snapshot = (
-            LatestReadingSnapshot(
-                timestamp=latest_reading.timestamp,
-                ph=latest_reading.ph,
-                turbidity=latest_reading.turbidity,
-                temperature=latest_reading.temperature,
+    recent_counts: dict[str, int] = {}
+    for param, column in (
+        ("ph", Reading.ph),
+        ("turbidity", Reading.turbidity),
+        ("temperature", Reading.temperature),
+    ):
+        count_result = await db.execute(
+            select(func.count())
+            .select_from(Reading)
+            .where(
+                Reading.sensor_id == payload.sensor_id,
+                Reading.timestamp >= data_window_start,
+                column.is_not(None),
             )
-            if latest_reading
-            else None
         )
-        return {
-            "forecast": [],
-            "anomaly": anomaly_summary,
-            "latest_reading": latest_snapshot,
-            "history_hours": history_hours,
-            "warning": warning,
-            "forecast_generated_at": prediction.created_at if prediction else None,
-            "forecast_start": window_start,
-            "forecast_end": window_end,
-            "forecast_timezone": forecast_timezone,
-            "forecast_is_stale": bool(staleness.get("is_stale")),
-            "forecast_stale_reason": staleness.get("stale_reason"),
-            "source_prediction_id": prediction.id if prediction else None,
-        }
+        recent_counts[param] = int(count_result.scalar_one() or 0)
+
+    insufficient_params = [p for p, c in recent_counts.items() if c < 12]
+    insufficient_warning = (
+        f"Insufficient data for forecast: {', '.join(insufficient_params)} (need 24h of data)"
+        if insufficient_params
+        else None
+    )
 
     prediction_query = (
         select(Prediction)
@@ -1341,10 +1343,45 @@ async def get_forecast_compatibility(
                     forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh skipped (cooldown after failure)"
                 else:
                     forecast_warning = f"pH forecast may be stale ({stale_reason}); refresh skipped"
-    data_quality = min(recent_ph_count / 24.0, 1.0)
-    raw_forecast = _format_forecast_points(
-        prediction.forecast_values if prediction else [], data_quality=data_quality
+    # Fetch latest predictions for all parameters and merge into one timeline.
+    all_predictions_query = (
+        select(Prediction)
+        .where(
+            Prediction.sensor_id == payload.sensor_id,
+            Prediction.parameter.in_(["ph", "turbidity", "temperature"]),
+        )
+        .order_by(desc(Prediction.created_at))
+        .limit(12)
     )
+    all_result = await db.execute(all_predictions_query)
+    all_predictions = all_result.scalars().all()
+
+    latest_by_param: dict[str, Prediction] = {}
+    for pred in all_predictions:
+        if pred.parameter and pred.parameter not in latest_by_param:
+            latest_by_param[pred.parameter] = pred
+
+    prediction_ph = latest_by_param.get("ph")
+    prediction_turbidity = latest_by_param.get("turbidity")
+    prediction_temperature = latest_by_param.get("temperature")
+
+    raw_ph = _format_forecast_points(
+        "ph",
+        prediction_ph.forecast_values if prediction_ph else [],
+        data_quality=min((recent_counts.get("ph", 0) / 24.0), 1.0),
+    )
+    raw_turbidity = _format_forecast_points(
+        "turbidity",
+        prediction_turbidity.forecast_values if prediction_turbidity else [],
+        data_quality=min((recent_counts.get("turbidity", 0) / 24.0), 1.0),
+    )
+    raw_temperature = _format_forecast_points(
+        "temperature",
+        prediction_temperature.forecast_values if prediction_temperature else [],
+        data_quality=min((recent_counts.get("temperature", 0) / 24.0), 1.0),
+    )
+
+    raw_forecast = _merge_forecast_points_by_timestamp(raw_ph, raw_turbidity, raw_temperature)
 
     forecast = (
         _trim_forecast_to_window(raw_forecast, window_start, window_end) if window_start else []
@@ -1355,6 +1392,13 @@ async def get_forecast_compatibility(
             f"{forecast_warning}; Forecast data exists but is outside the current window"
             if forecast_warning
             else "Forecast data exists but is outside the current window"
+        )
+
+    if insufficient_warning:
+        forecast_warning = (
+            f"{insufficient_warning}; {forecast_warning}"
+            if forecast_warning
+            else insufficient_warning
         )
 
     latest_snapshot = (
@@ -1374,13 +1418,13 @@ async def get_forecast_compatibility(
         "latest_reading": latest_snapshot,
         "history_hours": history_hours,
         "warning": forecast_warning,
-        "forecast_generated_at": prediction.created_at if prediction else None,
+        "forecast_generated_at": prediction_ph.created_at if prediction_ph else None,
         "forecast_start": window_start,
         "forecast_end": window_end,
         "forecast_timezone": forecast_timezone,
         "forecast_is_stale": bool(staleness.get("is_stale")),
         "forecast_stale_reason": staleness.get("stale_reason"),
-        "source_prediction_id": prediction.id if prediction else None,
+        "source_prediction_id": prediction_ph.id if prediction_ph else None,
     }
 
 
@@ -1422,12 +1466,46 @@ async def list_alerts(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ):
-    query = select(Alert).order_by(desc(Alert.created_at)).limit(limit)
+    query = (
+        select(
+            Alert,
+            Sensor.name.label("sensor_name"),
+            func.count(AlertEvidence.id).label("evidence_count"),
+        )
+        .join(Sensor, Alert.sensor_id == Sensor.id)
+        .outerjoin(AlertEvidence, Alert.id == AlertEvidence.alert_id)
+        .group_by(Alert.id, Sensor.name)
+        .order_by(desc(Alert.created_at))
+        .limit(limit)
+    )
     if severity:
         query = query.where(Alert.severity == severity)
 
     result = await db.execute(query)
-    return result.scalars().all()
+    rows = result.all()
+
+    alerts = []
+    for alert, sensor_name, evidence_count in rows:
+        alert_dict = {
+            "id": alert.id,
+            "sensor_id": alert.sensor_id,
+            "sensor_name": sensor_name,
+            "severity": alert.severity,
+            "previous_state": alert.previous_state,
+            "message": alert.message,
+            "created_at": alert.created_at,
+            "acknowledged_at": alert.acknowledged_at,
+            "acknowledged_by": alert.acknowledged_by,
+            "resolved_at": alert.resolved_at,
+            "resolved_by": alert.resolved_by,
+            "resolution_note": alert.resolution_note,
+            "reopened_at": alert.reopened_at,
+            "reopened_by": alert.reopened_by,
+            "evidence_count": evidence_count,
+        }
+        alerts.append(AlertResponse(**alert_dict))
+
+    return alerts
 
 
 @app.get("/api/v1/settings/{user_id}", response_model=UserSettingsResponse)
@@ -1600,6 +1678,87 @@ async def acknowledge_alert(
     alert.acknowledged_by = user_id
     await db.commit()
     return {"status": "acknowledged"}
+
+
+@app.post("/api/v1/alerts/{alert_id}/resolve")
+async def resolve_alert(
+    alert_id: int,
+    request: AlertResolveRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    result = await db.execute(select(Alert).where(Alert.id == alert_id))
+    alert = result.scalar_one_or_none()
+
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    alert.resolved_at = datetime.now(timezone.utc)
+    alert.resolved_by = user_id
+    if request is not None and request.resolution_note is not None:
+        alert.resolution_note = request.resolution_note
+    await db.commit()
+    return {"status": "resolved"}
+
+
+@app.post("/api/v1/alerts/{alert_id}/reopen")
+async def reopen_alert(
+    alert_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    result = await db.execute(select(Alert).where(Alert.id == alert_id))
+    alert = result.scalar_one_or_none()
+
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    alert.resolved_at = None
+    alert.resolved_by = None
+    alert.resolution_note = None
+    alert.reopened_at = datetime.now(timezone.utc)
+    alert.reopened_by = user_id
+    await db.commit()
+    return {"status": "reopened"}
+
+
+@app.post("/api/v1/alerts/{alert_id}/evidence", response_model=AlertEvidenceResponse)
+async def attach_evidence(
+    alert_id: int,
+    evidence: AlertEvidenceCreate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    result = await db.execute(select(Alert).where(Alert.id == alert_id))
+    alert = result.scalar_one_or_none()
+
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    new_evidence = AlertEvidence(
+        alert_id=alert_id,
+        image_data=evidence.image_data,
+        analysis_result=evidence.analysis_result,
+        attached_by=user_id,
+    )
+    db.add(new_evidence)
+    await db.commit()
+    await db.refresh(new_evidence)
+    return new_evidence
+
+
+@app.get("/api/v1/alerts/{alert_id}/evidence", response_model=List[AlertEvidenceResponse])
+async def get_alert_evidence(
+    alert_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(AlertEvidence)
+        .where(AlertEvidence.alert_id == alert_id)
+        .order_by(desc(AlertEvidence.attached_at))
+    )
+    return result.scalars().all()
 
 
 # --- Chat Thread Endpoints ---

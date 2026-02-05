@@ -9,6 +9,7 @@ import {
   AnalyticsSummaryResponse,
   AnalyticsInsightsResponse,
 } from "@/lib/api";
+import { UI_COPY, getSeverityLabel } from "@/lib/copy";
 
 const DEMO_MODE_STORAGE_KEY = "aquamine_demo_mode";
 const DEMO_REFRESH_INTERVAL = 5000;
@@ -118,7 +119,7 @@ export default function AnalyticsWidget() {
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
           <Activity className="w-5 h-5 text-cyan-600" />
-          <h3 className="font-semibold text-slate-800">Analytics</h3>
+          <h3 className="font-semibold text-slate-800">{UI_COPY.analytics_title}</h3>
         </div>
         <div className="space-y-3">
           <div className="h-4 bg-slate-100 rounded animate-pulse" />
@@ -134,7 +135,7 @@ export default function AnalyticsWidget() {
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
         <div className="flex items-center gap-2 mb-3">
           <Activity className="w-5 h-5 text-cyan-600" />
-          <h3 className="font-semibold text-slate-800">Analytics</h3>
+          <h3 className="font-semibold text-slate-800">{UI_COPY.analytics_title}</h3>
         </div>
         <div className="text-sm text-rose-600 bg-rose-50 p-3 rounded-lg">
           {error}
@@ -143,14 +144,14 @@ export default function AnalyticsWidget() {
           onClick={fetchData}
           className="mt-3 text-sm text-cyan-600 hover:text-cyan-700 font-medium"
         >
-          Retry
+          {UI_COPY.retry}
         </button>
       </div>
     );
   }
 
   const executiveStatus = insights?.executive_summary?.status || "NORMAL";
-  const headline = insights?.executive_summary?.headline || "No insights available";
+  const headline = insights?.executive_summary?.headline || UI_COPY.no_insights;
   const recommendation = insights?.executive_summary?.recommendation || "";
 
   const phCompliance = summary?.water_quality?.ph?.percent_compliance;
@@ -159,18 +160,21 @@ export default function AnalyticsWidget() {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Activity className="w-5 h-5 text-cyan-600" />
-          <h3 className="font-semibold text-slate-800">Analytics</h3>
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <div className="flex items-center gap-2">
+            <Activity className="w-5 h-5 text-cyan-600" />
+            <h3 className="font-semibold text-slate-800">{UI_COPY.analytics_title}</h3>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5 ml-7">Agregat dari semua sensor aktif</p>
         </div>
         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(executiveStatus)}`}>
           {getStatusIcon(executiveStatus)}
-          <span className="capitalize">{executiveStatus.toLowerCase()}</span>
+          <span className="capitalize">{getSeverityLabel(executiveStatus)}</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      <div className="grid grid-cols-3 gap-2 mb-4 mt-3">
         <div className="bg-slate-50 rounded-lg p-2 text-center">
           <div className="text-xs text-slate-500 mb-1">pH</div>
           <div className={`text-sm font-semibold ${getComplianceColorClass(phCompliance)}`}>
@@ -178,13 +182,13 @@ export default function AnalyticsWidget() {
           </div>
         </div>
         <div className="bg-slate-50 rounded-lg p-2 text-center">
-          <div className="text-xs text-slate-500 mb-1">Turbidity</div>
+          <div className="text-xs text-slate-500 mb-1">{UI_COPY.turbidity}</div>
           <div className={`text-sm font-semibold ${getComplianceColorClass(turbidityCompliance)}`}>
             {formatPercent(turbidityCompliance)}
           </div>
         </div>
         <div className="bg-slate-50 rounded-lg p-2 text-center">
-          <div className="text-xs text-slate-500 mb-1">Temp</div>
+          <div className="text-xs text-slate-500 mb-1">{UI_COPY.temperature}</div>
           <div className={`text-sm font-semibold ${getComplianceColorClass(temperatureCompliance)}`}>
             {formatPercent(temperatureCompliance)}
           </div>
@@ -208,7 +212,7 @@ export default function AnalyticsWidget() {
           href="/analytics"
           className="text-sm text-cyan-600 hover:text-cyan-700 font-medium"
         >
-          View details →
+          {UI_COPY.view_details} →
         </a>
         {lastUpdated && (
           <span className="text-xs text-slate-400">
