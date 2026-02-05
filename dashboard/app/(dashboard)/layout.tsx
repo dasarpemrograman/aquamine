@@ -2,7 +2,8 @@
 
 import Sidebar from "@/app/components/Sidebar";
 import TopBar from "@/app/components/TopBar";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 const classNames = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(" ");
 
 export default function DashboardLayout({
@@ -10,8 +11,15 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    if (pathname === '/chat') {
+      setCollapsed(true);
+    }
+  }, [pathname]);
 
   return (
     <div className="flex min-h-screen bg-slate-50/50">
