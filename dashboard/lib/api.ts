@@ -79,6 +79,16 @@ export interface Alert {
   resolution_note: string | null;
   reopened_at: string | null;
   reopened_by: string | null;
+  evidence_count: number;
+}
+
+export interface AlertEvidence {
+  id: number;
+  alert_id: number;
+  image_data: string;
+  analysis_result: AnalysisResponse | null;
+  attached_by: string | null;
+  attached_at: string;
 }
 
 export interface AlertActionStatusResponse {
@@ -236,6 +246,60 @@ export async function fetchAlerts(token?: string | null): Promise<Alert[]> {
   }
   
   const response = await fetch(`${API_BASE}/api/v1/alerts`, { headers });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function attachEvidenceToAlert(
+  alertId: number,
+  imageData: string,
+  analysisResult: AnalysisResponse | null,
+  token: string | null
+): Promise<AlertEvidence> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/alerts/${alertId}/evidence`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      alert_id: alertId,
+      image_data: imageData,
+      analysis_result: analysisResult,
+    }),
+  });
+
+  if (!response.ok) {
+    const error: ErrorResponse = await response.json().catch(() => ({
+      error: "Unknown error",
+      detail: `Server returned ${response.status} ${response.statusText}`
+    }));
+    throw new Error(error.detail || error.error);
+  }
+
+  return response.json();
+}
+
+export async function getAlertEvidence(
+  alertId: number,
+  token: string | null
+): Promise<AlertEvidence[]> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/alerts/${alertId}/evidence`, { headers });
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({
