@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { analyzeImage, fetchAlerts, attachEvidenceToAlert, type AnalysisResponse, type Alert } from "@/lib/api";
 import CVDetectionOverlay from "./CVDetectionOverlay";
 import { GlassCard } from "@/app/components/ui/GlassCard";
-import { Camera, RefreshCw, AlertCircle, FileText, Save, Repeat, X, CheckCircle2, AlertTriangle, ChevronDown, Paperclip, Zap, Square } from "lucide-react";
+import { Camera, RefreshCw, AlertCircle, FileText, Repeat, X, CheckCircle2, AlertTriangle, ChevronDown, Paperclip, Zap, Square } from "lucide-react";
 import { useFieldMode } from "../context/FieldModeContext";
 import { useAuth } from "@clerk/nextjs";
 
@@ -563,19 +563,13 @@ export default function LiveCameraView({
                             Lampirkan ke Peringatan
                         </button>
                         
-                        <div className="grid grid-cols-2 gap-3">
-                            <button className="py-3 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors">
-                                <Save className="w-5 h-5" />
-                                Simpan
-                            </button>
-                            <button 
-                                onClick={handleRetake}
-                                className="py-3 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors"
-                            >
-                                <Repeat className="w-5 h-5" />
-                                Ambil Ulang
-                            </button>
-                        </div>
+                        <button 
+                            onClick={handleRetake}
+                            className="w-full py-3 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors"
+                        >
+                            <Repeat className="w-5 h-5" />
+                            Ambil Ulang
+                        </button>
                     </div>
                 </div>
              </GlassCard>

@@ -7,11 +7,9 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   TrendingUp, 
-  Info, 
   RefreshCw,
   Zap,
   CheckSquare,
-  List,
   ChevronDown,
   ChevronUp,
   ClipboardList
@@ -449,55 +447,6 @@ export default function AnalyticsPage() {
                       </div>
                     </div>
                   </div>
-
-                  {compliance && (
-                    <div className="mb-6">
-                       <div className="flex items-center gap-2 mb-3">
-                           <List size={16} className="text-slate-400" />
-                           <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Angka Penting (24 jam)</h4>
-                       </div>
-                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                           <div className="p-3 rounded-lg border border-slate-200 bg-white overflow-hidden min-w-0">
-                               <div className="text-xs text-slate-500 mb-1 truncate">Kepatuhan pH</div>
-                               <div className={`text-lg font-bold tabular-nums truncate ${getComplianceColor(compliance.ph.percent_compliance)}`}>
-                                  {compliance.ph.percent_compliance?.toFixed(1)}% <span className="text-sm font-normal text-slate-600">patuh</span>
-                                </div>
-                               <div className="text-xs text-slate-400 mt-1 truncate">
-                                  ({compliance.ph.sample_count - compliance.ph.violation_count}/{compliance.ph.sample_count})
-                               </div>
-                               <div className="text-[10px] text-slate-400 mt-1 pt-1 border-t border-slate-100 truncate">
-                                  Std: {compliance.standard.ph_min} - {compliance.standard.ph_max}
-                               </div>
-                           </div>
-                           
-                           <div className="p-3 rounded-lg border border-slate-200 bg-white overflow-hidden min-w-0">
-                               <div className="text-xs text-slate-500 mb-1 truncate">Kepatuhan Kekeruhan</div>
-                               <div className={`text-lg font-bold tabular-nums truncate ${getComplianceColor(compliance.turbidity.percent_compliance)}`}>
-                                  {compliance.turbidity.percent_compliance?.toFixed(1)}% <span className="text-sm font-normal text-slate-600">patuh</span>
-                               </div>
-                               <div className="text-xs text-slate-400 mt-1 truncate">
-                                  ({compliance.turbidity.sample_count - compliance.turbidity.violation_count}/{compliance.turbidity.sample_count})
-                               </div>
-                                <div className="text-[10px] text-slate-400 mt-1 pt-1 border-t border-slate-100 truncate">
-                                  Max: {compliance.standard.turbidity_max_ntu} NTU
-                               </div>
-                           </div>
-
-                           <div className="p-3 rounded-lg border border-slate-200 bg-white overflow-hidden min-w-0">
-                               <div className="text-xs text-slate-500 mb-1 truncate">Kepatuhan Suhu</div>
-                               <div className={`text-lg font-bold tabular-nums truncate ${getComplianceColor(compliance.temperature.percent_compliance)}`}>
-                                  {compliance.temperature.percent_compliance?.toFixed(1)}% <span className="text-sm font-normal text-slate-600">patuh</span>
-                               </div>
-                               <div className="text-xs text-slate-400 mt-1 truncate">
-                                  ({compliance.temperature.sample_count - compliance.temperature.violation_count}/{compliance.temperature.sample_count})
-                               </div>
-                                <div className="text-[10px] text-slate-400 mt-1 pt-1 border-t border-slate-100 truncate">
-                                  Max: {compliance.standard.temperature_max_c}°C
-                               </div>
-                           </div>
-                       </div>
-                    </div>
-                  )}
 
                   <div className="border border-slate-200 rounded-lg overflow-hidden">
                       <button 

@@ -82,8 +82,12 @@ export default function Sidebar({
           collapsed ? "px-0 justify-center" : "px-8 justify-between"
         )}>
           <Link href="/" className="flex items-center gap-3 group overflow-hidden">
-            <div className="w-8 h-8 min-w-[32px] rounded-xl bg-gradient-to-tr from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/20 flex items-center justify-center text-white font-bold text-lg">
-              A
+            <div className="w-8 h-8 min-w-[32px] rounded-xl overflow-hidden shadow-lg shadow-cyan-500/20 flex items-center justify-center">
+              <img 
+                src="/aquamine-icon.png" 
+                alt="AquaMine Logo"
+                className="w-full h-full object-contain"
+              />
             </div>
             <span className={classNames(
               "font-bold text-xl tracking-tight text-slate-800 group-hover:text-blue-600 transition-all duration-300 whitespace-nowrap",

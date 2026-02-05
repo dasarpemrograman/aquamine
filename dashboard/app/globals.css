@@ -195,3 +195,18 @@ body.field-mode {
   border: 1px solid var(--glass-border);
   box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5);
 }
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 40px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
