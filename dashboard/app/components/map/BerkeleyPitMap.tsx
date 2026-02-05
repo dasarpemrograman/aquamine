@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useMemo } from "react";
+import React from "react";
 import Link from "next/link";
 import { 
   Map as MapIcon, 
@@ -44,6 +45,10 @@ const Polygon = dynamic(
 );
 const CircleMarker = dynamic(
   () => import("react-leaflet").then((mod) => mod.CircleMarker),
+  { ssr: false }
+);
+const Circle = dynamic(
+  () => import("react-leaflet").then((mod) => mod.Circle),
   { ssr: false }
 );
 const Popup = dynamic(
@@ -203,8 +208,9 @@ export default function BerkeleyPitMap({
             pathOptions={{
               color: getPolygonColor(sensors),
               fillColor: getPolygonColor(sensors),
-              fillOpacity: 0.3,
-              weight: 2,
+              fillOpacity: 0.05,
+              weight: 1,
+              opacity: 0.2,
             }}
           />
         )}
@@ -213,64 +219,76 @@ export default function BerkeleyPitMap({
           if (!sensor.latitude || !sensor.longitude) return null;
 
           const isSelected = selectedSensor?.sensor_id === sensor.sensor_id;
+          const markerColor = getMarkerColor(sensor);
 
           return (
-            <CircleMarker
-              key={sensor.sensor_id}
-              center={[sensor.latitude, sensor.longitude]}
-              radius={isSelected ? 16 : 12}
-              pathOptions={{
-                color: isSelected ? "#fff" : getMarkerColor(sensor),
-                fillColor: getMarkerColor(sensor),
-                fillOpacity: 0.9,
-                weight: isSelected ? 3 : 2,
-              }}
-              eventHandlers={{
-                click: () => {
-                   if (interactive) {
-                     setSelectedSensor(sensor);
-                   }
-                }
-              }}
-            >
-              {!interactive && (
-                <>
-                  <Tooltip>
-                    <span className="font-medium">{sensor.name}</span>
-                  </Tooltip>
-                  <Popup>
-                    <div className="p-2 min-w-[200px]">
-                      <h3 className="font-bold text-lg mb-2">{sensor.name}</h3>
-                      <div className="space-y-1 text-sm">
-                        <p>
-                          <span className="text-slate-500">Status:</span>{" "}
-                          <span
-                            className={`font-medium capitalize ${
-                              sensor.current_state === "critical"
-                                ? "text-rose-600"
-                                : sensor.current_state === "warning"
-                                ? "text-amber-600"
-                                : "text-emerald-600"
-                            }`}
-                          >
-                            {sensor.current_state}
-                          </span>
-                        </p>
-                        {sensor.sensor_id && (
-                          <Link
-                            href={`/sensors/${sensor.sensor_id}`}
-                            className="inline-flex items-center gap-1 text-cyan-600 hover:text-cyan-700 mt-2 text-sm font-medium"
-                          >
-                            <Waves size={14} />
-                            View Details →
-                          </Link>
-                        )}
+            <React.Fragment key={sensor.sensor_id}>
+              <Circle
+                center={[sensor.latitude, sensor.longitude]}
+                radius={500}
+                pathOptions={{
+                  color: markerColor,
+                  fillColor: markerColor,
+                  fillOpacity: 0.2,
+                  weight: 1,
+                }}
+              />
+              <CircleMarker
+                center={[sensor.latitude, sensor.longitude]}
+                radius={isSelected ? 12 : 8}
+                pathOptions={{
+                  color: isSelected ? "#fff" : markerColor,
+                  fillColor: markerColor,
+                  fillOpacity: 0.9,
+                  weight: isSelected ? 3 : 2,
+                }}
+                eventHandlers={{
+                  click: () => {
+                     if (interactive) {
+                       setSelectedSensor(sensor);
+                     }
+                  }
+                }}
+              >
+                {!interactive && (
+                  <>
+                    <Tooltip>
+                      <span className="font-medium">{sensor.name}</span>
+                    </Tooltip>
+                    <Popup>
+                      <div className="p-2 min-w-[200px]">
+                        <h3 className="font-bold text-lg mb-2">{sensor.name}</h3>
+                        <div className="space-y-1 text-sm">
+                          <p>
+                            <span className="text-slate-500">Status:</span>{" "}
+                            <span
+                              className={`font-medium capitalize ${
+                                sensor.current_state === "critical"
+                                  ? "text-rose-600"
+                                  : sensor.current_state === "warning"
+                                  ? "text-amber-600"
+                                  : "text-emerald-600"
+                              }`}
+                            >
+                              {sensor.current_state}
+                            </span>
+                          </p>
+                          {sensor.sensor_id && (
+                            <Link
+                              href={`/sensors/${sensor.sensor_id}`}
+                              className="inline-flex items-center gap-1 text-cyan-600 hover:text-cyan-700 mt-2 text-sm font-medium"
+                            >
+                              <Waves size={14} />
+                              View Details →
+                            </Link>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </Popup>
-                </>
-              )}
-            </CircleMarker>
+                    </Popup>
+                  </>
+                )}
+              </CircleMarker>
+            </React.Fragment>
           );
         })}
       </MapContainer>
