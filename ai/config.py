@@ -33,12 +33,15 @@ class Settings(BaseModel):
     FONNTE_API_TOKEN: Optional[str] = None
     CEREBRAS_API_KEY: Optional[str] = None
 
-    # Compliance standards (separate from alert/anomaly thresholds)
-    COMPLIANCE_PH_MIN: float = 6.5
-    COMPLIANCE_PH_MAX: float = 8.5
+    # Compliance standards based on KepMen LH 113/2003 (Coal Mining Effluent)
+    # pH range 6-9 per Indonesian mining regulation for coal effluent discharge
+    # Turbidity/TSS limits vary by operation type; using conservative 50 NTU
+    # Temperature max 35°C to prevent thermal shock in receiving waters
+    COMPLIANCE_PH_MIN: float = 6.0
+    COMPLIANCE_PH_MAX: float = 9.0
     COMPLIANCE_TURBIDITY_MAX_NTU: float = 50
     COMPLIANCE_TEMPERATURE_MAX_C: float = 35
-    COMPLIANCE_STANDARD_SOURCE: str = "Kepmenkes/PROPER"
+    COMPLIANCE_STANDARD_SOURCE: str = "KepMen LH 113/2003"
 
     # IoT / MQTT Configuration (With Defaults)
     MQTT_BROKER: str = "broker.hivemq.com"
