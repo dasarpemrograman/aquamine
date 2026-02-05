@@ -1,14 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Info, CheckCircle2, MapPin, Check, ChevronDown, ChevronUp, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, Info, CheckCircle2, MapPin, Check, RotateCcw, ChevronDown } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
-import { formatWIB } from "@/lib/dateUtils";
+import { formatRelativeTime } from "@/lib/dateUtils";
 import { GlassCard } from "@/app/components/ui/GlassCard";
-import { StatusChip } from "@/app/components/ui/StatusChip";
 import { fetchAlerts, Alert, acknowledgeAlertOffline, resolveAlertOffline, reopenAlertOffline } from "@/lib/api";
-import { groupAlerts, GroupedAlert } from "@/lib/alertGrouping";
-import { UI_COPY, getSeverityLabel, formatString } from "@/lib/copy";
+import { UI_COPY, formatString } from "@/lib/copy";
 import Link from "next/link";
 
 interface AlertListProps {
@@ -18,11 +16,27 @@ interface AlertListProps {
   compact?: boolean; // For dashboard widget mode
 }
 
+const THRESHOLDS = {
+  ph: {
+    warning_low: 5.5,
+    critical_low: 4.5,
+    warning_high: 9.0,
+    critical_high: 10.0,
+  },
+  turbidity: {
+    warning_high: 50.0,
+    critical_high: 100.0,
+  },
+  temperature: {
+    warning_high: 35.0,
+    critical_high: 40.0,
+  },
+};
+
 export default function AlertList({ severityFilter = "all", timeRange = "24h", limit, compact = false }: AlertListProps) {
   const { getToken } = useAuth();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [activeTab, setActiveTab] = useState<'active' | 'acknowledged' | 'resolved'>('active');
-  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
   const [loadingId, setLoadingId] = useState<number | null>(null);
   const [visibleCount, setVisibleCount] = useState(50);
 
@@ -160,27 +174,8 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
 
   const queuedIds = useMemo(() => new Set(Object.keys(queuedNoticeById).map(Number)), [queuedNoticeById]);
 
-  const toggleGroup = (id: number) => {
-    const newExpanded = new Set(expandedGroups);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
-    } else {
-      newExpanded.add(id);
-    }
-    setExpandedGroups(newExpanded);
-  };
-
-  const getStatusVariant = (severity: string): 'critical' | 'warning' | 'info' | 'active' => {
-    switch (severity) {
-      case "critical": return "critical";
-      case "warning": return "warning";
-      case "info": return "info";
-      default: return "active";
-    }
-  };
-
   const getSeverityIcon = (severity: string) => {
-    const baseClass = "flex items-center justify-center rounded-full shadow-sm border border-white/50 backdrop-blur-md w-10 h-10";
+    const baseClass = "flex items-center justify-center rounded-full shadow-sm border border-white/50 backdrop-blur-md w-10 h-10 flex-shrink-0";
     
     switch (severity) {
       case "critical": 
@@ -205,10 +200,84 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
     }
   };
 
+  // --- Parsing & Enrichment ---
+
+  const parseAlertMessage = (message: string | null, severity: string) => {
+    if (!message) return { title: "Unknown Alert", description: "", suggestion: null };
+
+    const regex = /^(\w+)\s+(\w+):\s+([\d.]+)/i;
+    const match = message.match(regex);
+
+    if (!match) return { title: message, description: "", suggestion: null };
+
+    const param = match[1].toLowerCase();
+    const value = parseFloat(match[3]);
+    
+    let title = "";
+    let description = "";
+    let suggestion = null;
+
+    if (param === "ph") {
+      if (value < THRESHOLDS.ph.critical_low) {
+        title = "pH KRITIS";
+        description = `${value.toFixed(2)} (di bawah batas ${THRESHOLDS.ph.critical_low})`;
+        suggestion = "Saran: Cek sistem netralisasi, tambah kapur";
+      } else if (value < THRESHOLDS.ph.warning_low) {
+        title = "pH RENDAH";
+        description = `${value.toFixed(2)} (di bawah batas ${THRESHOLDS.ph.warning_low})`;
+        suggestion = "Saran: Cek dosis netralisasi";
+      } else if (value > THRESHOLDS.ph.critical_high) {
+        title = "pH TINGGI (KRITIS)";
+        description = `${value.toFixed(2)} (di atas batas ${THRESHOLDS.ph.critical_high})`;
+        suggestion = "Saran: Cek kebocoran alkali, sistem treatment";
+      } else if (value > THRESHOLDS.ph.warning_high) {
+        title = "pH TINGGI";
+        description = `${value.toFixed(2)} (di atas batas ${THRESHOLDS.ph.warning_high})`;
+        suggestion = "Saran: Cek kebocoran alkali";
+      } else {
+        title = `pH ${severity.toUpperCase()}`;
+        description = `${value.toFixed(2)}`;
+      }
+    } else if (param === "turbidity") {
+       if (value > THRESHOLDS.turbidity.critical_high) {
+         title = "TURBIDITY KRITIS";
+         description = `${value.toFixed(2)} NTU (di atas batas ${THRESHOLDS.turbidity.critical_high} NTU)`;
+         suggestion = "Saran: Cek sediment/runoff, tanggul, pompa";
+       } else if (value > THRESHOLDS.turbidity.warning_high) {
+         title = "TURBIDITY TINGGI";
+         description = `${value.toFixed(2)} NTU (di atas batas ${THRESHOLDS.turbidity.warning_high} NTU)`;
+         suggestion = "Saran: Cek pengendapan";
+       } else {
+         title = `TURBIDITY ${severity.toUpperCase()}`;
+         description = `${value.toFixed(2)} NTU`;
+       }
+    } else if (param === "temperature") {
+       if (value > THRESHOLDS.temperature.critical_high) {
+         title = "TEMPERATURE KRITIS";
+         description = `${value.toFixed(2)}C (di atas batas ${THRESHOLDS.temperature.critical_high}C)`;
+         suggestion = "Saran: Cek sumber panas, pendinginan";
+       } else if (value > THRESHOLDS.temperature.warning_high) {
+         title = "TEMPERATURE TINGGI";
+         description = `${value.toFixed(2)}C (di atas batas ${THRESHOLDS.temperature.warning_high}C)`;
+         suggestion = "Saran: Monitor suhu peralatan";
+       } else {
+         title = `TEMPERATURE ${severity.toUpperCase()}`;
+         description = `${value.toFixed(2)}C`;
+       }
+    } else {
+      title = `${param.toUpperCase()} ${severity.toUpperCase()}`;
+      description = `${value}`;
+    }
+
+    return { title, description, suggestion };
+  };
+
   const alertsWithinFilters = useMemo(() => {
     return alerts.filter((alert) => {
+      // 1. External severityFilter prop (from parent)
       if (severityFilter !== "all" && alert.severity !== severityFilter) return false;
 
+      // 2. Time range
       if (timeRange !== "all") {
         const alertDate = new Date(alert.created_at).getTime();
         const now = new Date().getTime();
@@ -254,34 +323,40 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
     return isResolved;
   });
 
-  const groupedAlerts = groupAlerts(filteredAlerts);
   const displayAlerts = limit 
-    ? groupedAlerts.slice(0, limit) 
-    : groupedAlerts.slice(0, visibleCount);
+    ? filteredAlerts.slice(0, limit) 
+    : filteredAlerts.slice(0, visibleCount);
 
-  const hasMore = !limit && groupedAlerts.length > displayAlerts.length;
+  const hasMore = !limit && filteredAlerts.length > displayAlerts.length;
 
   return (
     <div className="space-y-4">
       {!compact && (
-        <div className="flex p-1 bg-slate-100/50 backdrop-blur-sm rounded-lg w-fit border border-slate-200">
-          {(['active', 'acknowledged', 'resolved'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                activeTab === tab 
-                  ? 'bg-white text-slate-800 shadow-sm' 
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {tab === 'active' ? UI_COPY.tab_active : tab === 'acknowledged' ? UI_COPY.tab_acknowledged : UI_COPY.tab_resolved}
-               <span className="ml-2 text-xs opacity-60 bg-slate-200 px-1.5 py-0.5 rounded-full">
-                {tab === "active" ? tabCounts.active : tab === "acknowledged" ? tabCounts.acknowledged : tabCounts.resolved}
-               </span>
-             </button>
-           ))}
-         </div>
+        <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+          <div className="flex p-1 bg-slate-100/50 backdrop-blur-sm rounded-lg w-fit border border-slate-200">
+            {(['active', 'acknowledged', 'resolved'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => {
+                  setActiveTab(tab);
+                  // Reset sub-filter when changing tabs if needed, or keep it
+                }}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  activeTab === tab 
+                    ? 'bg-white text-slate-800 shadow-sm' 
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {tab === 'active' ? UI_COPY.tab_active : tab === 'acknowledged' ? UI_COPY.tab_acknowledged : UI_COPY.tab_resolved}
+                 <span className="ml-2 text-xs opacity-60 bg-slate-200 px-1.5 py-0.5 rounded-full">
+                  {tab === "active" ? tabCounts.active : tab === "acknowledged" ? tabCounts.acknowledged : tabCounts.resolved}
+                 </span>
+               </button>
+             ))}
+           </div>
+
+
+        </div>
        )}
 
       {displayAlerts.length === 0 ? (
@@ -296,137 +371,119 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
           <p className="text-slate-400 mt-1 max-w-xs mx-auto">{UI_COPY.system_normal}</p>
         </GlassCard>
       ) : (
-        displayAlerts.map((group) => (
-          <div key={group.id} className="relative">
-             <GlassCard 
-               className={`group transition-all duration-300 hover:shadow-md ${
-                group.resolved_at
-                  ? 'bg-slate-50/70 border-slate-200'
-                  : group.acknowledged_at
-                  ? 'bg-slate-50/50 border-slate-200'
-                  : 'hover:bg-white/60'
-               }`}
-               variant="flat"
-               padding={compact ? "sm" : "md"}
-             >
-              <div className="flex flex-col sm:flex-row items-start gap-4">
-                <div className="flex-shrink-0 mt-1">
-                  {getSeverityIcon(group.severity)}
-                </div>
+        displayAlerts.map((alert) => {
+            const { title, description, suggestion } = parseAlertMessage(alert.message, alert.severity);
+            
+            return (
+              <div key={alert.id} className="relative">
+                 <GlassCard 
+                   className={`group transition-all duration-300 hover:shadow-md ${
+                    alert.resolved_at
+                      ? 'bg-slate-50/70 border-slate-200'
+                      : alert.acknowledged_at
+                      ? 'bg-slate-50/50 border-slate-200'
+                      : 'hover:bg-white/60'
+                   }`}
+                   variant="flat"
+                   padding={compact ? "sm" : "md"}
+                 >
+                  <div className="flex flex-col sm:flex-row items-start gap-4">
+                    <div className="flex-shrink-0 mt-1 hidden sm:block">
+                      {getSeverityIcon(alert.severity)}
+                    </div>
 
-                  <div className="flex-grow min-w-0">
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-y-2 gap-x-4 mb-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-mono font-medium text-slate-400 uppercase tracking-wider mr-1">
-                          #{group.id} • {group.sensor_id}
-                        </span>
-                        <StatusChip 
-                          status={getStatusVariant(group.severity)} 
-                          label={getSeverityLabel(group.severity)} 
-                          size="sm" 
-                        />
-                        {group.count > 1 && (
-                          <span 
-                            className={`inline-flex items-center justify-center font-semibold rounded-full border border-slate-200 backdrop-blur-sm bg-slate-100 text-slate-600 shadow-sm gap-1 cursor-help whitespace-nowrap ${compact ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2 py-0.5'}`}
-                            title={formatString(UI_COPY.similar_alerts_tooltip, { count: group.count - 1 })}
-                          >
-                            {formatString(UI_COPY.similar_alerts, { count: group.count - 1 })}
-                          </span>
+                      <div className="flex-grow min-w-0 w-full">
+                        {/* Header Row */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-y-1 mb-2">
+                           <h4 className="text-base font-bold text-slate-800 leading-snug flex items-center gap-2">
+                             <span className="sm:hidden">{getSeverityIcon(alert.severity)}</span>
+                             {title}
+                           </h4>
+                           <span className="text-xs font-medium text-slate-400 whitespace-nowrap flex items-center gap-1">
+                             <MapPin size={12} />
+                             {alert.sensor_id} • {formatRelativeTime(alert.created_at)}
+                           </span>
+                        </div>
+                        
+                        {/* Description */}
+                        <div className="text-sm font-medium text-slate-600 mb-3">
+                            {description}
+                        </div>
+
+                        {/* Suggestion Box */}
+                        {suggestion && (
+                            <div className="mb-4 bg-yellow-50/50 border border-yellow-100 rounded-md p-2.5 text-sm text-slate-700">
+                                {suggestion}
+                            </div>
                         )}
-                      </div>
-                      <span className="text-xs font-medium text-slate-400 whitespace-nowrap bg-slate-100/50 px-2 py-1 rounded-md self-start sm:self-auto">
-                        {formatWIB(group.created_at)}
-                      </span>
-                    </div>
-                    
-                    <h4 className="text-base font-semibold text-slate-800 leading-snug mb-2">
-                      {group.message}
-                    </h4>
-                    {activeTab === 'resolved' && group.resolution_note && (
-                      <div className="mt-2 text-sm text-slate-500 bg-slate-100/50 p-2 rounded-md border border-slate-100">
-                        <span className="font-medium text-slate-600 mr-1">Catatan resolusi:</span>
-                        {group.resolution_note}
-                      </div>
-                    )}
 
-                    {!compact && (
-                      <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-100/50">
-                       {activeTab === 'active' && (
-                         <button 
-                           onClick={(e) => handleAcknowledge(group.id, e)}
-                           disabled={loadingId === group.id || queuedIds.has(group.id)}
-                           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-md transition-colors disabled:opacity-50"
-                         >
-                           <Check size={14} />
-                           {loadingId === group.id ? UI_COPY.saving : UI_COPY.acknowledge}
-                         </button>
-                       )}
+                        {/* Resolution Note */}
+                        {activeTab === 'resolved' && alert.resolution_note && (
+                          <div className="mb-4 text-sm text-slate-500 bg-slate-100/50 p-2 rounded-md border border-slate-100">
+                            <span className="font-medium text-slate-600 mr-1">Catatan resolusi:</span>
+                            {alert.resolution_note}
+                          </div>
+                        )}
 
-                      {(activeTab === 'active' || activeTab === 'acknowledged') && (
-                        <button 
-                          onClick={(e) => handleResolve(group.id, e)}
-                          disabled={loadingId === group.id || queuedIds.has(group.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50"
-                        >
-                          <CheckCircle2 size={14} />
-                          {loadingId === group.id ? UI_COPY.saving : UI_COPY.resolve}
-                        </button>
-                      )}
+                         {!compact && (
+                           <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-100/50">
+                            {activeTab === 'active' && (
+                              <button 
+                                onClick={(e) => handleAcknowledge(alert.id, e)}
+                                disabled={loadingId === alert.id || queuedIds.has(alert.id)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-md transition-colors disabled:opacity-50"
+                              >
+                                <Check size={14} />
+                                {loadingId === alert.id ? UI_COPY.saving : UI_COPY.acknowledge}
+                              </button>
+                            )}
 
-                      {activeTab === 'resolved' && (
-                        <button
-                          onClick={(e) => handleReopen(group.id, e)}
-                          disabled={loadingId === group.id || queuedIds.has(group.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50"
-                        >
-                          <RotateCcw size={14} />
-                          {loadingId === group.id ? UI_COPY.saving : "Buka kembali"}
-                        </button>
-                      )}
+                          {(activeTab === 'acknowledged') && (
+                            <button 
+                              onClick={(e) => handleResolve(alert.id, e)}
+                              disabled={loadingId === alert.id || queuedIds.has(alert.id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50 border border-slate-200"
+                            >
+                              <CheckCircle2 size={14} />
+                              {loadingId === alert.id ? UI_COPY.saving : UI_COPY.resolve}
+                            </button>
+                          )}
 
-                      {queuedNoticeById[group.id] && (
-                        <span className="text-xs font-medium text-slate-500">
-                          {queuedNoticeById[group.id].message}
-                        </span>
-                      )}
+                          {activeTab === 'resolved' && (
+                            <button
+                              onClick={(e) => handleReopen(alert.id, e)}
+                              disabled={loadingId === alert.id || queuedIds.has(alert.id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-md transition-colors disabled:opacity-50 border border-slate-200"
+                            >
+                              <RotateCcw size={14} />
+                              {loadingId === alert.id ? UI_COPY.saving : "Buka kembali"}
+                            </button>
+                          )}
 
-                      <Link 
-                        href={`/map?sensor_id=${group.sensor_id}`}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-md transition-colors"
-                      >
-                        <MapPin size={14} />
-                        {UI_COPY.map}
-                      </Link>
+                          {queuedNoticeById[alert.id] && (
+                            <span className="text-xs font-medium text-slate-500 ml-2">
+                              {queuedNoticeById[alert.id].message}
+                            </span>
+                          )}
 
-                      {group.count > 1 && (
-                        <button 
-                          onClick={() => toggleGroup(group.id)}
-                          className="ml-auto flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
-                        >
-                          {expandedGroups.has(group.id) ? UI_COPY.collapse : UI_COPY.expand_history}
-                          {expandedGroups.has(group.id) ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </button>
+                           <div className="ml-auto flex items-center gap-2">
+                            <Link 
+                              href={`/map?sensor_id=${alert.sensor_id}`}
+                              className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 transition-colors"
+                              title="Lihat di Peta"
+                            >
+                              <MapPin size={14} />
+                              <span>Lokasi</span>
+                            </Link>
+                           </div>
+                        </div>
                       )}
                     </div>
-                  )}
-                </div>
+                  </div>
+                </GlassCard>
               </div>
-
-              {expandedGroups.has(group.id) && group.childAlerts.length > 0 && (
-                <div className="mt-3 pl-14 space-y-3 border-l-2 border-slate-100/60">
-                  {group.childAlerts.map(child => (
-                    <div key={child.id} className="relative pl-4">
-                      <div className="flex justify-between items-start text-sm">
-                        <span className="text-slate-600">{child.message}</span>
-                        <span className="text-xs text-slate-400 whitespace-nowrap ml-2">{formatWIB(child.created_at)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </GlassCard>
-          </div>
-        ))
+            );
+        })
       )}
 
       {hasMore && (
