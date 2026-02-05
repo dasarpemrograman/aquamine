@@ -364,13 +364,30 @@ async def build_insights_evidence(
     return evidence
 
 
-ANALYTICS_INSIGHTS_SYSTEM_PROMPT = (
-    "Anda adalah AquaMine AI Analyst. "
-    "Gunakan HANYA bukti yang diberikan. Jangan menambahkan sinyal baru seperti CV/rainfall jika tidak ada di bukti. "
-    "Jangan mencampur threshold alert/anomali dengan standar kepatuhan (compliance). "
-    "Jika menyebut kepatuhan, sebutkan standar (pH min/max, turbidity max, temperature max) dan persentase kepatuhan dari bukti. "
-    "Tulis untuk operator lapangan: ringkas, konkret, dan berorientasi tindakan."
-)
+ANALYTICS_INSIGHTS_SYSTEM_PROMPT = """Anda adalah AquaMine AI Analyst untuk operasi tambang batubara di Indonesia.
+
+KONTEKS OPERASIONAL:
+- Standar kepatuhan mengacu pada KepMen LH 113/2003 (Baku Mutu Air Limbah Pertambangan Batubara)
+- Target pembaca: operator lapangan & supervisor yang perlu tindakan konkret
+- Fokus: identifikasi risiko AMD (Acid Mine Drainage) dan kepatuhan lingkungan
+
+ATURAN PENULISAN:
+1. Gunakan HANYA data dari bukti yang diberikan. Jangan mengarang angka.
+2. Sebutkan nama sensor spesifik jika ada di bukti (misal: "Settling Pond A").
+3. Jika pH turun < 6 atau naik > 9, ini PELANGGARAN standar - tekankan.
+4. Berikan aksi prioritas: apa yang harus dicek PERTAMA, KEDUA, dst.
+5. Jika ada tren menurun pH, jelaskan risiko AMD (asam dari oksidasi sulfida).
+6. Hindari jargon teknis berlebihan. Tulis seperti shift handover notes.
+
+FORMAT AKSI YANG BAIK:
+- "Cek sensor pH di [lokasi] - nilai terakhir [X] di bawah standar 6.0"
+- "Prioritas 1: Verifikasi dosis kapur di [lokasi]"
+- "Eskalasi ke supervisor jika [kondisi] berlanjut > 2 jam"
+
+JANGAN:
+- Menampilkan key mentah seperti "compliance.ph_percent" di teks
+- Mencampur threshold alert dengan standar kepatuhan
+- Menambahkan data yang tidak ada di bukti (CV, curah hujan, dll)"""
 
 
 def _extract_message_content(response: object | None) -> Optional[str]:
@@ -458,11 +475,20 @@ async def generate_insights_with_llm(
                 "Buat output JSON yang valid dengan schema:\n"
                 "{generated_at, period, executive_summary{status,headline,severity_score,trend,recommendation,evidence[]}, "
                 "key_findings[{type,title,description,confidence,recommended_actions[],evidence[]}], evidence}.\n\n"
+                "PENJELASAN FIELD:\n"
+                "- status: 'NORMAL' | 'WARNING' | 'CRITICAL'\n"
+                "- severity_score: 0-100 (0=aman, 100=kritis)\n"
+                "- trend: 'improving' | 'stable' | 'degrading'\n\n"
                 "GAYA PENULISAN (WAJIB):\n"
-                "- executive_summary.headline: 1 kalimat (maks 120 karakter), jelaskan kondisi paling penting.\n"
-                "- executive_summary.recommendation: paragraf singkat 2-3 kalimat yang menjelaskan konteks + apa yang harus difokuskan.\n"
-                "- key_findings[*].recommended_actions: checklist tindakan (3-7 butir) yang bisa dilakukan operator; mulai dengan kata kerja (Cek/Verifikasi/Inspeksi/Dokumentasikan/Eskalasi).\n"
-                "- Hindari istilah teknis yang tidak perlu. Jangan keluarkan key mentah seperti 'compliance.ph_percent' di teks.\n\n"
+                "- headline: 1 kalimat (maks 120 karakter). Contoh: 'pH di Settling Pond A turun di bawah standar - perlu tindakan segera'\n"
+                "- recommendation: 2-3 kalimat. Jelaskan (1) kondisi saat ini, (2) risiko jika dibiarkan, (3) prioritas tindakan.\n"
+                "- key_findings: Buat 2-4 temuan. Setiap temuan punya recommended_actions berupa checklist 3-5 langkah.\n"
+                "- recommended_actions: Mulai dengan kata kerja (Cek/Verifikasi/Inspeksi/Dokumentasikan/Eskalasi). Sebutkan lokasi sensor jika relevan.\n"
+                "- JANGAN tampilkan key mentah seperti 'compliance.ph_percent' di teks. Gunakan bahasa natural.\n\n"
+                "CONTOH AKSI YANG BAIK:\n"
+                "- 'Cek sensor pH di Settling Pond A - nilai terakhir 5.8 di bawah standar 6.0'\n"
+                "- 'Verifikasi dosis kapur sudah sesuai SOP (target pH 7.0-8.0)'\n"
+                "- 'Eskalasi ke supervisor jika pH < 6 berlanjut > 2 jam'\n\n"
                 "ATURAN SITASI (WAJIB):\n"
                 "- Semua angka penting HARUS disitasi menggunakan evidence[]: {key, value, unit}.\n"
                 "- key harus salah satu dari evidence.numeric keys yang disediakan.\n"
@@ -499,44 +525,79 @@ def deterministic_insights_response(evidence: dict[str, Any]) -> AnalyticsInsigh
         now_utc = _now_utc()
 
     numeric = {str(k): float(v) for k, v in (evidence.get("numeric") or {}).items()}
+    standard = evidence.get("standard") or {}
+    sensors = evidence.get("sensors") or []
+    compliance_data = evidence.get("compliance") or {}
+
     ph_pct = numeric.get("compliance.ph_percent")
     turb_pct = numeric.get("compliance.turbidity_percent")
     temp_pct = numeric.get("compliance.temperature_percent")
+    ph_slope = numeric.get("overall.ph_slope_per_hour")
+
+    ph_min = standard.get("ph_min", 6.0)
+    ph_max = standard.get("ph_max", 9.0)
+    turb_max = standard.get("turbidity_max_ntu", 50)
+    standard_source = standard.get("source", "KepMen LH 113/2003")
+
+    sensor_names = [s.get("name") or s.get("sensor_id", "Unknown") for s in sensors]
+    sensor_context = sensor_names[0] if len(sensor_names) == 1 else f"{len(sensor_names)} sensor"
 
     worst_pct = None
-    for v in [ph_pct, turb_pct, temp_pct]:
+    worst_param = None
+    for param, v in [("pH", ph_pct), ("kekeruhan", turb_pct), ("suhu", temp_pct)]:
         if v is None:
             continue
-        worst_pct = v if worst_pct is None else min(worst_pct, v)
+        if worst_pct is None or v < worst_pct:
+            worst_pct = v
+            worst_param = param
 
     status = "NORMAL"
     trend = "stable"
     severity = 10
-    headline = "Kondisi kualitas air relatif stabil."
+    headline = f"Kondisi air dari {sensor_context} dalam batas normal per {standard_source}."
     recommendation = (
-        "Kondisi terpantau stabil dalam 24 jam terakhir berdasarkan data yang tersedia. "
-        "Lanjutkan pemantauan rutin, pastikan sensor tetap aktif, dan catat setiap perubahan yang berulang."
+        f"Semua parameter (pH, kekeruhan, suhu) memenuhi standar {standard_source} dalam 24 jam terakhir. "
+        "Lanjutkan pemantauan rutin dan pastikan sensor tetap terkalibrasi."
     )
 
-    ph_slope = numeric.get("overall.ph_slope_per_hour")
     if ph_slope is not None and ph_slope < -0.05:
         trend = "degrading"
         status = "WARNING"
         severity = max(severity, 60)
-        headline = "pH menunjukkan tren menurun dalam 24 jam terakhir."
+        slope_desc = f"{abs(ph_slope):.2f}/jam"
+        headline = f"pH menurun {slope_desc} - potensi awal AMD perlu dipantau."
         recommendation = (
-            "pH menunjukkan tren menurun dalam 24 jam terakhir. "
-            "Verifikasi dengan sampling manual, cek kalibrasi sensor, dan telusuri potensi sumber asam di hulu jika tren berlanjut."
+            f"Tren pH menurun {slope_desc} dalam 24 jam terakhir. "
+            f"Ini bisa mengindikasikan awal Acid Mine Drainage (AMD) dari oksidasi sulfida. "
+            "Prioritas: (1) Cek dosis kapur/lime, (2) Verifikasi dengan pH meter manual, (3) Pantau tren 6 jam ke depan."
         )
 
     if worst_pct is not None and worst_pct < 80.0:
         status = "CRITICAL"
         severity = 85
-        headline = "Terdapat indikasi pelanggaran standar kepatuhan dalam 24 jam terakhir."
-        recommendation = (
-            "Ada indikasi pelanggaran standar kepatuhan dalam 24 jam terakhir. "
-            "Prioritaskan parameter yang paling sering melanggar, lakukan verifikasi lapangan, dan dokumentasikan tindakan perbaikan serta bukti pendukung."
-        )
+        ph_violations = compliance_data.get("ph", {}).get("violation_count", 0)
+        turb_violations = compliance_data.get("turbidity", {}).get("violation_count", 0)
+
+        if worst_param == "pH":
+            headline = f"Pelanggaran standar pH ({ph_violations}x dalam 24 jam) - tindakan segera diperlukan."
+            recommendation = (
+                f"pH melanggar batas {ph_min}-{ph_max} sebanyak {ph_violations}x. "
+                f"Risiko: Jika pH < {ph_min}, air bersifat asam dan dapat merusak ekosistem serta melanggar {standard_source}. "
+                "Prioritas: (1) Cek dan tingkatkan dosis kapur, (2) Sampling manual untuk verifikasi, (3) Dokumentasikan untuk laporan kepatuhan."
+            )
+        elif worst_param == "kekeruhan":
+            headline = f"Kekeruhan melebihi standar ({turb_violations}x dalam 24 jam) - periksa settling pond."
+            recommendation = (
+                f"Kekeruhan melebihi batas {turb_max} NTU sebanyak {turb_violations}x. "
+                "Penyebab umum: overflow settling pond, agitasi sedimen, atau hujan deras. "
+                "Prioritas: (1) Inspeksi settling pond, (2) Cek level air dan waktu retensi, (3) Bersihkan sensor jika perlu."
+            )
+        else:
+            headline = f"Parameter {worst_param} melanggar standar kepatuhan dalam 24 jam terakhir."
+            recommendation = (
+                f"Parameter {worst_param} menunjukkan pelanggaran standar {standard_source}. "
+                "Lakukan verifikasi lapangan dan dokumentasikan tindakan perbaikan."
+            )
 
     citations: list[EvidenceCitation] = []
     for k in [
@@ -549,20 +610,32 @@ def deterministic_insights_response(evidence: dict[str, Any]) -> AnalyticsInsigh
             citations.append(EvidenceCitation(key=k, value=float(numeric[k]), unit=""))
 
     findings: list[InsightFinding] = []
+
     if ph_pct is not None:
+        ph_status = (
+            "memenuhi standar"
+            if ph_pct >= 95
+            else ("perlu perhatian" if ph_pct >= 80 else "melanggar standar")
+        )
+        ph_actions = [
+            f"Cek kalibrasi sensor pH (standar: {ph_min}-{ph_max})",
+            "Ambil sampel manual untuk cross-check dengan lab",
+            "Catat waktu, cuaca, dan lokasi pengambilan sampel",
+        ]
+        if ph_pct < 80:
+            ph_actions.insert(0, "PRIORITAS: Tingkatkan dosis kapur/lime dosing")
+            ph_actions.append("Eskalasi ke supervisor jika pH < 6 berlanjut > 2 jam")
+
         findings.append(
             InsightFinding(
                 type="compliance",
-                title="Kepatuhan pH",
+                title=f"Kepatuhan pH: {ph_pct:.1f}% ({ph_status})",
                 description=(
-                    "Kepatuhan pH dihitung terhadap standar yang dikonfigurasi pada sistem."
+                    f"Dari total pembacaan, {ph_pct:.1f}% memenuhi standar pH {ph_min}-{ph_max} "
+                    f"sesuai {standard_source}."
                 ),
                 confidence=0.9,
-                recommended_actions=[
-                    "Cek kalibrasi sensor pH",
-                    "Verifikasi dengan sampling manual (1x) di titik yang sama",
-                    "Catat jam, cuaca, dan lokasi pengambilan sampel",
-                ],
+                recommended_actions=ph_actions,
                 evidence=[
                     EvidenceCitation(
                         key="compliance.ph_percent", value=float(ph_pct), unit="percent"
@@ -570,18 +643,32 @@ def deterministic_insights_response(evidence: dict[str, Any]) -> AnalyticsInsigh
                 ],
             )
         )
+
     if turb_pct is not None:
+        turb_status = (
+            "memenuhi standar"
+            if turb_pct >= 95
+            else ("perlu perhatian" if turb_pct >= 80 else "melanggar standar")
+        )
+        turb_actions = [
+            "Inspeksi visual settling pond (cek overflow, sedimen)",
+            f"Periksa sensor kekeruhan (fouling) - batas: {turb_max} NTU",
+            "Bandingkan dengan turbidimeter manual untuk validasi",
+        ]
+        if turb_pct < 80:
+            turb_actions.insert(0, "PRIORITAS: Cek waktu retensi settling pond")
+            turb_actions.append("Pertimbangkan penambahan flocculant jika diperlukan")
+
         findings.append(
             InsightFinding(
                 type="compliance",
-                title="Kepatuhan turbidity",
-                description="Kepatuhan turbidity dihitung terhadap batas NTU standar.",
+                title=f"Kepatuhan Kekeruhan: {turb_pct:.1f}% ({turb_status})",
+                description=(
+                    f"Dari total pembacaan, {turb_pct:.1f}% memenuhi standar kekeruhan maksimal "
+                    f"{turb_max} NTU."
+                ),
                 confidence=0.9,
-                recommended_actions=[
-                    "Inspeksi sumber kekeruhan (sedimentasi/agitasi/overflow)",
-                    "Periksa dan bersihkan sensor kekeruhan (fouling)",
-                    "Bandingkan 1x dengan sampel manual (NTU) untuk validasi",
-                ],
+                recommended_actions=turb_actions,
                 evidence=[
                     EvidenceCitation(
                         key="compliance.turbidity_percent", value=float(turb_pct), unit="percent"
@@ -590,17 +677,49 @@ def deterministic_insights_response(evidence: dict[str, Any]) -> AnalyticsInsigh
             )
         )
 
+    if ph_slope is not None and ph_slope < -0.02:
+        slope_severity = "signifikan" if ph_slope < -0.05 else "ringan"
+        findings.append(
+            InsightFinding(
+                type="trend",
+                title=f"Tren pH Menurun ({slope_severity})",
+                description=(
+                    f"pH menurun rata-rata {abs(ph_slope):.3f} per jam. "
+                    "Tren menurun bisa mengindikasikan peningkatan asam dari oksidasi sulfida (AMD)."
+                ),
+                confidence=0.8,
+                recommended_actions=[
+                    "Pantau tren pH setiap 2 jam",
+                    "Siapkan lime dosing tambahan jika tren berlanjut",
+                    "Cek sumber air masuk (apakah ada aliran baru dari area tambang)",
+                ],
+                evidence=[
+                    EvidenceCitation(
+                        key="overall.ph_slope_per_hour",
+                        value=float(ph_slope),
+                        unit="pH/jam",
+                    )
+                ],
+            )
+        )
+
     if "overall.ph_turbidity_correlation" in numeric:
+        corr = numeric["overall.ph_turbidity_correlation"]
+        corr_desc = "kuat" if abs(corr) > 0.7 else ("moderat" if abs(corr) > 0.4 else "lemah")
         findings.append(
             InsightFinding(
                 type="correlation",
-                title="Korelasi pH dan turbidity",
-                description=("Korelasi dihitung hanya bila jumlah data berpasangan mencukupi."),
+                title=f"Korelasi pH-Kekeruhan: {corr_desc} (r={corr:.2f})",
+                description=(
+                    f"Korelasi {corr_desc} antara pH dan kekeruhan. "
+                    "Korelasi negatif kuat bisa menunjukkan bahwa peningkatan kekeruhan "
+                    "terkait dengan penurunan pH (umum pada AMD)."
+                ),
                 confidence=0.7,
                 evidence=[
                     EvidenceCitation(
                         key="overall.ph_turbidity_correlation",
-                        value=float(numeric["overall.ph_turbidity_correlation"]),
+                        value=float(corr),
                         unit="r",
                     )
                 ],
