@@ -636,11 +636,26 @@ export interface InsightFinding {
   evidence: EvidenceCitation[];
 }
 
+export interface AnalyticsInsightsEvidence {
+  compliance: {
+    ph: { percent: number; ok: number; total: number };
+    turbidity: { percent: number; ok: number; total: number };
+    temperature: { percent: number; ok: number; total: number };
+  };
+  standard: {
+    ph_min: number;
+    ph_max: number;
+    turbidity_max_ntu: number;
+    temperature_max_c: number;
+  };
+}
+
 export interface AnalyticsInsightsResponse {
   generated_at: string;
   period: string;
   executive_summary: InsightsExecutiveSummary;
   key_findings: InsightFinding[];
+  evidence?: AnalyticsInsightsEvidence;
 }
 
 export async function fetchAnalyticsSummary(token?: string | null): Promise<AnalyticsSummaryResponse> {
@@ -713,13 +728,21 @@ export async function fetchAnalyticsTrends(
   return response.json();
 }
 
-export async function fetchAnalyticsInsights(token?: string | null): Promise<AnalyticsInsightsResponse> {
+export async function fetchAnalyticsInsights(
+  token?: string | null,
+  options?: { refresh?: boolean }
+): Promise<AnalyticsInsightsResponse> {
   const headers: Record<string, string> = {};
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}/api/v1/analytics/insights?period=24h`, { headers });
+  const params = new URLSearchParams({ period: "24h" });
+  if (options?.refresh) {
+    params.set("refresh", "true");
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/analytics/insights?${params}`, { headers });
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({

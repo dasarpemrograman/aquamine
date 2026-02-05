@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Info, CheckCircle2, MapPin, Check, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
+import { AlertTriangle, Info, CheckCircle2, MapPin, Check, ChevronDown, ChevronUp, RotateCcw, X } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
 import { formatWIB } from "@/lib/dateUtils";
 import { GlassCard } from "@/app/components/ui/GlassCard";
@@ -28,6 +28,10 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
 
   type QueuedNotice = { action: "acknowledge" | "resolve" | "reopen"; message: string };
   const [queuedNoticeById, setQueuedNoticeById] = useState<Record<number, QueuedNotice>>({});
+
+  const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
+  const [selectedAlertId, setSelectedAlertId] = useState<number | null>(null);
+  const [resolutionNote, setResolutionNote] = useState("");
 
   useEffect(() => {
     setVisibleCount(50);
@@ -99,12 +103,20 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
     }
   };
 
-  const handleResolve = async (id: number, e: React.MouseEvent) => {
+  const handleResolve = (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
+    setSelectedAlertId(id);
+    setResolutionNote("");
+    setIsResolveModalOpen(true);
+  };
 
-    const note = window.prompt("Catatan resolusi (opsional):", "");
-    if (note === null) return;
-    const normalized = note.trim();
+  const confirmResolve = async () => {
+    if (!selectedAlertId) return;
+    
+    const id = selectedAlertId;
+    const normalized = resolutionNote.trim();
+    
+    setIsResolveModalOpen(false);
 
     try {
       setLoadingId(id);
@@ -121,6 +133,7 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
       console.error("Failed to resolve alert", error);
     } finally {
       setLoadingId(null);
+      setSelectedAlertId(null);
     }
   };
 
@@ -329,6 +342,12 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
                     <h4 className="text-base font-semibold text-slate-800 leading-snug mb-2">
                       {group.message}
                     </h4>
+                    {activeTab === 'resolved' && group.resolution_note && (
+                      <div className="mt-2 text-sm text-slate-500 bg-slate-100/50 p-2 rounded-md border border-slate-100">
+                        <span className="font-medium text-slate-600 mr-1">Catatan resolusi:</span>
+                        {group.resolution_note}
+                      </div>
+                    )}
 
                     {!compact && (
                       <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-100/50">
@@ -418,6 +437,34 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
           <span>Muat lebih banyak</span>
           <ChevronDown size={16} className="group-hover:translate-y-0.5 transition-transform" />
         </button>
+      )}
+      {isResolveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm">
+          <GlassCard className="w-full max-w-md bg-white/90" variant="elevated" padding="lg">
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Selesaikan Alert</h3>
+            <textarea
+              value={resolutionNote}
+              onChange={(e) => setResolutionNote(e.target.value)}
+              placeholder="Catatan resolusi (opsional)..."
+              className="w-full min-h-[100px] p-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent resize-none mb-6 text-sm"
+              autoFocus
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setIsResolveModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmResolve}
+                className="px-4 py-2 text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors shadow-sm"
+              >
+                Selesaikan
+              </button>
+            </div>
+          </GlassCard>
+        </div>
       )}
     </div>
   );

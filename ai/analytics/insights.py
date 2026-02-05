@@ -368,7 +368,8 @@ ANALYTICS_INSIGHTS_SYSTEM_PROMPT = (
     "Anda adalah AquaMine AI Analyst. "
     "Gunakan HANYA bukti yang diberikan. Jangan menambahkan sinyal baru seperti CV/rainfall jika tidak ada di bukti. "
     "Jangan mencampur threshold alert/anomali dengan standar kepatuhan (compliance). "
-    "Jika menyebut kepatuhan, sebutkan standar (pH min/max, turbidity max, temperature max) dan persentase kepatuhan dari bukti."
+    "Jika menyebut kepatuhan, sebutkan standar (pH min/max, turbidity max, temperature max) dan persentase kepatuhan dari bukti. "
+    "Tulis untuk operator lapangan: ringkas, konkret, dan berorientasi tindakan."
 )
 
 
@@ -457,6 +458,11 @@ async def generate_insights_with_llm(
                 "Buat output JSON yang valid dengan schema:\n"
                 "{generated_at, period, executive_summary{status,headline,severity_score,trend,recommendation,evidence[]}, "
                 "key_findings[{type,title,description,confidence,recommended_actions[],evidence[]}], evidence}.\n\n"
+                "GAYA PENULISAN (WAJIB):\n"
+                "- executive_summary.headline: 1 kalimat (maks 120 karakter), jelaskan kondisi paling penting.\n"
+                "- executive_summary.recommendation: paragraf singkat 2-3 kalimat yang menjelaskan konteks + apa yang harus difokuskan.\n"
+                "- key_findings[*].recommended_actions: checklist tindakan (3-7 butir) yang bisa dilakukan operator; mulai dengan kata kerja (Cek/Verifikasi/Inspeksi/Dokumentasikan/Eskalasi).\n"
+                "- Hindari istilah teknis yang tidak perlu. Jangan keluarkan key mentah seperti 'compliance.ph_percent' di teks.\n\n"
                 "ATURAN SITASI (WAJIB):\n"
                 "- Semua angka penting HARUS disitasi menggunakan evidence[]: {key, value, unit}.\n"
                 "- key harus salah satu dari evidence.numeric keys yang disediakan.\n"
@@ -507,7 +513,10 @@ def deterministic_insights_response(evidence: dict[str, Any]) -> AnalyticsInsigh
     trend = "stable"
     severity = 10
     headline = "Kondisi kualitas air relatif stabil."
-    recommendation = "Lanjutkan pemantauan rutin dan pastikan sensor tetap aktif."
+    recommendation = (
+        "Kondisi terpantau stabil dalam 24 jam terakhir berdasarkan data yang tersedia. "
+        "Lanjutkan pemantauan rutin, pastikan sensor tetap aktif, dan catat setiap perubahan yang berulang."
+    )
 
     ph_slope = numeric.get("overall.ph_slope_per_hour")
     if ph_slope is not None and ph_slope < -0.05:
@@ -515,13 +524,19 @@ def deterministic_insights_response(evidence: dict[str, Any]) -> AnalyticsInsigh
         status = "WARNING"
         severity = max(severity, 60)
         headline = "pH menunjukkan tren menurun dalam 24 jam terakhir."
-        recommendation = "Verifikasi pH dengan sampling manual dan cek potensi sumber asam di hulu."
+        recommendation = (
+            "pH menunjukkan tren menurun dalam 24 jam terakhir. "
+            "Verifikasi dengan sampling manual, cek kalibrasi sensor, dan telusuri potensi sumber asam di hulu jika tren berlanjut."
+        )
 
     if worst_pct is not None and worst_pct < 80.0:
         status = "CRITICAL"
         severity = 85
         headline = "Terdapat indikasi pelanggaran standar kepatuhan dalam 24 jam terakhir."
-        recommendation = "Prioritaskan investigasi parameter yang paling sering melanggar dan dokumentasikan tindakan perbaikan."
+        recommendation = (
+            "Ada indikasi pelanggaran standar kepatuhan dalam 24 jam terakhir. "
+            "Prioritaskan parameter yang paling sering melanggar, lakukan verifikasi lapangan, dan dokumentasikan tindakan perbaikan serta bukti pendukung."
+        )
 
     citations: list[EvidenceCitation] = []
     for k in [
@@ -545,7 +560,8 @@ def deterministic_insights_response(evidence: dict[str, Any]) -> AnalyticsInsigh
                 confidence=0.9,
                 recommended_actions=[
                     "Cek kalibrasi sensor pH",
-                    "Lakukan sampling manual untuk validasi",
+                    "Verifikasi dengan sampling manual (1x) di titik yang sama",
+                    "Catat jam, cuaca, dan lokasi pengambilan sampel",
                 ],
                 evidence=[
                     EvidenceCitation(
@@ -561,7 +577,11 @@ def deterministic_insights_response(evidence: dict[str, Any]) -> AnalyticsInsigh
                 title="Kepatuhan turbidity",
                 description="Kepatuhan turbidity dihitung terhadap batas NTU standar.",
                 confidence=0.9,
-                recommended_actions=["Periksa potensi sedimentasi atau gangguan aliran"],
+                recommended_actions=[
+                    "Inspeksi sumber kekeruhan (sedimentasi/agitasi/overflow)",
+                    "Periksa dan bersihkan sensor kekeruhan (fouling)",
+                    "Bandingkan 1x dengan sampel manual (NTU) untuk validasi",
+                ],
                 evidence=[
                     EvidenceCitation(
                         key="compliance.turbidity_percent", value=float(turb_pct), unit="percent"

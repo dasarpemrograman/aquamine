@@ -213,12 +213,14 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
   const [selectedRange, setSelectedRange] = useState<number>(168);
   const [selectedParameter, setSelectedParameter] = useState<ForecastParameter>("ph");
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const isFetchingRef = useRef(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchData = useCallback(async () => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
+    setIsRefreshing(true);
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/forecast`, {
         method: "POST",
@@ -270,6 +272,7 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
       console.error("Failed to fetch forecast", e);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
       isFetchingRef.current = false;
     }
   }, [sensorId, selectedRange]);
@@ -443,10 +446,16 @@ export default function ForecastChart({ sensorId }: { sensorId: string }) {
                 
                 <button
                   onClick={handleRefresh}
-                  className="p-2 text-slate-500 hover:text-cyan-700 hover:bg-cyan-50 rounded-lg transition-colors border border-transparent hover:border-cyan-100"
-                  title={UI_COPY.refresh_forecast}
+                  disabled={isRefreshing}
+                  aria-busy={isRefreshing}
+                  className={`p-2 rounded-lg transition-colors border border-transparent ${
+                    isRefreshing
+                      ? "text-cyan-700 bg-cyan-50 border-cyan-100 cursor-not-allowed"
+                      : "text-slate-500 hover:text-cyan-700 hover:bg-cyan-50 hover:border-cyan-100"
+                  }`}
+                  title={isRefreshing ? "Memperbarui..." : UI_COPY.refresh_forecast}
                 >
-                  <RefreshCw size={16} className={isFetchingRef.current ? "animate-spin" : ""} />
+                  <RefreshCw size={16} className={isRefreshing ? "animate-spin" : ""} />
                 </button>
              </div>
 

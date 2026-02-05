@@ -105,7 +105,7 @@ export const UI_COPY = {
   violations: "{count} pelanggaran",
   ai_insights: "Insight AI",
   key_findings: "Temuan Utama",
-  summary: "Ringkas",
+  summary: "Ringkasan",
   facts: "Fakta",
   action_checklist: "Checklist Tindakan",
   source: "Sumber",

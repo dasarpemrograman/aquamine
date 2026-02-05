@@ -39,7 +39,7 @@ export default function ForecastPage() {
           </div>
           <div className="space-y-4">
             <SectionHeader title={UI_COPY.recent_alerts} icon={AlertTriangle} />
-            <AlertList />
+            <AlertList limit={4} />
           </div>
         </div>
       </div>
