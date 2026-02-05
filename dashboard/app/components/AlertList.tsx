@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Info, CheckCircle2, MapPin, Check, RotateCcw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { AlertTriangle, Info, CheckCircle2, MapPin, Check, RotateCcw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Paperclip, Image as ImageIcon, X } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
 import { formatRelativeTime } from "@/lib/dateUtils";
 import { GlassCard } from "@/app/components/ui/GlassCard";
-import { fetchAlerts, Alert, acknowledgeAlertOffline, resolveAlertOffline, reopenAlertOffline } from "@/lib/api";
+import { fetchAlerts, Alert, acknowledgeAlertOffline, resolveAlertOffline, reopenAlertOffline, getAlertEvidence, type AlertEvidence } from "@/lib/api";
 import { UI_COPY, formatString } from "@/lib/copy";
 import Link from "next/link";
 
@@ -47,6 +47,11 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
   const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
   const [selectedAlertId, setSelectedAlertId] = useState<number | null>(null);
   const [resolutionNote, setResolutionNote] = useState("");
+  
+  const [showEvidenceModal, setShowEvidenceModal] = useState(false);
+  const [evidenceList, setEvidenceList] = useState<AlertEvidence[]>([]);
+  const [loadingEvidence, setLoadingEvidence] = useState(false);
+  const [selectedEvidenceIndex, setSelectedEvidenceIndex] = useState(0);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -170,6 +175,24 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
       console.error("Failed to reopen alert", error);
     } finally {
       setLoadingId(null);
+    }
+  };
+
+  const handleViewEvidence = async (alertId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoadingEvidence(true);
+    setSelectedAlertId(alertId);
+    setShowEvidenceModal(true);
+    setSelectedEvidenceIndex(0);
+    
+    try {
+      const token = await getToken();
+      const evidence = await getAlertEvidence(alertId, token);
+      setEvidenceList(evidence);
+    } catch (error) {
+      console.error("Failed to load evidence:", error);
+    } finally {
+      setLoadingEvidence(false);
     }
   };
 
@@ -413,9 +436,19 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
                            </span>
                         </div>
                         
-                        {/* Description */}
-                        <div className="text-sm font-medium text-slate-600 mb-3">
-                            {description}
+                         {/* Description */}
+                        <div className="text-sm font-medium text-slate-600 mb-3 flex items-center justify-between">
+                            <span>{description}</span>
+                            {alert.evidence_count > 0 && (
+                              <button
+                                onClick={(e) => handleViewEvidence(alert.id, e)}
+                                className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-md transition-colors"
+                                title={`${alert.evidence_count} bukti terlampir`}
+                              >
+                                <Paperclip size={14} />
+                                {alert.evidence_count} Bukti
+                              </button>
+                            )}
                         </div>
 
                         {/* Suggestion Box */}
@@ -592,6 +625,82 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
               </button>
             </div>
           </GlassCard>
+        </div>
+      )}
+
+      {showEvidenceModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Bukti Terlampir</h3>
+                <p className="text-sm text-slate-500">
+                  {evidenceList.length} bukti untuk peringatan #{selectedAlertId}
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowEvidenceModal(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {loadingEvidence ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-12 h-12 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin"></div>
+                </div>
+              ) : evidenceList.length === 0 ? (
+                <div className="flex items-center justify-center py-12 text-slate-500">
+                  Tidak ada bukti terlampir
+                </div>
+              ) : (
+                <>
+                  <div className="flex-1 overflow-hidden bg-slate-900 flex items-center justify-center p-4">
+                    <img 
+                      src={evidenceList[selectedEvidenceIndex].image_data} 
+                      alt={`Evidence ${selectedEvidenceIndex + 1}`}
+                      className="max-w-full max-h-full object-contain rounded-lg"
+                    />
+                  </div>
+                  
+                  {evidenceList.length > 1 && (
+                    <div className="px-6 py-3 border-t border-slate-200 flex items-center justify-between">
+                      <button
+                        onClick={() => setSelectedEvidenceIndex(Math.max(0, selectedEvidenceIndex - 1))}
+                        disabled={selectedEvidenceIndex === 0}
+                        className="px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        ← Sebelumnya
+                      </button>
+                      <span className="text-sm text-slate-600">
+                        {selectedEvidenceIndex + 1} / {evidenceList.length}
+                      </span>
+                      <button
+                        onClick={() => setSelectedEvidenceIndex(Math.min(evidenceList.length - 1, selectedEvidenceIndex + 1))}
+                        disabled={selectedEvidenceIndex === evidenceList.length - 1}
+                        className="px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Berikutnya →
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 text-xs text-slate-600">
+                    <div className="flex items-center gap-4">
+                      <span>
+                        Dilampirkan: {new Date(evidenceList[selectedEvidenceIndex].attached_at).toLocaleString('id-ID')}
+                      </span>
+                      {evidenceList[selectedEvidenceIndex].attached_by && (
+                        <span>Oleh: {evidenceList[selectedEvidenceIndex].attached_by}</span>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
