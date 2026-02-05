@@ -419,22 +419,42 @@ export default function AlertList({ severityFilter = "all", timeRange = "24h", l
                    padding={compact ? "sm" : "md"}
                  >
                   <div className="flex flex-col sm:flex-row items-start gap-4">
-                    <div className="flex-shrink-0 mt-1 hidden sm:block">
-                      {getSeverityIcon(alert.severity)}
-                    </div>
+                    {!compact && (
+                      <div className="flex-shrink-0 mt-1 hidden sm:block">
+                        {getSeverityIcon(alert.severity)}
+                      </div>
+                    )}
 
                       <div className="flex-grow min-w-0 w-full">
                         {/* Header Row */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-y-1 mb-2">
-                           <h4 className="text-base font-bold text-slate-800 leading-snug flex items-center gap-2">
-                             <span className="sm:hidden">{getSeverityIcon(alert.severity)}</span>
-                             {title}
-                           </h4>
-                           <span className="text-xs font-medium text-slate-400 whitespace-nowrap flex items-center gap-1">
-                             <MapPin size={12} />
-                             {alert.sensor_id} • {formatRelativeTime(alert.created_at)}
-                           </span>
-                        </div>
+                        {compact ? (
+                          <div className="flex flex-col gap-2 mb-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <h4 className="text-sm font-bold text-slate-800 flex-1 leading-snug">{title}</h4>
+                              {getSeverityIcon(alert.severity)}
+                            </div>
+                            <div className="text-xs text-slate-500 flex items-center gap-1 w-full">
+                              <MapPin size={10} className="flex-shrink-0" />
+                              <span className="truncate">{alert.sensor_name || `Sensor ${alert.sensor_id}`}</span>
+                              <span className="text-slate-300 flex-shrink-0">•</span>
+                              <span className="whitespace-nowrap flex-shrink-0">{formatRelativeTime(alert.created_at)}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-y-1 mb-2">
+                             <h4 className="text-base font-bold text-slate-800 leading-snug flex items-center gap-2">
+                               <span className="sm:hidden">{getSeverityIcon(alert.severity)}</span>
+                               {title}
+                             </h4>
+                             <span className="text-xs font-medium text-slate-400 flex items-center gap-1 max-w-full overflow-hidden">
+                               <MapPin size={12} className="flex-shrink-0" />
+                               <span className="truncate">
+                                 {alert.sensor_name || `Sensor ${alert.sensor_id}`}
+                               </span>
+                               <span className="flex-shrink-0">• {formatRelativeTime(alert.created_at)}</span>
+                             </span>
+                          </div>
+                        )}
                         
                          {/* Description */}
                         <div className="text-sm font-medium text-slate-600 mb-3 flex items-center justify-between">
