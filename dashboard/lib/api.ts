@@ -68,6 +68,7 @@ export interface UserSettingsUpdate {
 export interface Alert {
   id: number;
   sensor_id: number;
+  sensor_name: string | null;
   severity: string;
   previous_state: string | null;
   message: string | null;
@@ -722,13 +723,21 @@ export interface AnalyticsInsightsResponse {
   evidence?: AnalyticsInsightsEvidence;
 }
 
-export async function fetchAnalyticsSummary(token?: string | null): Promise<AnalyticsSummaryResponse> {
+export async function fetchAnalyticsSummary(
+  sensorId?: number,
+  token?: string | null
+): Promise<AnalyticsSummaryResponse> {
   const headers: Record<string, string> = {};
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}/api/v1/analytics/summary?period=24h`, { headers });
+  const params = new URLSearchParams({ period: "24h" });
+  if (sensorId) {
+    params.append("sensor_id", sensorId.toString());
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/analytics/summary?${params}`, { headers });
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({
@@ -743,6 +752,7 @@ export async function fetchAnalyticsSummary(token?: string | null): Promise<Anal
 
 export async function fetchAnalyticsCompliance(
   period: string = "7d",
+  sensorId?: number,
   token?: string | null
 ): Promise<AnalyticsComplianceResponse> {
   const headers: Record<string, string> = {};
@@ -750,7 +760,12 @@ export async function fetchAnalyticsCompliance(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}/api/v1/analytics/compliance?period=${period}`, { headers });
+  const params = new URLSearchParams({ period });
+  if (sensorId) {
+    params.append("sensor_id", sensorId.toString());
+  }
+
+  const response = await fetch(`${API_BASE}/api/v1/analytics/compliance?${params}`, { headers });
 
   if (!response.ok) {
     const error: ErrorResponse = await response.json().catch(() => ({
@@ -793,6 +808,7 @@ export async function fetchAnalyticsTrends(
 }
 
 export async function fetchAnalyticsInsights(
+  sensorId?: number,
   token?: string | null,
   options?: { refresh?: boolean }
 ): Promise<AnalyticsInsightsResponse> {
@@ -802,6 +818,9 @@ export async function fetchAnalyticsInsights(
   }
 
   const params = new URLSearchParams({ period: "24h" });
+  if (sensorId) {
+    params.append("sensor_id", sensorId.toString());
+  }
   if (options?.refresh) {
     params.set("refresh", "true");
   }

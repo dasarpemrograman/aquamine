@@ -32,10 +32,12 @@ import {
   fetchAnalyticsTrends, 
   fetchAnalyticsCompliance, 
   fetchAnalyticsInsights,
+  fetchSensors,
   AnalyticsSummaryResponse,
   AnalyticsTrendsResponse,
   AnalyticsComplianceResponse,
   AnalyticsInsightsResponse,
+  Sensor,
 } from "@/lib/api";
 import { formatWIB } from "@/lib/dateUtils";
 import { UI_COPY, formatString, getSeverityLabel } from "@/lib/copy";
@@ -49,6 +51,8 @@ export default function AnalyticsPage() {
   const [trends, setTrends] = useState<AnalyticsTrendsResponse | null>(null);
   const [compliance, setCompliance] = useState<AnalyticsComplianceResponse | null>(null);
   const [insights, setInsights] = useState<AnalyticsInsightsResponse | null>(null);
+  const [sensors, setSensors] = useState<Sensor[]>([]);
+  const [selectedSensorId, setSelectedSensorId] = useState<number | undefined>(undefined);
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
 
   const formatEvidenceKey = (key: string) => {
@@ -69,10 +73,10 @@ export default function AnalyticsPage() {
     setError(null);
     try {
       const [summaryData, trendsData, complianceData, insightsData] = await Promise.all([
-        fetchAnalyticsSummary(),
-        fetchAnalyticsTrends(),
-        fetchAnalyticsCompliance("24h"),
-        fetchAnalyticsInsights(undefined, { refresh: forceRefresh })
+        fetchAnalyticsSummary(selectedSensorId),
+        fetchAnalyticsTrends("7d", "hourly", selectedSensorId),
+        fetchAnalyticsCompliance("24h", selectedSensorId),
+        fetchAnalyticsInsights(selectedSensorId, undefined, { refresh: forceRefresh })
       ]);
 
       setSummary(summaryData);
@@ -86,6 +90,10 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
+  }, [selectedSensorId]);
+
+  useEffect(() => {
+    fetchSensors().then(setSensors).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -116,10 +124,33 @@ export default function AnalyticsPage() {
       <div className="mx-auto w-full max-w-6xl space-y-8">
         <SectionHeader
           title={UI_COPY.analytics_title}
-          subtitle={UI_COPY.analytics_subtitle}
+          subtitle={
+            selectedSensorId 
+              ? `${UI_COPY.analytics_subtitle} • ${sensors.find(s => s.id === selectedSensorId)?.name || 'Sensor #' + selectedSensorId}`
+              : UI_COPY.analytics_subtitle
+          }
           icon={BarChart3}
           actions={
             <div className="flex items-center gap-3">
+              <select
+                value={selectedSensorId ?? ""}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSelectedSensorId(value ? Number(value) : undefined);
+                }}
+                className="pl-3 pr-8 py-2 bg-white/50 border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 appearance-none cursor-pointer hover:bg-white/80 transition-colors"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                  backgroundPosition: "right 0.5rem center",
+                  backgroundRepeat: "no-repeat",
+                  backgroundSize: "1.5em 1.5em"
+                }}
+              >
+                <option value="">Semua Sensor</option>
+                {sensors.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
               {lastRefreshed && (
                 <span className="text-xs text-slate-500 hidden sm:inline-block">
                   {UI_COPY.updated}: {lastRefreshed.toLocaleTimeString()}
