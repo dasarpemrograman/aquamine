@@ -12,8 +12,7 @@ import {
   Waves,
   ArrowRight,
   Map,
-  Maximize2,
-  Minimize2
+  Maximize2
 } from "lucide-react";
 
 import FieldSensorStatus from "@/app/components/FieldSensorStatus";
@@ -39,7 +38,6 @@ export default function Home() {
     lastUpdate: "--:--:--"
   });
   const [sensors, setSensors] = useState<Sensor[]>([]);
-  const [isMapExpanded, setIsMapExpanded] = useState(false);
 
   useEffect(() => {
     async function fetchStats() {
@@ -176,25 +174,26 @@ export default function Home() {
           {/* Main Column */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* Expandable Map Section */}
-            <div className={`transition-all duration-300 ${isMapExpanded ? 'fixed inset-0 z-50 bg-slate-50 p-4 flex flex-col' : 'relative'}`}>
-               <GlassCard className={`flex flex-col ${isMapExpanded ? 'h-full' : ''}`}>
-                 <div className="flex justify-between items-start mb-4">
-                   <div className="flex items-center gap-3">
-                     <IconBadge icon={Map} variant="aqua" size="lg" />
-                     <div>
-                       <h3 className="text-lg font-bold text-slate-800">{UI_COPY.field_map}</h3>
-                       {!isMapExpanded && <p className="text-xs text-slate-400">{UI_COPY.tap_expand}</p>}
-                     </div>
-                   </div>
-                   <button 
-                     onClick={() => setIsMapExpanded(!isMapExpanded)}
-                     className="p-2 hover:bg-slate-100 rounded-full text-slate-500 hover:text-cyan-600 transition-colors"
-                   >
-                     {isMapExpanded ? <Minimize2 size={24} /> : <Maximize2 size={24} />}
-                   </button>
-                 </div>
-                 <div className={`rounded-lg overflow-hidden ${isMapExpanded ? 'flex-1' : 'h-[300px]'}`}>
+            {/* Map Section */}
+            <div className="relative">
+               <GlassCard className="flex flex-col">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex items-center gap-3">
+                      <IconBadge icon={Map} variant="aqua" size="lg" />
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-800">{UI_COPY.field_map}</h3>
+                        <p className="text-xs text-slate-400">{UI_COPY.tap_expand}</p>
+                      </div>
+                    </div>
+                    <Link
+                      href="/map"
+                      className="p-2 hover:bg-slate-100 rounded-full text-slate-500 hover:text-cyan-600 transition-colors"
+                      aria-label="Buka peta lengkap"
+                    >
+                      <Maximize2 size={24} />
+                    </Link>
+                  </div>
+                 <div className="rounded-lg overflow-hidden h-[300px]">
                    <BerkeleyPitMap sensors={sensors} height="100%" showPolygon={true} />
                  </div>
                </GlassCard>

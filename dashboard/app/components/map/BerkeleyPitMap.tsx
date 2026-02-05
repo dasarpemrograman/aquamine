@@ -178,8 +178,8 @@ export default function BerkeleyPitMap({
 
   return (
     <div
-      className="relative w-full h-full min-h-[500px] rounded-xl overflow-hidden group bg-slate-50"
-      style={{ height }}
+      className="relative w-full h-full min-h-[400px] rounded-xl overflow-hidden group bg-slate-50"
+      style={{ height: height || '100%' }}
     >
       <MapContainer
         ref={mapRef}
@@ -416,11 +416,11 @@ export default function BerkeleyPitMap({
                   </div>
 
                   <Link
-                    href={`/sensors/${selectedSensor.sensor_id}`}
+                    href={`/analytics?sensor_id=${selectedSensor.sensor_id}`}
                     className="flex items-center justify-center gap-2 bg-slate-900 hover:bg-black text-white px-4 py-3.5 rounded-xl font-semibold transition-all active:scale-95 shadow-lg shadow-slate-900/10 w-full"
                   >
                     <Waves size={18} />
-                    View Live Telemetry
+                    Lihat Detail Sensor
                   </Link>
                 </div>
               </div>

@@ -32,28 +32,28 @@ export default function MapPage() {
   }, []);
 
   return (
-    <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">
-      <div className="mx-auto w-full max-w-6xl space-y-6 h-full flex flex-col">
+    <div className="h-[calc(100vh-64px)] flex flex-col px-6 py-6 md:px-8">
+      <div className="flex flex-col h-full">
         <SectionHeader
           title="Site Map"
           subtitle="Berkeley Pit sensor locations and severity overview"
           icon={MapIcon}
         />
 
-        <div className="flex-1 w-full min-h-[calc(100vh-250px)] rounded-xl overflow-hidden border border-slate-200 shadow-sm relative">
-             <BerkeleyPitMap
-               sensors={sensors}
-               height="100%"
-               showPolygon={true}
-               interactive={true}
-               onMissingCoords={setMissingCoordsCount}
-             />
+        <div className="flex-1 w-full min-h-0 mt-6 rounded-xl overflow-hidden border border-slate-200 shadow-sm relative">
+          <BerkeleyPitMap
+            sensors={sensors}
+            height="100%"
+            showPolygon={true}
+            interactive={true}
+            onMissingCoords={setMissingCoordsCount}
+          />
         </div>
         
         {missingCoordsCount > 0 && (
-           <div className="text-center text-amber-600 text-sm">
-             {missingCoordsCount} sensor{missingCoordsCount > 1 ? "s" : ""} missing coordinates
-           </div>
+          <div className="text-center text-amber-600 text-sm mt-4">
+            {missingCoordsCount} sensor{missingCoordsCount > 1 ? "s" : ""} missing coordinates
+          </div>
         )}
       </div>
     </div>

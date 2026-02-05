@@ -30,3 +30,33 @@ export const formatWIB = (value: DateInput): string => {
 export const formatWIBShort = (value: DateInput): string => {
   return `${normalize(wibShortFormatter.format(toDate(value)))} WIB`;
 };
+
+export const formatRelativeTime = (value: DateInput): string => {
+  const date = toDate(value);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) {
+    return "baru saja";
+  }
+
+  const minutes = Math.floor(diffInSeconds / 60);
+  if (minutes < 60) {
+    return `${minutes} menit yang lalu`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} jam yang lalu`;
+  }
+
+  const days = Math.floor(hours / 24);
+  if (days === 1) {
+    return "kemarin";
+  }
+  if (days < 7) {
+    return `${days} hari lalu`;
+  }
+
+  return formatWIBShort(value);
+};
