@@ -1467,9 +1467,14 @@ async def list_alerts(
     user_id: str = Depends(get_current_user),
 ):
     query = (
-        select(Alert, func.count(AlertEvidence.id).label("evidence_count"))
+        select(
+            Alert,
+            Sensor.name.label("sensor_name"),
+            func.count(AlertEvidence.id).label("evidence_count"),
+        )
+        .join(Sensor, Alert.sensor_id == Sensor.id)
         .outerjoin(AlertEvidence, Alert.id == AlertEvidence.alert_id)
-        .group_by(Alert.id)
+        .group_by(Alert.id, Sensor.name)
         .order_by(desc(Alert.created_at))
         .limit(limit)
     )
@@ -1480,10 +1485,11 @@ async def list_alerts(
     rows = result.all()
 
     alerts = []
-    for alert, evidence_count in rows:
+    for alert, sensor_name, evidence_count in rows:
         alert_dict = {
             "id": alert.id,
             "sensor_id": alert.sensor_id,
+            "sensor_name": sensor_name,
             "severity": alert.severity,
             "previous_state": alert.previous_state,
             "message": alert.message,

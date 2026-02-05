@@ -40,6 +40,7 @@ class AlertEvidenceResponse(AlertEvidenceBase):
 
 class AlertResponse(AlertBase):
     id: int
+    sensor_name: Optional[str] = None
     created_at: datetime
     acknowledged_at: Optional[datetime] = None
     acknowledged_by: Optional[str] = None
