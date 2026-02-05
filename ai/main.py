@@ -59,6 +59,7 @@ from .db.models import (
     ChatThread,
     ChatSessionSegment,
     ChatMessage,
+    AlertEvidence,
 )
 from .schemas.sensor import SensorResponse, ReadingResponse, SensorDataIngest
 from .schemas.forecast import PredictionResponse
@@ -70,6 +71,8 @@ from .schemas.alert import (
     RecipientBase,
     RecipientCreate,
     RecipientResponse,
+    AlertEvidenceCreate,
+    AlertEvidenceResponse,
 )
 from .schemas.settings import UserSettingsResponse, UserSettingsUpdate
 from .schemas.help import FaqItem, FaqResponse
@@ -776,7 +779,7 @@ def get_faq() -> FaqResponse:
 
 
 @app.post("/api/v1/chat")
-@limiter.limit("30/minute")
+@limiter.limit("200/minute")
 async def chat(
     request: Request, body: ChatRequest, user_id: str = Depends(get_current_user)
 ) -> dict[str, Any]:
@@ -796,7 +799,7 @@ async def chat(
 
 
 @app.post("/api/v1/cv/analyze")
-@limiter.limit("10/minute")
+@limiter.limit("300/minute")
 async def analyze_image(request: Request, file: Optional[UploadFile] = File(None)):
     if file is None:
         return error_response(
@@ -903,7 +906,7 @@ async def get_sensor_readings(sensor_id: int, hours: int = 24, db: AsyncSession 
 
 
 @app.post("/api/v1/sensors/ingest")
-@limiter.limit("100/minute")
+@limiter.limit("1000/minute")
 async def ingest_sensor_data(
     request: Request,
     payload: SensorDataIngest,
@@ -1463,12 +1466,40 @@ async def list_alerts(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ):
-    query = select(Alert).order_by(desc(Alert.created_at)).limit(limit)
+    query = (
+        select(Alert, func.count(AlertEvidence.id).label("evidence_count"))
+        .outerjoin(AlertEvidence, Alert.id == AlertEvidence.alert_id)
+        .group_by(Alert.id)
+        .order_by(desc(Alert.created_at))
+        .limit(limit)
+    )
     if severity:
         query = query.where(Alert.severity == severity)
 
     result = await db.execute(query)
-    return result.scalars().all()
+    rows = result.all()
+
+    alerts = []
+    for alert, evidence_count in rows:
+        alert_dict = {
+            "id": alert.id,
+            "sensor_id": alert.sensor_id,
+            "severity": alert.severity,
+            "previous_state": alert.previous_state,
+            "message": alert.message,
+            "created_at": alert.created_at,
+            "acknowledged_at": alert.acknowledged_at,
+            "acknowledged_by": alert.acknowledged_by,
+            "resolved_at": alert.resolved_at,
+            "resolved_by": alert.resolved_by,
+            "resolution_note": alert.resolution_note,
+            "reopened_at": alert.reopened_at,
+            "reopened_by": alert.reopened_by,
+            "evidence_count": evidence_count,
+        }
+        alerts.append(AlertResponse(**alert_dict))
+
+    return alerts
 
 
 @app.get("/api/v1/settings/{user_id}", response_model=UserSettingsResponse)
@@ -1683,6 +1714,45 @@ async def reopen_alert(
     alert.reopened_by = user_id
     await db.commit()
     return {"status": "reopened"}
+
+
+@app.post("/api/v1/alerts/{alert_id}/evidence", response_model=AlertEvidenceResponse)
+async def attach_evidence(
+    alert_id: int,
+    evidence: AlertEvidenceCreate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    result = await db.execute(select(Alert).where(Alert.id == alert_id))
+    alert = result.scalar_one_or_none()
+
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    new_evidence = AlertEvidence(
+        alert_id=alert_id,
+        image_data=evidence.image_data,
+        analysis_result=evidence.analysis_result,
+        attached_by=user_id,
+    )
+    db.add(new_evidence)
+    await db.commit()
+    await db.refresh(new_evidence)
+    return new_evidence
+
+
+@app.get("/api/v1/alerts/{alert_id}/evidence", response_model=List[AlertEvidenceResponse])
+async def get_alert_evidence(
+    alert_id: int,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(AlertEvidence)
+        .where(AlertEvidence.alert_id == alert_id)
+        .order_by(desc(AlertEvidence.attached_at))
+    )
+    return result.scalars().all()
 
 
 # --- Chat Thread Endpoints ---
