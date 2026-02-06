@@ -93,7 +93,7 @@ class NotificationService:
             # Resend SDK is sync, but we wrap it or just call it directly (it's fast)
             # ideally run in threadpool if blocking
             params = {
-                "from": "AquaMine Alert <alerts@draftanakitb.tech>",
+                "from": "AquaMine Alert <alerts@aquamine.web.id>",
                 "to": [email],
                 "subject": subject,
                 "html": html_content,
