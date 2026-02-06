@@ -5,7 +5,6 @@ from sqlalchemy import select
 from ..db.models import Sensor, Reading
 from ..schemas.sensor import SensorDataIngest
 from ..db.connection import AsyncSessionLocal
-from .config import mqtt_config
 
 logger = logging.getLogger(__name__)
 
@@ -38,28 +37,12 @@ async def process_mqtt_message(
 
 
 async def _process_mqtt_logic(session: AsyncSession, payload: SensorDataIngest, source: str):
-    allowed_sensor_ids = mqtt_config.allowed_sensor_ids
-    if allowed_sensor_ids and payload.sensor_id not in allowed_sensor_ids:
-        logger.warning(
-            "Dropping reading source=%s sensor_id=%s because it is outside SENSOR_ALLOWED_IDS",
-            source,
-            payload.sensor_id,
-        )
-        return False
-
     # Check if sensor exists
     result = await session.execute(select(Sensor).where(Sensor.sensor_id == payload.sensor_id))
     sensor = result.scalar_one_or_none()
 
     # Auto-register if not found
     if not sensor:
-        if not mqtt_config.auto_register_unknown:
-            logger.warning(
-                "Dropping reading source=%s sensor_id=%s because SENSOR_AUTO_REGISTER_UNKNOWN=false",
-                source,
-                payload.sensor_id,
-            )
-            return False
         logger.info(f"Auto-registering new sensor: {payload.sensor_id}")
         sensor = Sensor(
             sensor_id=payload.sensor_id,
