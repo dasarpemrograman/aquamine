@@ -565,48 +565,14 @@ async def generate_insights_with_llm(
     if strat_support_metrics:
         # If the LLM didn't return it, or we want to overwrite/augment (here we only add if missing)
         if not parsed.strategic_decision_support:
-            treatment_metrics = strat_support_metrics["treatment"]
-            
-            # Map simplified calculation dict to Pydantic model structure
-            cost_bd = CostBreakdown(
-                chemical=treatment_metrics.get("cost_chemical", 0),
-                energy=treatment_metrics.get("cost_energy", 0),
-                labor=treatment_metrics.get("cost_labor", 0),
-                maintenance=treatment_metrics.get("cost_maintenance", 0)
-            )
-            
-            emp_result = EmpiricalTreatmentResult(
-                acidity_deficit=treatment_metrics.get("acidity_deficit", 0),
-                cao_dosage_kg_ph=treatment_metrics.get("cao_dosage_kg_ph", 0),
-                estimated_cost_idr_ph=treatment_metrics.get("total_estimated_cost_idr_ph", 0),
-                cost_breakdown=cost_bd
-            )
-
-            risk_metrics = strat_support_metrics["legal_risk"]
-            risk_bd = RiskBreakdown(
-                fine=risk_metrics.get("risk_fine_idr", 0),
-                restoration=risk_metrics.get("risk_restoration_idr", 0),
-                infrastructure=risk_metrics.get("risk_infrastructure_capex_idr", 0)
-            )
-
-            leg_result = LegalRiskResult(
-                compliant=risk_metrics.get("compliant", False),
-                violations=risk_metrics.get("violations", []),
-                risk_exposure_idr=risk_metrics.get("total_risk_exposure_idr", 0),
-                remediation_cost_idr_daily=risk_metrics.get("risk_restoration_idr", 0) * 24,
-                risk_breakdown=risk_bd,
-                legal_risk_status=risk_metrics.get("legal_risk_status", "Unknown")
-            )
-
             parsed.strategic_decision_support = StrategicDecisionSupport(
-                treatment=emp_result,
-                legal_risk=leg_result,
-                net_potential_savings_idr=leg_result.risk_exposure_idr - emp_result.estimated_cost_idr_ph,
+                treatment=EmpiricalTreatmentResult(**strat_support_metrics["treatment"]),
+                legal_risk=LegalRiskResult(**strat_support_metrics["legal_risk"]),
                 technical_root_cause="LLM tidak memberikan analisis. Fallback ke perhitungan otomatis.",
                 legal_consequence="Cek PP 22/2021.",
-                prescriptive_plan=f"Dosis Kapur: {emp_result.cao_dosage_kg_ph:.2f} kg/jam.",
-                compliance_eta_minutes=45 if emp_result.cao_dosage_kg_ph > 0 else 0,
-                required_cao_dosing_kg_ph=emp_result.cao_dosage_kg_ph,
+                prescriptive_plan=f"Dosis Kapur: {strat_support_metrics['treatment']['cao_dosage_kg_ph']:.2f} kg/jam.",
+                compliance_eta_minutes=45,
+                required_cao_dosing_kg_ph=strat_support_metrics['treatment']['cao_dosage_kg_ph'],
                 legal_risk_status="Administratif"
             )
 
@@ -913,6 +879,4 @@ def deterministic_insights_response(evidence: dict[str, Any]) -> AnalyticsInsigh
             evidence=citations,
         ),
         key_findings=findings,
-        evidence=evidence,
-        strategic_decision_support=strat_support,
-    )
+        evidence=evidence,        strategic_decision_support=strat_support,    )

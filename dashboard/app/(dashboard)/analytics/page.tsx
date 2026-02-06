@@ -439,13 +439,13 @@ export default function AnalyticsPage() {
                                 <BarChart layout="vertical" data={[
                                     {
                                         name: 'OpEx',
-                                        'Kapur': insights.strategic_decision_support.treatment.cost_breakdown?.chemical || 0,
+                                        'Kapur': insights.strategic_decision_support.treatment.cost_breakdown?.chemical || insights.strategic_decision_support.treatment.estimated_cost_idr_ph, // fallback
                                         'Energi': insights.strategic_decision_support.treatment.cost_breakdown?.energy || 0,
                                         'SDM & Maint': (insights.strategic_decision_support.treatment.cost_breakdown?.labor || 0) + (insights.strategic_decision_support.treatment.cost_breakdown?.maintenance || 0),
                                     },
                                     {
                                         name: 'Risk',
-                                        'Denda': insights.strategic_decision_support.legal_risk.risk_breakdown?.fine || 0,
+                                        'Denda': insights.strategic_decision_support.legal_risk.risk_breakdown?.fine || insights.strategic_decision_support.legal_risk.risk_exposure_idr, // fallback
                                         'Restorasi': insights.strategic_decision_support.legal_risk.risk_breakdown?.restoration || 0,
                                         'Infra Darurat': insights.strategic_decision_support.legal_risk.risk_breakdown?.infrastructure || 0,
                                     }
@@ -453,11 +453,8 @@ export default function AnalyticsPage() {
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                                     <XAxis type="number" hide />
                                     <YAxis type="category" dataKey="name" width={50} tick={{fontSize: 12, fontWeight: 600}} />
-                                    <Tooltip
-                                        formatter={(value: string | number | Array<string | number>) => {
-                                          const numValue = Array.isArray(value) ? value[0] : value;
-                                          return formatIDR(Number(numValue) || 0);
-                                        }}
+                                    <Tooltip 
+                                        formatter={(value: number | undefined) => formatIDR(value ?? 0)}
                                         contentStyle={{ borderRadius: '8px', fontSize: '12px' }}
                                     />
                                     <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
@@ -479,9 +476,9 @@ export default function AnalyticsPage() {
                             <div className="flex justify-between items-center cursor-help">
                                 <span className="text-sm font-medium text-slate-500 border-b border-dotted border-slate-400">Potensi Penghematan Bersih</span>
                                 <span className={`text-xl font-bold ${
-                                    (insights.strategic_decision_support.net_potential_savings_idr ?? 0) > 0 ? 'text-emerald-600' : 'text-rose-600'
+                                    (insights.strategic_decision_support.net_potential_savings_idr || 0) > 0 ? 'text-emerald-600' : 'text-rose-600'
                                 }`}>
-                                    {formatIDR(insights.strategic_decision_support.net_potential_savings_idr ?? 
+                                    {formatIDR(insights.strategic_decision_support.net_potential_savings_idr || 
                                         ((insights.strategic_decision_support.legal_risk.risk_exposure_idr) - insights.strategic_decision_support.treatment.estimated_cost_idr_ph)
                                     )}
                                 </span>
