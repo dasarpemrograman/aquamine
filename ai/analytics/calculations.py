@@ -3,6 +3,7 @@ from ai.constants.compliance import (
     PH_MIN,
     PH_MAX,
     PH_TARGET,
+    TURBIDITY_MAX,
     MOLAR_MASS_CaO,
     LIME_PRICE_AVG,
     REF_PP_22_2021,
@@ -77,7 +78,7 @@ def evaluate_legal_risk(current_pH: float, turbidity: float, flow_rate_lph: floa
             "clause": "Pasal 506-515 (Pencemaran Lingkungan)"
         })
         
-    if turbidity > 200: 
+    if turbidity > TURBIDITY_MAX: 
         is_compliant = False
         violations.append({
             "parameter": "Turbidity",
@@ -93,10 +94,14 @@ def evaluate_legal_risk(current_pH: float, turbidity: float, flow_rate_lph: floa
     
     if not is_compliant:
         # Fine Calculation (Progressive)
-        if current_pH < CRITICAL_PH_THRESHOLD:
+        # Check specific severe violations first
+        is_severe_ph = current_pH < CRITICAL_PH_THRESHOLD
+        
+        if is_severe_ph:
             risk_fine = (FINE_ADMINISTRATIVE_SEVERE / 24.0) # Hourly portion
             severity_level = "Pidana Lingkungan (UU PPLH)"
         else:
+            # Default to administrative fine for other violations (Turbidity, Minor pH)
             risk_fine = (FINE_ADMINISTRATIVE_LIGHT / 24.0)
             severity_level = "Administratif"
             

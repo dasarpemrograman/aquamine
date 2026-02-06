@@ -439,13 +439,13 @@ export default function AnalyticsPage() {
                                 <BarChart layout="vertical" data={[
                                     {
                                         name: 'OpEx',
-                                        'Kapur': insights.strategic_decision_support.treatment.cost_breakdown?.chemical || insights.strategic_decision_support.treatment.estimated_cost_idr_ph, // fallback
+                                        'Kapur': insights.strategic_decision_support.treatment.cost_breakdown?.chemical || 0,
                                         'Energi': insights.strategic_decision_support.treatment.cost_breakdown?.energy || 0,
                                         'SDM & Maint': (insights.strategic_decision_support.treatment.cost_breakdown?.labor || 0) + (insights.strategic_decision_support.treatment.cost_breakdown?.maintenance || 0),
                                     },
                                     {
                                         name: 'Risk',
-                                        'Denda': insights.strategic_decision_support.legal_risk.risk_breakdown?.fine || insights.strategic_decision_support.legal_risk.risk_exposure_idr, // fallback
+                                        'Denda': insights.strategic_decision_support.legal_risk.risk_breakdown?.fine || 0,
                                         'Restorasi': insights.strategic_decision_support.legal_risk.risk_breakdown?.restoration || 0,
                                         'Infra Darurat': insights.strategic_decision_support.legal_risk.risk_breakdown?.infrastructure || 0,
                                     }
