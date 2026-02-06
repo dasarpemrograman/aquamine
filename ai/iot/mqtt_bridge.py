@@ -31,7 +31,8 @@ async def process_mqtt_message(payload: SensorDataIngest, session: Optional[Asyn
     run — the caller handles alerts separately.
     """
     if session:
-        return await _process_mqtt_logic(session, payload)
+        await _process_mqtt_logic(session, payload)
+        return True
 
     async with AsyncSessionLocal() as local_session:
         try:
