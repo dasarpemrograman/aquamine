@@ -8,11 +8,22 @@ from pathlib import Path
 from typing import Any, List, Optional, Tuple
 from PIL import Image
 
+import cv2
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
 # Must stay aligned with `ai/main.py` detection filtering threshold.
 YOLO_CONFIDENCE_THRESHOLD = 0.65
+
+# HSV range for yellow-orange precipitate (yellowboy / redoxon simulant).
+# Tuned for yellow-to-orange hues typical of iron hydroxide deposits.
+HSV_LOWER_BOUND = np.array([10, 80, 80], dtype=np.uint8)
+HSV_UPPER_BOUND = np.array([35, 255, 255], dtype=np.uint8)
+
+# Minimum contour area (pixels) to count as a detection in HSV mode.
+# Filters out noise / tiny specks.
+HSV_MIN_CONTOUR_AREA = 500
 
 
 class ImageDecodeError(Exception):
@@ -83,7 +94,10 @@ class YellowBoyDetector:
         return self._model
 
     def detect(
-        self, image_bytes: bytes, img: Optional[Image.Image] = None
+        self,
+        image_bytes: bytes,
+        img: Optional[Image.Image] = None,
+        mode: str = "yolo",
     ) -> Tuple[List[Detection], List[str]]:
         """
         Detect yellow boy in image.
@@ -91,6 +105,7 @@ class YellowBoyDetector:
         Args:
             image_bytes: Raw image bytes (JPEG or PNG)
             img: Optional pre-decoded PIL Image (avoids double decoding)
+            mode: "yolo" (default) or "hsv" for color-based fast detection
 
         Returns:
             Tuple of (detections, warnings)
@@ -99,7 +114,6 @@ class YellowBoyDetector:
         """
         warnings = []
 
-        # Use provided image or decode
         if img is None:
             try:
                 img = Image.open(io.BytesIO(image_bytes))
@@ -108,16 +122,16 @@ class YellowBoyDetector:
 
         img_width, img_height = img.size
 
-        # Check for small images
         if img_width < 100 or img_height < 100:
             warnings.append("Image smaller than 100x100; detection may be unreliable")
 
-        # Use real model if available
+        if mode == "hsv":
+            return self._hsv_detect(img, warnings)
+
         model = self._load_model()
         if model is not None:
             return self._real_detect(model, img, warnings)
 
-        # Fall back to mock
         detections = self._mock_detect(image_bytes, img_width, img_height)
         return detections, warnings
 
@@ -159,6 +173,36 @@ class YellowBoyDetector:
             )
 
         return sorted(detections, key=lambda d: d.confidence, reverse=True)
+
+    def _hsv_detect(
+        self, img: Image.Image, warnings: List[str]
+    ) -> Tuple[List[Detection], List[str]]:
+        rgb = np.array(img.convert("RGB"))
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+
+        mask = cv2.inRange(hsv, HSV_LOWER_BOUND, HSV_UPPER_BOUND)
+
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        img_area = img.size[0] * img.size[1]
+        detections: list[Detection] = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < HSV_MIN_CONTOUR_AREA:
+                continue
+
+            x, y, w, h = cv2.boundingRect(contour)
+            coverage = area / img_area
+            confidence = min(0.4 + coverage * 10, 0.95)
+            detections.append(Detection(x=x, y=y, width=w, height=h, confidence=confidence))
+
+        warnings.append("HSV color-based detection (Fast Mode) — higher false-positive rate")
+        return sorted(detections, key=lambda d: d.confidence, reverse=True), warnings
 
     def _real_detect(
         self, model, img: Image.Image, warnings: List[str]

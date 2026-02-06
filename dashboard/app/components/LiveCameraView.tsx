@@ -37,6 +37,12 @@ export default function LiveCameraView({
   const [isInferenceRunning, setIsInferenceRunning] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isAnalyzingRef = useRef(false);
+
+  const [detectionMode, setDetectionMode] = useState<"yolo" | "hsv">("yolo");
+  const [fastModeSecondsLeft, setFastModeSecondsLeft] = useState(0);
+  const fastModeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef(false);
   
   const [showAttachModal, setShowAttachModal] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -62,6 +68,13 @@ export default function LiveCameraView({
   useEffect(() => {
     return () => {
       stopStream();
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (fastModeTimerRef.current) clearInterval(fastModeTimerRef.current);
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     };
   }, []);
 
@@ -239,6 +252,66 @@ export default function LiveCameraView({
     }
   };
 
+  const FAST_MODE_DURATION_SECONDS = 60;
+  const LONG_PRESS_THRESHOLD_MS = 800;
+
+  const activateFastMode = useCallback(() => {
+    setDetectionMode("hsv");
+    setFastModeSecondsLeft(FAST_MODE_DURATION_SECONDS);
+
+    if (fastModeTimerRef.current) clearInterval(fastModeTimerRef.current);
+
+    fastModeTimerRef.current = setInterval(() => {
+      setFastModeSecondsLeft((prev) => {
+        if (prev <= 1) {
+          if (fastModeTimerRef.current) clearInterval(fastModeTimerRef.current);
+          fastModeTimerRef.current = null;
+          setDetectionMode("yolo");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  const deactivateFastMode = useCallback(() => {
+    if (fastModeTimerRef.current) {
+      clearInterval(fastModeTimerRef.current);
+      fastModeTimerRef.current = null;
+    }
+    setDetectionMode("yolo");
+    setFastModeSecondsLeft(0);
+  }, []);
+
+  const handleShutterPointerDown = useCallback(() => {
+    longPressTriggeredRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      if (detectionMode === "hsv") {
+        deactivateFastMode();
+      } else {
+        activateFastMode();
+      }
+    }, LONG_PRESS_THRESHOLD_MS);
+  }, [detectionMode, activateFastMode, deactivateFastMode]);
+
+  const handleShutterPointerUp = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    if (!longPressTriggeredRef.current) {
+      captureAndAnalyze();
+    }
+  }, [captureAndAnalyze]);
+
+  const handleShutterPointerLeave = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
   const loadAlerts = useCallback(async () => {
     setIsLoadingAlerts(true);
     try {
@@ -283,7 +356,7 @@ export default function LiveCameraView({
         }
         
         try {
-          const result = await analyzeImage(new File([blob], "frame.jpg", { type: "image/jpeg" }));
+          const result = await analyzeImage(new File([blob], "frame.jpg", { type: "image/jpeg" }), detectionMode);
           setAnalysisResult(result);
         } catch (err) {
           console.error("Realtime inference error:", err);
@@ -295,7 +368,7 @@ export default function LiveCameraView({
       console.error("Frame capture error:", err);
       isAnalyzingRef.current = false;
     }
-  }, [stream]);
+  }, [stream, detectionMode]);
 
   const startRealtimeInference = useCallback(() => {
     if (!stream || intervalRef.current) return;
@@ -461,25 +534,49 @@ export default function LiveCameraView({
                 )}
 
                 <button 
-                    onClick={captureAndAnalyze}
+                    onPointerDown={handleShutterPointerDown}
+                    onPointerUp={handleShutterPointerUp}
+                    onPointerLeave={handleShutterPointerLeave}
                     disabled={isStarting || !stream}
-                    className="group relative flex items-center justify-center"
-                    aria-label="Ambil Bukti"
+                    className="group relative flex items-center justify-center select-none touch-none"
+                    aria-label="Ambil Bukti (tahan untuk Fast Mode)"
                 >
-                    <div className="w-20 h-20 md:w-24 md:h-24 rounded-full border-4 border-white/90 bg-transparent transition-transform duration-150 group-active:scale-95 shadow-[0_0_20px_rgba(0,0,0,0.3)]"></div>
-                    <div className="absolute w-16 h-16 md:w-20 md:h-20 bg-white rounded-full transition-all duration-150 group-active:scale-90 group-hover:bg-teal-50 group-active:bg-teal-100 shadow-inner"></div>
+                    <div className={`w-20 h-20 md:w-24 md:h-24 rounded-full border-4 bg-transparent transition-all duration-150 group-active:scale-95 shadow-[0_0_20px_rgba(0,0,0,0.3)] ${
+                        detectionMode === "hsv" ? "border-amber-400" : "border-white/90"
+                    }`}></div>
+                    <div className={`absolute w-16 h-16 md:w-20 md:h-20 rounded-full transition-all duration-150 group-active:scale-90 shadow-inner ${
+                        detectionMode === "hsv"
+                            ? "bg-amber-400 group-hover:bg-amber-300 group-active:bg-amber-500"
+                            : "bg-white group-hover:bg-teal-50 group-active:bg-teal-100"
+                    }`}></div>
                 </button>
                 
-                <p className="text-white/80 text-sm font-medium drop-shadow-md">AMBIL BUKTI</p>
+                <p className="text-white/80 text-sm font-medium drop-shadow-md">
+                    {detectionMode === "hsv" ? "FAST MODE AKTIF" : "AMBIL BUKTI"}
+                </p>
             </div>
         )}
 
         {!capturedImage && (
-            <div className="absolute top-4 left-4 bg-black/30 backdrop-blur px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full animate-pulse ${isInferenceRunning ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
-                <span className="text-xs font-medium text-white tracking-wide uppercase">
-                    {isInferenceRunning ? 'Analisis Aktif' : 'Live Camera'}
-                </span>
+            <div className="absolute top-4 left-4 flex items-center gap-2">
+                <div className="bg-black/30 backdrop-blur px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full animate-pulse ${isInferenceRunning ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                    <span className="text-xs font-medium text-white tracking-wide uppercase">
+                        {isInferenceRunning ? 'Analisis Aktif' : 'Live Camera'}
+                    </span>
+                </div>
+                {detectionMode === "hsv" && (
+                    <button 
+                        onClick={deactivateFastMode}
+                        className="bg-amber-500/90 backdrop-blur px-3 py-1.5 rounded-full border border-amber-400/50 flex items-center gap-2 hover:bg-amber-600/90 transition-colors cursor-pointer active:scale-95"
+                        aria-label="Stop Fast Mode"
+                    >
+                        <Zap className="w-3 h-3 text-white" />
+                        <span className="text-xs font-bold text-white tracking-wide">
+                            Fast Mode {fastModeSecondsLeft}s
+                        </span>
+                    </button>
+                )}
             </div>
         )}
 

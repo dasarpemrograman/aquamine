@@ -137,11 +137,16 @@ export interface Recipient extends RecipientBase {
 
 export type RecipientCreate = RecipientBase;
 
-export async function analyzeImage(file: File): Promise<AnalysisResponse> {
+export async function analyzeImage(file: File, mode: "yolo" | "hsv" = "yolo"): Promise<AnalysisResponse> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${API_BASE}/api/v1/cv/analyze`, {
+  const url = new URL(`${API_BASE}/api/v1/cv/analyze`);
+  if (mode !== "yolo") {
+    url.searchParams.set("mode", mode);
+  }
+
+  const response = await fetch(url.toString(), {
     method: "POST",
     body: formData,
   });
