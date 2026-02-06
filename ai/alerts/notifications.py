@@ -82,7 +82,7 @@ class NotificationService:
             <p><strong>Previous State:</strong> {alert.previous_state}</p>
             <hr>
             <p><small>AquaMine AI Monitoring System</small></p>
-            <a href="{os.getenv("NEXT_PUBLIC_API_URL", "http://localhost:3000")}/alerts" 
+            <a href="{os.getenv("NEXT_PUBLIC_API_URL", "https://aquamine.web.id")}/alerts" 
                style="background: #0ea5e9; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
                View Dashboard
             </a>
