@@ -18,7 +18,7 @@ jobs:
           POSTGRES_PASSWORD: changeme
           POSTGRES_DB: aquamine_db
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U aquamine"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5

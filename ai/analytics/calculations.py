@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Any
 from ai.constants.compliance import (
     PH_MIN,
     PH_MAX,
@@ -19,7 +19,7 @@ from ai.constants.compliance import (
     CRITICAL_PH_THRESHOLD
 )
 
-def calculate_empirical_treatment(current_pH: float, flow_rate_lph: float) -> Dict[str, float]:
+def calculate_empirical_treatment(current_pH: float, flow_rate_lph: float) -> dict[str, float]:
     """
     Calculate Acidity, CaO dosage, and detailed OpEx breakdown.
     """

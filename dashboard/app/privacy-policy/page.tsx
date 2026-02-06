@@ -145,7 +145,7 @@ export default function PrivacyPolicyPage() {
                   Introduction
                 </h2>
                 <p className="text-slate-700 leading-relaxed text-lg">
-                  AquaMine AI ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Acid Mine Drainage monitoring system.
+                  AquaMine AI (&quot;we&quot;, &quot;our&quot;, or &quot;us&quot;) is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Acid Mine Drainage monitoring system.
                 </p>
               </section>
 
@@ -376,7 +376,7 @@ export default function PrivacyPolicyPage() {
                 <section id="children" className="bg-white/70 backdrop-blur-md border border-white/60 rounded-3xl p-8 shadow-lg shadow-slate-200/50">
                   <div className="flex items-center gap-3 mb-4">
                     <Baby className="text-pink-500" />
-                    <h2 className="text-xl font-bold text-slate-900">Children's Privacy</h2>
+                    <h2 className="text-xl font-bold text-slate-900">Children&apos;s Privacy</h2>
                   </div>
                   <p className="text-slate-600 text-sm leading-relaxed">
                     AquaMine is not intended for users under 18 years of age. We do not knowingly collect information from children.
@@ -389,7 +389,7 @@ export default function PrivacyPolicyPage() {
                     <h2 className="text-xl font-bold text-slate-900">Policy Changes</h2>
                   </div>
                   <p className="text-slate-600 text-sm leading-relaxed">
-                    We may update this Privacy Policy periodically. Changes will be posted on this page with an updated "Last updated" date. Continued use of AquaMine after changes constitutes acceptance.
+                    We may update this Privacy Policy periodically. Changes will be posted on this page with an updated &quot;Last updated&quot; date. Continued use of AquaMine after changes constitutes acceptance.
                   </p>
                 </section>
               </div>
