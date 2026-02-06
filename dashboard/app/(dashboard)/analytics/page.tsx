@@ -454,7 +454,7 @@ export default function AnalyticsPage() {
                                     <XAxis type="number" hide />
                                     <YAxis type="category" dataKey="name" width={50} tick={{fontSize: 12, fontWeight: 600}} />
                                     <Tooltip 
-                                        formatter={(value: number) => formatIDR(value)}
+                                        formatter={(value: number | undefined) => formatIDR(value ?? 0)}
                                         contentStyle={{ borderRadius: '8px', fontSize: '12px' }}
                                     />
                                     <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />

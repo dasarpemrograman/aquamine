@@ -1,5 +1,4 @@
-import math
-from typing import Dict, Any, List
+from typing import Dict, Any
 from ai.constants.compliance import (
     PH_MIN,
     PH_MAX,
@@ -8,8 +7,6 @@ from ai.constants.compliance import (
     LIME_PRICE_AVG,
     REF_PP_22_2021,
     REF_KEPMEN_1827,
-    REMEDIATION_COST_PER_M3,
-    BASE_ADMINISTRATIVE_FINE_DAILY,
     ELECTRICITY_COST_PER_KWH,
     AVG_PUMP_POWER_KW,
     LABOR_COST_HOURLY,
