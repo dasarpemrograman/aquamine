@@ -68,6 +68,28 @@ services:
       - aquamine-internal
     restart: unless-stopped
 
+  mqtt-listener:
+    build:
+      context: .
+      dockerfile: ./ai/Dockerfile
+    entrypoint: ["python", "-m", "ai.iot.sensor_listener"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      PYTHONPATH: /app
+      MQTT_BROKER: ${MQTT_BROKER}
+      MQTT_PORT: ${MQTT_PORT}
+      MQTT_TOPIC_PREFIX: ${MQTT_TOPIC_PREFIX}
+      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID}
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+      MQTT_TLS_INSECURE: ${MQTT_TLS_INSECURE}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - aquamine-internal
+    restart: unless-stopped
+
   dashboard:
     build:
       context: ./dashboard

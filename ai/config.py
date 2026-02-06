@@ -51,6 +51,9 @@ class Settings(BaseModel):
     MQTT_USERNAME: Optional[str] = ""
     MQTT_PASSWORD: Optional[str] = ""
 
+    # Sensor visibility in API list endpoints (comma-separated in env)
+    SENSOR_HIDDEN_IDS: List[str] = ["DEV_PROD_SYNC_CHECK"]
+
     # Constants (previously in main.py or other files, moving here is optional but cleaner)
     # Keeping them in their respective files for now to minimize refactor impact
 
@@ -59,6 +62,13 @@ class Settings(BaseModel):
     def parse_cors(cls, v: Any) -> List[str]:
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",")]
+        return v
+
+    @field_validator("SENSOR_HIDDEN_IDS", mode="before")
+    @classmethod
+    def parse_hidden_sensor_ids(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            return [sensor_id.strip() for sensor_id in v.split(",") if sensor_id.strip()]
         return v
 
     @classmethod

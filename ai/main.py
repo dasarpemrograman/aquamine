@@ -871,9 +871,11 @@ async def analyze_image(request: Request, file: Optional[UploadFile] = File(None
 
 @app.get("/api/v1/sensors", response_model=List[SensorResponse])
 async def list_sensors(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Sensor).options(selectinload(Sensor.alert_state)).order_by(Sensor.id)
-    )
+    query = select(Sensor).options(selectinload(Sensor.alert_state)).order_by(Sensor.id)
+    if settings.SENSOR_HIDDEN_IDS:
+        query = query.where(Sensor.sensor_id.not_in(settings.SENSOR_HIDDEN_IDS))
+
+    result = await db.execute(query)
     sensors = result.scalars().all()
     response_data = []
     for sensor in sensors:
@@ -915,7 +917,7 @@ async def ingest_sensor_data(
     token: str = Depends(verify_ingest_token),
 ):
     try:
-        await process_mqtt_message(payload, session=db)
+        await process_mqtt_message(payload, session=db, source="http")
 
         result = await db.execute(select(Sensor).where(Sensor.sensor_id == payload.sensor_id))
         sensor = result.scalar_one_or_none()

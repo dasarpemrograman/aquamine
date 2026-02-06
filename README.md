@@ -82,6 +82,14 @@ Before deploying to VPS, ensure:
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
+Important:
+- MQTT listener runs as a separate service: `mqtt-listener` (not embedded in `api` process).
+- If you start selected services manually, include it explicitly:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build api mqtt-listener dashboard nginx
+```
+
 ### SSL (LetsEncrypt)
 
 Recommended approach (host-based certbot + Nginx container):
@@ -113,6 +121,9 @@ Common VPS issues and fixes:
 - **WebSocket not connecting**: Check Nginx logs for `/ws/` requests. Look for mixed content warnings in browser console (using ws:// on https:// page).
 - **CV upload fails (413)**: Check Nginx error logs (`docker compose -f docker-compose.prod.yml logs nginx | grep 413`).
 - **API/simulator crash loops**: Check DB health (`docker compose -f docker-compose.prod.yml ps db` should show "healthy").
+- **No real MQTT data in DB**: Check listener logs and confirm broker connection/subscription:
+  `docker compose -f docker-compose.prod.yml logs -f mqtt-listener`
+- **Unexpected test sensor appears in dashboard**: Set `SENSOR_HIDDEN_IDS` in `.env` (comma-separated sensor IDs, e.g. `DEV_PROD_SYNC_CHECK`) and restart API.
 - **Database migration errors**: If you see errors like `column chat_session_segments.created_at does not exist`, rebuild the API container to run migrations: `docker compose build --no-cache api && docker compose up -d`.
 
 ## Database Migrations

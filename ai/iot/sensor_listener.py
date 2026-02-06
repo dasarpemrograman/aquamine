@@ -1,6 +1,7 @@
 # pyright: reportUnusedParameter=false
 
 import asyncio
+from contextlib import suppress
 import json
 import logging
 import ssl
@@ -18,15 +19,32 @@ logger = logging.getLogger("mqtt_listener")
 loop = None
 
 
-def on_connect(client, _userdata, _flags, rc):
+def _reason_code_value(reason_code) -> int:
+    value = getattr(reason_code, "value", reason_code)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return -1
+
+
+def on_connect(client, _userdata, _flags, reason_code, _properties=None):
     """Callback for when the client receives a CONNACK response from the server."""
-    if rc == 0:
+    rc_value = _reason_code_value(reason_code)
+    if rc_value == 0:
         logger.info("Connected to MQTT Broker!")
         topic = f"{mqtt_config.topic_prefix}/#"
         client.subscribe(topic)
         logger.info(f"Subscribed to {topic}")
     else:
-        logger.error(f"Failed to connect, return code {rc}")
+        logger.error("Failed to connect, return code %s", rc_value)
+
+
+def on_disconnect(_client, _userdata, _disconnect_flags, reason_code, _properties=None):
+    rc_value = _reason_code_value(reason_code)
+    if rc_value != 0:
+        logger.warning("Unexpected MQTT disconnect (rc=%s). Client will retry.", rc_value)
+    else:
+        logger.info("MQTT client disconnected cleanly")
 
 
 def on_message(_client, _userdata, msg):
@@ -46,7 +64,15 @@ def on_message(_client, _userdata, msg):
 
         # Schedule async processing
         if loop:
-            asyncio.run_coroutine_threadsafe(process_mqtt_message(ingest_data), loop)
+            future = asyncio.run_coroutine_threadsafe(
+                process_mqtt_message(ingest_data, source="mqtt"),
+                loop,
+            )
+            future.add_done_callback(
+                lambda f: logger.error("MQTT message processing failed: %s", f.exception())
+                if f.exception()
+                else None
+            )
         else:
             logger.warning("Event loop not available for processing message")
 
@@ -62,7 +88,10 @@ async def main_loop():
     loop = asyncio.get_running_loop()
 
     if mqtt_config.use_tls:
-        client = mqtt.Client(client_id=mqtt_config.client_id)
+        client = mqtt.Client(
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            client_id=mqtt_config.resolved_client_id,
+        )
         if mqtt_config.tls_insecure:
             client.tls_set(cert_reqs=ssl.CERT_NONE)
             client.tls_insecure_set(True)
@@ -71,26 +100,46 @@ async def main_loop():
             client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
             logger.info("TLS enabled for MQTT connection with certificate verification")
     else:
-        client = mqtt.Client(client_id=mqtt_config.client_id)
+        client = mqtt.Client(
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            client_id=mqtt_config.resolved_client_id,
+        )
 
     if mqtt_config.username:
         client.username_pw_set(mqtt_config.username, mqtt_config.password)
 
     client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
     client.on_message = on_message
 
-    try:
-        client.connect(mqtt_config.broker, mqtt_config.port, 60)
-        client.loop_start()
+    logger.info(
+        "Starting MQTT listener broker=%s port=%s topic_prefix=%s client_id=%s",
+        mqtt_config.broker,
+        mqtt_config.port,
+        mqtt_config.topic_prefix,
+        mqtt_config.resolved_client_id,
+    )
 
-        # Keep main loop running
-        while True:
-            await asyncio.sleep(1)
+    reconnect_delay = 3
+    while True:
+        try:
+            client.connect(mqtt_config.broker, mqtt_config.port, 60)
+            client.loop_start()
+            reconnect_delay = 3
 
-    except Exception as e:
-        logger.error(f"MQTT Client Error: {e}")
-    finally:
-        client.loop_stop()
+            while True:
+                await asyncio.sleep(1)
+                if not client.is_connected():
+                    raise ConnectionError("MQTT client disconnected")
+        except Exception as e:
+            logger.error("MQTT Client Error: %s", e)
+            logger.info("Retrying MQTT connection in %ss", reconnect_delay)
+            await asyncio.sleep(reconnect_delay)
+            reconnect_delay = min(reconnect_delay * 2, 30)
+        finally:
+            with suppress(Exception):
+                client.loop_stop()
+                client.disconnect()
 
 
 if __name__ == "__main__":

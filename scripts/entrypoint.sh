@@ -2,8 +2,8 @@
 set -e
 
 echo "Running database migrations..."
-cd /app/ai
-alembic upgrade head || echo "Migration completed with warnings"
+cd /app
+alembic -c ai/alembic.ini upgrade head || echo "Migration completed with warnings"
 
 echo "Running database initialization..."
 cd /app
