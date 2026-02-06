@@ -105,3 +105,53 @@ async def test_process_mqtt_message_error(mock_session_local, valid_payload):
 
     # Verify rollback called
     assert mock_session.rollback.called
+
+
+@pytest.mark.asyncio
+@patch("ai.iot.mqtt_bridge.mqtt_config")
+@patch("ai.iot.mqtt_bridge.AsyncSessionLocal")
+async def test_process_mqtt_message_dropped_by_allowlist(
+    mock_session_local,
+    mock_mqtt_config,
+    valid_payload,
+):
+    mock_session = AsyncMock()
+    mock_session_local.return_value.__aenter__.return_value = mock_session
+
+    mock_mqtt_config.allowed_sensor_ids = {"OTHER_SENSOR"}
+    mock_mqtt_config.auto_register_unknown = True
+
+    result = await process_mqtt_message(valid_payload)
+
+    assert result is False
+    assert mock_session.rollback.called
+    assert not mock_session.commit.called
+    assert not mock_session.execute.called
+
+
+@pytest.mark.asyncio
+@patch("ai.iot.mqtt_bridge.mqtt_config")
+@patch("ai.iot.mqtt_bridge.AsyncSessionLocal")
+async def test_process_mqtt_message_dropped_when_auto_register_disabled(
+    mock_session_local,
+    mock_mqtt_config,
+    valid_payload,
+):
+    mock_session = AsyncMock()
+    mock_session.add = MagicMock()
+    mock_session_local.return_value.__aenter__.return_value = mock_session
+
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_result
+
+    mock_mqtt_config.allowed_sensor_ids = {valid_payload.sensor_id}
+    mock_mqtt_config.auto_register_unknown = False
+
+    result = await process_mqtt_message(valid_payload)
+
+    assert result is False
+    assert mock_session.rollback.called
+    assert not mock_session.commit.called
+    assert mock_session.execute.called
+    assert not mock_session.add.called

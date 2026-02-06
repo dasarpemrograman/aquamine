@@ -25,9 +25,12 @@ async def process_mqtt_message(
 
     async with AsyncSessionLocal() as local_session:
         try:
-            await _process_mqtt_logic(local_session, payload, source=source)
+            processed = await _process_mqtt_logic(local_session, payload, source=source)
+            if not processed:
+                await local_session.rollback()
+                return False
             await local_session.commit()
-            return True
+            return processed
         except Exception as e:
             await local_session.rollback()
             logger.error(f"Error processing telemetry message from {source}: {e}")

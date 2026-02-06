@@ -873,7 +873,7 @@ async def analyze_image(request: Request, file: Optional[UploadFile] = File(None
 async def list_sensors(db: AsyncSession = Depends(get_db)):
     query = select(Sensor).options(selectinload(Sensor.alert_state)).order_by(Sensor.id)
     if settings.SENSOR_HIDDEN_IDS:
-        query = query.where(Sensor.sensor_id.not_in(settings.SENSOR_HIDDEN_IDS))
+        query = query.where(Sensor.sensor_id.notin_(settings.SENSOR_HIDDEN_IDS))
 
     result = await db.execute(query)
     sensors = result.scalars().all()
