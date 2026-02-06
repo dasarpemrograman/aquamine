@@ -40,8 +40,12 @@ def calculate_empirical_treatment(current_pH: float, flow_rate_lph: float) -> di
         acidity = excess_h_dataset
 
     # 2. Energy Cost (Fixed/Semi-variable)
-    # Asumsi pompa bekerja 100% jika ada flow, atau proporsional? Kita asumsi 1 jam operasi penuh.
-    energy_cost = AVG_PUMP_POWER_KW * ELECTRICITY_COST_PER_KWH
+    # Energy cost only incurred if treatment system is active (non-compliant pH)
+    if current_pH >= PH_TARGET:
+        energy_cost = 0.0
+    else:
+        # Asumsi pompa bekerja 100% jika ada flow, atau proporsional? Kita asumsi 1 jam operasi penuh.
+        energy_cost = AVG_PUMP_POWER_KW * ELECTRICITY_COST_PER_KWH
 
     # 3. Labor & Maintenance (Fixed Cost per hour)
     labor_cost = LABOR_COST_HOURLY
@@ -102,8 +106,9 @@ def evaluate_legal_risk(current_pH: float, turbidity: float, flow_rate_lph: floa
             severity_level = "Pidana Lingkungan (UU PPLH)"
         else:
             # Default to administrative fine for other violations (Turbidity, Minor pH)
+            # This covers cases where only Turbidity > 50 NTU reduces compliance
             risk_fine = (FINE_ADMINISTRATIVE_LIGHT / 24.0)
-            severity_level = "Administratif"
+            severity_level = "Administratif (Bakumutu Air/Kekeruhan)"
             
         # Restoration Cost (KLHK Standard)
         # Cost to restore the volume of water occurring in this hour

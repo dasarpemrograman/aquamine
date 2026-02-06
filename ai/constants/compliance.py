@@ -19,10 +19,8 @@ REF_KEPMEN_1827: Final[str] = "Kepmen ESDM No. 1827 K/30/MEM/2018"
 REF_PP_78_2010: Final[str] = "PP No. 78/2010"
 
 # Risk Calculation Constants
-# Estimated remediation cost per m3 of polluted water (Rough estimate based on industrial standards)
-REMEDIATION_COST_PER_M3: Final[int] = 15000  # IDR
 # Administrative fine per day for non-compliance (Pasal 506-515 PP 22/2021 range varies, taking a base for calculation)
-BASE_ADMINISTRATIVE_FINE_DAILY: Final[int] = 5000000
+# NOTE: BASE_ADMINISTRATIVE_FINE_DAILY removed as it was unused.
 
 DEFAULT_FLOW_RATE_LPH: Final[float] = 100000.0
 
