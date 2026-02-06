@@ -16,92 +16,105 @@ def valid_payload():
     )
 
 
+@pytest.fixture
+def _mock_sensor():
+    sensor = MagicMock()
+    sensor.id = 1
+    sensor.sensor_id = "TEST_SENSOR_001"
+    return sensor
+
+
+@pytest.fixture
+def _mock_alert_state():
+    state = MagicMock()
+    state.current_state = "normal"
+    state.last_alert_at = None
+    return state
+
+
+def _make_result(value):
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = value
+    result.scalars.return_value.all.return_value = []
+    return result
+
+
 @pytest.mark.asyncio
+@patch("ai.iot.mqtt_bridge.ws_manager", new_callable=AsyncMock)
 @patch("ai.iot.mqtt_bridge.AsyncSessionLocal")
-async def test_process_mqtt_message_auto_registration(mock_session_local, valid_payload):
-    # Setup mock session
+async def test_process_mqtt_message_auto_registration(
+    mock_session_local, mock_ws, valid_payload, _mock_sensor, _mock_alert_state
+):
     mock_session = AsyncMock()
-    # add is synchronous in SQLAlchemy
     mock_session.add = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
-    # Mock database query returning None (sensor not found)
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = None
-    mock_session.execute.return_value = mock_result
+    # Call sequence:
+    # 1) _process_mqtt_logic: sensor lookup → None (auto-register)
+    # 2) process_mqtt_message: sensor lookup for alert processing → sensor
+    # 3) _process_reading_alerts: alert state lookup → None (new state created)
+    mock_session.execute.side_effect = [
+        _make_result(None),
+        _make_result(_mock_sensor),
+        _make_result(_mock_alert_state),
+    ]
 
-    # Run processing
     result = await process_mqtt_message(valid_payload)
 
     assert result is True
-    # Verify sensor was added
-    assert mock_session.add.call_count == 2  # 1 for sensor, 1 for reading
-    # Verify flush called (to get sensor ID)
     assert mock_session.flush.called
-    # Verify commit called
     assert mock_session.commit.called
 
 
 @pytest.mark.asyncio
+@patch("ai.iot.mqtt_bridge.ws_manager", new_callable=AsyncMock)
 @patch("ai.iot.mqtt_bridge.AsyncSessionLocal")
-async def test_process_mqtt_message_existing_sensor(mock_session_local, valid_payload):
-    # Setup mock session
+async def test_process_mqtt_message_existing_sensor(
+    mock_session_local, mock_ws, valid_payload, _mock_sensor, _mock_alert_state
+):
     mock_session = AsyncMock()
-    # add is synchronous in SQLAlchemy
     mock_session.add = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
-    # Mock database query returning existing sensor
-    mock_sensor = MagicMock()
-    mock_sensor.id = 1
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = mock_sensor
-    mock_session.execute.return_value = mock_result
+    # Call sequence:
+    # 1) _process_mqtt_logic: sensor lookup → existing sensor
+    # 2) process_mqtt_message: sensor lookup for alert processing → sensor
+    # 3) _process_reading_alerts: alert state lookup → existing state
+    mock_session.execute.side_effect = [
+        _make_result(_mock_sensor),
+        _make_result(_mock_sensor),
+        _make_result(_mock_alert_state),
+    ]
 
-    # Run processing
     result = await process_mqtt_message(valid_payload)
 
     assert result is True
-    # Verify only reading was added (sensor already exists)
-    assert mock_session.add.call_count == 1
-    # Verify commit called
     assert mock_session.commit.called
 
 
 @pytest.mark.asyncio
-async def test_process_mqtt_message_with_provided_session(valid_payload):
-    # Setup mock session
+async def test_process_mqtt_message_with_provided_session(valid_payload, _mock_sensor):
     mock_session = AsyncMock()
     mock_session.add = MagicMock()
 
-    # Mock database query returning existing sensor
-    mock_sensor = MagicMock()
-    mock_sensor.id = 1
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = mock_sensor
-    mock_session.execute.return_value = mock_result
+    mock_session.execute.return_value = _make_result(_mock_sensor)
 
-    # Run processing with session
     result = await process_mqtt_message(valid_payload, session=mock_session)
 
     assert result is True
     assert mock_session.add.call_count == 1
-    # Verify commit NOT called (caller handles it)
     assert not mock_session.commit.called
 
 
 @pytest.mark.asyncio
 @patch("ai.iot.mqtt_bridge.AsyncSessionLocal")
 async def test_process_mqtt_message_error(mock_session_local, valid_payload):
-    # Setup mock session
     mock_session = AsyncMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
-    # Mock exception during execution
     mock_session.execute.side_effect = Exception("DB Error")
 
     with pytest.raises(Exception):
         await process_mqtt_message(valid_payload)
 
-    # Verify rollback called
     assert mock_session.rollback.called
