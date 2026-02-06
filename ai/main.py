@@ -99,6 +99,7 @@ from .anomaly.detector import AnomalyDetector, ANOMALY_THRESHOLDS
 from .alerts.state_machine import AlertStateMachine
 from .alerts.notifications import NotificationService
 from .realtime.websocket import manager as ws_manager
+from .iot.sensor_calibration import sensor_calibration
 from .routers.analytics import router as analytics_router
 
 logger = logging.getLogger(__name__)
@@ -929,6 +930,12 @@ async def ingest_sensor_data(
         if not sensor:
             raise HTTPException(status_code=404, detail="Sensor not found after ingestion")
 
+        # Calibrate raw ADC readings (e.g. turbidity 0-3000 → NTU 0-100)
+        # so anomaly thresholds and WS broadcasts use the same scale as stored DB values.
+        calibrated_readings = sensor_calibration.calibrate_readings(
+            payload.readings, sensor_id=payload.sensor_id
+        )
+
         # --- Alert State Management (DB source of truth) ---
         # Fetch current state from DB
         stmt = select(SensorAlertState).where(SensorAlertState.sensor_id == sensor.id)
@@ -941,7 +948,7 @@ async def ingest_sensor_data(
 
         anomalies = anomaly_detector.detect_threshold_anomalies(
             sensor.id,
-            {key: value for key, value in payload.readings.items() if value is not None},
+            {key: value for key, value in calibrated_readings.items() if value is not None},
             payload.timestamp,
         )
 
@@ -1065,7 +1072,10 @@ async def ingest_sensor_data(
 
         await db.commit()
 
-        await ws_manager.publish_update("sensor_reading", payload.model_dump(mode="json"))
+        await ws_manager.publish_update(
+            "sensor_reading",
+            {**payload.model_dump(mode="json"), "readings": calibrated_readings},
+        )
 
         return {"status": "ingested", "anomalies_detected": len(anomalies)}
     except ValidationError as e:

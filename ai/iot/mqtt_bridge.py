@@ -47,7 +47,10 @@ async def process_mqtt_message(payload: SensorDataIngest, session: Optional[Asyn
 
             await local_session.commit()
 
-            await ws_manager.publish_update("sensor_reading", payload.model_dump(mode="json"))
+            await ws_manager.publish_update(
+                "sensor_reading",
+                {**payload.model_dump(mode="json"), "readings": calibrated_readings},
+            )
 
             return True
         except Exception as e:
@@ -195,7 +198,23 @@ async def _send_alert_notifications(session: AsyncSession, db_alert: Alert, aler
     )
 
     # No BackgroundTasks available in MQTT context — fire-and-forget via asyncio
-    asyncio.create_task(_notifier.send_notifications(pydantic_alert, pydantic_recipients))
+    task = asyncio.create_task(_notifier.send_notifications(pydantic_alert, pydantic_recipients))
+
+    def _notification_done(t):
+        if t.cancelled():
+            return
+        try:
+            exc = t.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is not None:
+            logger.error(
+                "Notification task failed for sensor %s",
+                db_alert.sensor_id,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
+
+    task.add_done_callback(_notification_done)
 
     await ws_manager.publish_update(
         "alert",
