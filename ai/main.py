@@ -99,6 +99,7 @@ from .anomaly.detector import AnomalyDetector, ANOMALY_THRESHOLDS
 from .alerts.state_machine import AlertStateMachine
 from .alerts.notifications import NotificationService
 from .realtime.websocket import manager as ws_manager
+from .iot.sensor_calibration import sensor_calibration
 from .routers.analytics import router as analytics_router
 
 logger = logging.getLogger(__name__)
@@ -800,7 +801,11 @@ async def chat(
 
 @app.post("/api/v1/cv/analyze")
 @limiter.limit("300/minute")
-async def analyze_image(request: Request, file: Optional[UploadFile] = File(None)):
+async def analyze_image(
+    request: Request,
+    file: Optional[UploadFile] = File(None),
+    mode: Literal["yolo", "hsv"] = "yolo",
+):
     if file is None:
         return error_response(
             422, "MISSING_FILE", "No file uploaded. Use 'file' field in multipart form."
@@ -832,15 +837,17 @@ async def analyze_image(request: Request, file: Optional[UploadFile] = File(None
 
     start_time = time.perf_counter()
     try:
-        detections, warnings = cv_detector.detect(content, img=img)
+        detections, warnings = cv_detector.detect(content, img=img, mode=mode)
     except ImageDecodeError as e:
         return error_response(422, "IMAGE_DECODE_FAILED", str(e))
     except Exception as e:
         return error_response(500, "INFERENCE_FAILED", f"Model inference failed: {str(e)}")
     elapsed_ms = int((time.perf_counter() - start_time) * 1000)
 
-    # Filter detections by threshold
-    valid_detections = [d for d in detections if d.confidence >= DETECTION_THRESHOLD]
+    if mode == "hsv":
+        valid_detections = detections
+    else:
+        valid_detections = [d for d in detections if d.confidence >= DETECTION_THRESHOLD]
 
     bboxes = [
         BoundingBox(x=d.x, y=d.y, width=d.width, height=d.height, confidence=d.confidence)
@@ -849,8 +856,9 @@ async def analyze_image(request: Request, file: Optional[UploadFile] = File(None
     highest = max(bboxes, key=lambda b: b.confidence) if bboxes else None
     max_conf = highest.confidence if highest else 0.0
 
-    # Detected = True if we have at least one detection above threshold
     detected = len(bboxes) > 0
+
+    model_version = "hsv-fast-v1" if mode == "hsv" else cv_detector.version
 
     return ImageAnalysisResponse(
         detected=detected,
@@ -860,7 +868,7 @@ async def analyze_image(request: Request, file: Optional[UploadFile] = File(None
         bboxes=bboxes,
         latency_ms=elapsed_ms,
         warnings=warnings,
-        model_version=cv_detector.version,
+        model_version=model_version,
         image_width=img_width,
         image_height=img_height,
     )
@@ -922,6 +930,12 @@ async def ingest_sensor_data(
         if not sensor:
             raise HTTPException(status_code=404, detail="Sensor not found after ingestion")
 
+        # Calibrate raw ADC readings (e.g. turbidity 0-3000 → NTU 0-100)
+        # so anomaly thresholds and WS broadcasts use the same scale as stored DB values.
+        calibrated_readings = sensor_calibration.calibrate_readings(
+            payload.readings, sensor_id=payload.sensor_id
+        )
+
         # --- Alert State Management (DB source of truth) ---
         # Fetch current state from DB
         stmt = select(SensorAlertState).where(SensorAlertState.sensor_id == sensor.id)
@@ -934,7 +948,7 @@ async def ingest_sensor_data(
 
         anomalies = anomaly_detector.detect_threshold_anomalies(
             sensor.id,
-            {key: value for key, value in payload.readings.items() if value is not None},
+            {key: value for key, value in calibrated_readings.items() if value is not None},
             payload.timestamp,
         )
 
@@ -1058,7 +1072,10 @@ async def ingest_sensor_data(
 
         await db.commit()
 
-        await ws_manager.publish_update("sensor_reading", payload.model_dump(mode="json"))
+        await ws_manager.publish_update(
+            "sensor_reading",
+            {**payload.model_dump(mode="json"), "readings": calibrated_readings},
+        )
 
         return {"status": "ingested", "anomalies_detected": len(anomalies)}
     except ValidationError as e:

@@ -69,7 +69,11 @@ docker compose up -d
 
 ### Pre-Flight Checklist
 Before deploying to VPS, ensure:
-1. Update `.env` with VPS domain/IP (replace `localhost`).
+1. Update `.env` with VPS domain/IP (replace `localhost`):
+   - `NEXT_PUBLIC_API_BASE_URL=https://your-domain.com/api` (or `http://YOUR_VPS_IP/api`)
+   - `NEXT_PUBLIC_WS_BASE_URL=wss://your-domain.com` (HTTPS) or `ws://YOUR_VPS_IP` (HTTP)
+   - Set all MQTT credentials (`MQTT_BROKER`, `MQTT_USERNAME`, `MQTT_PASSWORD`, etc.)
+   - Set `INGEST_API_KEY` for ESP32 authentication
 2. Ensure ports 80/443 are open in firewall (`sudo ufw allow 80/tcp && sudo ufw allow 443/tcp`).
 3. Verify Docker and Docker Compose are installed (`docker --version && docker compose version`).
 4. (Optional) Generate SSL certs before starting if using HTTPS (`sudo certbot certonly --standalone -d your-domain.com`).
@@ -110,7 +114,16 @@ Common VPS issues and fixes:
 
 - **502 Bad Gateway**: Check Nginx logs (`docker compose -f docker-compose.prod.yml logs nginx`) and API container status.
 - **"failed to fetch" in browser**: Open browser DevTools → Network tab. Check the request URL; it should be your VPS IP/domain, NOT localhost:8181. If it is localhost, update `.env` and rebuild.
-- **WebSocket not connecting**: Check Nginx logs for `/ws/` requests. Look for mixed content warnings in browser console (using ws:// on https:// page).
+- **WebSocket not connecting**: 
+  - Check Nginx logs for `/ws/` requests
+  - Look for mixed content warnings in browser console (using `ws://` on `https://` page - should be `wss://`)
+  - Verify `NEXT_PUBLIC_WS_BASE_URL` in `.env` matches your deployment (`wss://your-domain.com` for HTTPS)
+  - Check browser DevTools → Network → WS tab to see WebSocket connection attempts
+- **Realtime mode not updating**: 
+  - Verify `mqtt-listener` container is running: `docker compose -f docker-compose.prod.yml ps mqtt-listener`
+  - Check MQTT listener logs: `docker compose -f docker-compose.prod.yml logs mqtt-listener --tail 50`
+  - Ensure MQTT credentials in `.env` are correct (broker, username, password)
+  - Test HTTP ingest endpoint as fallback: `curl -X POST https://your-domain.com/api/v1/sensors/ingest -H "X-Ingest-Key: YOUR_KEY" -H "Content-Type: application/json" -d '{"sensor_id":"test","timestamp":"2026-02-07T14:00:00Z","readings":{"ph":7.0}}'`
 - **CV upload fails (413)**: Check Nginx error logs (`docker compose -f docker-compose.prod.yml logs nginx | grep 413`).
 - **API/simulator crash loops**: Check DB health (`docker compose -f docker-compose.prod.yml ps db` should show "healthy").
 - **Database migration errors**: If you see errors like `column chat_session_segments.created_at does not exist`, rebuild the API container to run migrations: `docker compose build --no-cache api && docker compose up -d`.
