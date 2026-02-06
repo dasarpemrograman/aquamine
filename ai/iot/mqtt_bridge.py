@@ -11,6 +11,7 @@ from ..anomaly.detector import AnomalyDetector
 from ..alerts.state_machine import AlertStateMachine
 from ..alerts.notifications import NotificationService
 from ..realtime.websocket import manager as ws_manager
+from .sensor_calibration import sensor_calibration
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +56,9 @@ async def process_mqtt_message(payload: SensorDataIngest, session: Optional[Asyn
 
 
 async def _process_mqtt_logic(session: AsyncSession, payload: SensorDataIngest):
-    # Check if sensor exists
     result = await session.execute(select(Sensor).where(Sensor.sensor_id == payload.sensor_id))
     sensor = result.scalar_one_or_none()
 
-    # Auto-register if not found
     if not sensor:
         logger.info(f"Auto-registering new sensor: {payload.sensor_id}")
         sensor = Sensor(
@@ -70,15 +69,18 @@ async def _process_mqtt_logic(session: AsyncSession, payload: SensorDataIngest):
             is_active=True,
         )
         session.add(sensor)
-        await session.flush()  # Get ID
+        await session.flush()
 
-    # Store reading
+    calibrated_readings = sensor_calibration.calibrate_readings(
+        payload.readings, sensor_id=payload.sensor_id
+    )
+
     reading = Reading(
         sensor_id=sensor.id,
         timestamp=payload.timestamp,
-        ph=payload.readings.get("ph"),
-        turbidity=payload.readings.get("turbidity"),
-        temperature=payload.readings.get("temperature"),
+        ph=calibrated_readings.get("ph"),
+        turbidity=calibrated_readings.get("turbidity"),
+        temperature=calibrated_readings.get("temperature"),
         battery_voltage=payload.metadata.get("battery_voltage") if payload.metadata else None,
         signal_strength=payload.metadata.get("signal_strength") if payload.metadata else None,
     )
