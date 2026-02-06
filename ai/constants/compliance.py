@@ -18,10 +18,6 @@ REF_PP_22_2021: Final[str] = "PP No. 22/2021 Lampiran VI"
 REF_KEPMEN_1827: Final[str] = "Kepmen ESDM No. 1827 K/30/MEM/2018"
 REF_PP_78_2010: Final[str] = "PP No. 78/2010"
 
-# Risk Calculation Constants
-# Administrative fine per day for non-compliance (Pasal 506-515 PP 22/2021 range varies, taking a base for calculation)
-# NOTE: BASE_ADMINISTRATIVE_FINE_DAILY removed as it was unused.
-
 DEFAULT_FLOW_RATE_LPH: Final[float] = 100000.0
 
 # Financial Constants (OpEx)

@@ -479,7 +479,7 @@ export default function AnalyticsPage() {
                             <div className="flex justify-between items-center cursor-help">
                                 <span className="text-sm font-medium text-slate-500 border-b border-dotted border-slate-400">Potensi Penghematan Bersih</span>
                                 <span className={`text-xl font-bold ${
-                                    (insights.strategic_decision_support.net_potential_savings_idr || 0) > 0 ? 'text-emerald-600' : 'text-rose-600'
+                                    (insights.strategic_decision_support.net_potential_savings_idr ?? 0) > 0 ? 'text-emerald-600' : 'text-rose-600'
                                 }`}>
                                     {formatIDR(insights.strategic_decision_support.net_potential_savings_idr ?? 
                                         ((insights.strategic_decision_support.legal_risk.risk_exposure_idr) - insights.strategic_decision_support.treatment.estimated_cost_idr_ph)

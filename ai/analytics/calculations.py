@@ -20,7 +20,7 @@ from ai.constants.compliance import (
     CRITICAL_PH_THRESHOLD
 )
 
-def calculate_empirical_treatment(current_pH: float, flow_rate_lph: float) -> dict[str, float]:
+def calculate_empirical_treatment(current_pH: float, flow_rate_lph: float) -> dict[str, Any]:
     """
     Calculate Acidity, CaO dosage, and detailed OpEx breakdown.
     """
@@ -40,12 +40,11 @@ def calculate_empirical_treatment(current_pH: float, flow_rate_lph: float) -> di
         acidity = excess_h_dataset
 
     # 2. Energy Cost (Fixed/Semi-variable)
-    # Energy cost only incurred if treatment system is active (non-compliant pH)
-    if current_pH >= PH_TARGET:
-        energy_cost = 0.0
-    else:
-        # Asumsi pompa bekerja 100% jika ada flow, atau proporsional? Kita asumsi 1 jam operasi penuh.
+    # Only charge energy when treatment is needed (pumps idle if pH already compliant)
+    if current_pH < PH_TARGET:
         energy_cost = AVG_PUMP_POWER_KW * ELECTRICITY_COST_PER_KWH
+    else:
+        energy_cost = 0.0
 
     # 3. Labor & Maintenance (Fixed Cost per hour)
     labor_cost = LABOR_COST_HOURLY
@@ -96,19 +95,21 @@ def evaluate_legal_risk(current_pH: float, turbidity: float, flow_rate_lph: floa
     risk_restoration = 0.0
     risk_infrastructure = 0.0
     
+    ph_violation = current_pH < PH_MIN or current_pH > PH_MAX
+    turbidity_violation = turbidity > TURBIDITY_MAX
+
     if not is_compliant:
         # Fine Calculation (Progressive)
-        # Check specific severe violations first
-        is_severe_ph = current_pH < CRITICAL_PH_THRESHOLD
-        
-        if is_severe_ph:
-            risk_fine = (FINE_ADMINISTRATIVE_SEVERE / 24.0) # Hourly portion
+        if ph_violation and current_pH < CRITICAL_PH_THRESHOLD:
+            risk_fine = (FINE_ADMINISTRATIVE_SEVERE / 24.0)  # Hourly portion
             severity_level = "Pidana Lingkungan (UU PPLH)"
-        else:
-            # Default to administrative fine for other violations (Turbidity, Minor pH)
-            # This covers cases where only Turbidity > 50 NTU reduces compliance
+        elif ph_violation:
             risk_fine = (FINE_ADMINISTRATIVE_LIGHT / 24.0)
-            severity_level = "Administratif (Bakumutu Air/Kekeruhan)"
+            severity_level = "Administratif"
+        elif turbidity_violation:
+            # Turbidity-only violation still incurs administrative fine
+            risk_fine = (FINE_ADMINISTRATIVE_LIGHT / 24.0)
+            severity_level = "Administratif"
             
         # Restoration Cost (KLHK Standard)
         # Cost to restore the volume of water occurring in this hour
