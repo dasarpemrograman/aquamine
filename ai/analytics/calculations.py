@@ -16,7 +16,8 @@ from ai.constants.compliance import (
     FINE_ADMINISTRATIVE_LIGHT,
     FINE_ADMINISTRATIVE_SEVERE,
     RESTORATION_COST_PER_M3,
-    CRITICAL_PH_THRESHOLD
+    CRITICAL_PH_THRESHOLD,
+    TURBIDITY_MAX_NTU
 )
 
 def calculate_empirical_treatment(current_pH: float, flow_rate_lph: float) -> dict[str, float]:
@@ -77,7 +78,7 @@ def evaluate_legal_risk(current_pH: float, turbidity: float, flow_rate_lph: floa
             "clause": "Pasal 506-515 (Pencemaran Lingkungan)"
         })
         
-    if turbidity > 200: 
+    if turbidity > TURBIDITY_MAX_NTU: 
         is_compliant = False
         violations.append({
             "parameter": "Turbidity",
@@ -93,10 +94,14 @@ def evaluate_legal_risk(current_pH: float, turbidity: float, flow_rate_lph: floa
     
     if not is_compliant:
         # Fine Calculation (Progressive)
-        if current_pH < CRITICAL_PH_THRESHOLD:
-            risk_fine = (FINE_ADMINISTRATIVE_SEVERE / 24.0) # Hourly portion
-            severity_level = "Pidana Lingkungan (UU PPLH)"
-        else:
+        if current_pH < PH_MIN or current_pH > PH_MAX:
+            if current_pH < CRITICAL_PH_THRESHOLD:
+                risk_fine = (FINE_ADMINISTRATIVE_SEVERE / 24.0)  # Hourly portion
+                severity_level = "Pidana Lingkungan (UU PPLH)"
+            else:
+                risk_fine = (FINE_ADMINISTRATIVE_LIGHT / 24.0)
+                severity_level = "Administratif"
+        elif turbidity > TURBIDITY_MAX_NTU:
             risk_fine = (FINE_ADMINISTRATIVE_LIGHT / 24.0)
             severity_level = "Administratif"
             

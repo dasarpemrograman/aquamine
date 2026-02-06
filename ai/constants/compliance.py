@@ -39,3 +39,4 @@ FINE_ADMINISTRATIVE_LIGHT: Final[float] = 5000000.0  # Denda ringan
 FINE_ADMINISTRATIVE_SEVERE: Final[float] = 25000000.0  # Denda berat/progresif
 RESTORATION_COST_PER_M3: Final[float] = 35000.0  # Biaya pemulihan ekosistem standar KLHK
 CRITICAL_PH_THRESHOLD: Final[float] = 4.0  # Batas untuk eskalasi ke Pidana Lingkungan
+TURBIDITY_MAX_NTU: Final[float] = 50.0  # Baku Mutu Kekeruhan (PP 22/2021)

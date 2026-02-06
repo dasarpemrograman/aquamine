@@ -565,9 +565,23 @@ async def generate_insights_with_llm(
     if strat_support_metrics:
         # If the LLM didn't return it, or we want to overwrite/augment (here we only add if missing)
         if not parsed.strategic_decision_support:
+            treatment_raw = strat_support_metrics["treatment"]
+            legal_raw = strat_support_metrics["legal_risk"]
             parsed.strategic_decision_support = StrategicDecisionSupport(
-                treatment=EmpiricalTreatmentResult(**strat_support_metrics["treatment"]),
-                legal_risk=LegalRiskResult(**strat_support_metrics["legal_risk"]),
+                treatment=EmpiricalTreatmentResult(
+                    acidity_deficit=treatment_raw["acidity_deficit"],
+                    cao_dosage_kg_ph=treatment_raw["cao_dosage_kg_ph"],
+                    estimated_cost_idr_ph=treatment_raw["total_estimated_cost_idr_ph"],
+                    cost_breakdown=None
+                ),
+                legal_risk=LegalRiskResult(
+                    compliant=legal_raw["compliant"],
+                    violations=legal_raw["violations"],
+                    risk_exposure_idr=legal_raw["total_risk_exposure_idr"],
+                    remediation_cost_idr_daily=legal_raw["risk_restoration_idr"] * 24,
+                    risk_breakdown=None,
+                    legal_risk_status=legal_raw["legal_risk_status"]
+                ),
                 technical_root_cause="LLM tidak memberikan analisis. Fallback ke perhitungan otomatis.",
                 legal_consequence="Cek PP 22/2021.",
                 prescriptive_plan=f"Dosis Kapur: {strat_support_metrics['treatment']['cao_dosage_kg_ph']:.2f} kg/jam.",
