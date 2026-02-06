@@ -453,8 +453,8 @@ export default function AnalyticsPage() {
                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                                     <XAxis type="number" hide />
                                     <YAxis type="category" dataKey="name" width={50} tick={{fontSize: 12, fontWeight: 600}} />
-                                    <Tooltip 
-                                        formatter={(value: number | undefined) => formatIDR(value ?? 0)}
+                                    <Tooltip
+                                        formatter={(value) => formatIDR(Number(Array.isArray(value) ? value[0] : value) || 0)}
                                         contentStyle={{ borderRadius: '8px', fontSize: '12px' }}
                                     />
                                     <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
@@ -478,7 +478,7 @@ export default function AnalyticsPage() {
                                 <span className={`text-xl font-bold ${
                                     (insights.strategic_decision_support.net_potential_savings_idr || 0) > 0 ? 'text-emerald-600' : 'text-rose-600'
                                 }`}>
-                                    {formatIDR(insights.strategic_decision_support.net_potential_savings_idr || 
+                                    {formatIDR(insights.strategic_decision_support.net_potential_savings_idr ?? 
                                         ((insights.strategic_decision_support.legal_risk.risk_exposure_idr) - insights.strategic_decision_support.treatment.estimated_cost_idr_ph)
                                     )}
                                 </span>

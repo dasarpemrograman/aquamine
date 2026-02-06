@@ -175,7 +175,7 @@ def generate_financial_narrative(
         )
     else:
         capex_narrative = (
-            f"Kapasitas infrastruktur Settling Pond (120 m3/jam) masih memadai untuk debit saat ini ({flow_rate_lph/1000:.1f} m3/jam). "
+            f"Kapasitas infrastruktur Settling Pond ({EXISTING_POND_CAPACITY_LPH/1000:.0f} m3/jam) masih memadai untuk debit saat ini ({flow_rate_lph/1000:.1f} m3/jam). "
             "Tidak ada belanja modal mendesak."
         )
         
