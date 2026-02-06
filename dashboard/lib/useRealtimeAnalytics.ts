@@ -116,8 +116,8 @@ export function useRealtimeAnalytics(
             const next = [...prev, point];
             return prunePoints(next, timeframeRef.current);
           });
-        } catch {
-          /* empty */
+        } catch (e) {
+          console.warn("Failed to parse WebSocket message:", e);
         }
       };
 

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Optional
+from typing import Dict, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from ..db.models import Sensor, Reading, SensorAlertState, Anomaly, Alert, NotificationRecipient
@@ -35,14 +35,14 @@ async def process_mqtt_message(payload: SensorDataIngest, session: Optional[Asyn
 
     async with AsyncSessionLocal() as local_session:
         try:
-            await _process_mqtt_logic(local_session, payload)
+            calibrated_readings = await _process_mqtt_logic(local_session, payload)
 
             result = await local_session.execute(
                 select(Sensor).where(Sensor.sensor_id == payload.sensor_id)
             )
             sensor = result.scalar_one_or_none()
             if sensor:
-                await _process_reading_alerts(local_session, sensor, payload)
+                await _process_reading_alerts(local_session, sensor, payload, calibrated_readings)
 
             await local_session.commit()
 
@@ -86,15 +86,23 @@ async def _process_mqtt_logic(session: AsyncSession, payload: SensorDataIngest):
     )
     session.add(reading)
     logger.info(f"Stored reading for {payload.sensor_id} at {payload.timestamp}")
-    return True
+    return calibrated_readings
 
 
-async def _process_reading_alerts(session: AsyncSession, sensor: Sensor, payload: SensorDataIngest):
+async def _process_reading_alerts(
+    session: AsyncSession,
+    sensor: Sensor,
+    payload: SensorDataIngest,
+    calibrated_readings: Dict[str, Optional[float]],
+):
     """Run anomaly detection, alert state machine, notifications, and WebSocket broadcast.
 
     This is the same pipeline that the HTTP ingest endpoint runs inline.
     It closes the gap where MQTT-originated readings were silently stored
     without ever triggering alerts.
+
+    Uses calibrated_readings (not raw payload.readings) so thresholds
+    compare against proper NTU/pH values rather than raw ADC output.
     """
     stmt = select(SensorAlertState).where(SensorAlertState.sensor_id == sensor.id)
     result = await session.execute(stmt)
@@ -106,7 +114,7 @@ async def _process_reading_alerts(session: AsyncSession, sensor: Sensor, payload
 
     anomalies = _anomaly_detector.detect_threshold_anomalies(
         sensor.id,
-        {key: value for key, value in payload.readings.items() if value is not None},
+        {key: value for key, value in calibrated_readings.items() if value is not None},
         payload.timestamp,
     )
 

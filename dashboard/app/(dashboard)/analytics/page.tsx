@@ -168,9 +168,9 @@ export default function AnalyticsPage() {
               {realtimeEnabled && (
                 <div className="hidden md:flex flex-col shrink-0">
                   <span className={`text-[10px] font-bold uppercase tracking-wider ${realtimeState.isConnected ? "text-emerald-600" : "text-rose-500"}`}>
-                    {realtimeState.isConnected ? "Terhubung" : "Terputus"}
+                    {realtimeState.isConnected ? UI_COPY.realtime_connected : UI_COPY.realtime_disconnected}
                   </span>
-                  <span className="text-[10px] text-slate-400 leading-none">5m</span>
+                  <span className="text-[10px] text-slate-400 leading-none">{UI_COPY.realtime_5m}</span>
                 </div>
               )}
 

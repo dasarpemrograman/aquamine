@@ -17,7 +17,7 @@ test_cases = [
     ("Raw ADC - muddy (2900)", 2900),
     ("Raw ADC - mid (2600)", 2600),
     ("Raw ADC - clearing (2300)", 2300),
-    ("Raw ADC - max (4095)", 4095),
+    ("Raw ADC - max (3000)", 3000),
 ]
 
 print("=" * 70)
@@ -31,6 +31,6 @@ for description, raw_value in test_cases:
     print(f"{description:<30} {raw_value:<15.1f} {calibrated:<20.2f}")
 
 print("=" * 70)
-print("\nFormula: Linear mapping from ADC (0-4095) to NTU (3000-0)")
-print("Result: Values > 1000 are treated as raw ADC and converted.")
-print("        Values 0-100 are assumed already calibrated and passed through.")
+print("\nFormula: Linear mapping from ADC (0-3000) to NTU (0-100)")
+print("Result: Values > 200 are treated as raw ADC and converted.")
+print("        Values 0-200 are assumed already calibrated and passed through.")
