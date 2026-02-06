@@ -21,7 +21,10 @@ import {
   XAxis, 
   YAxis, 
   CartesianGrid, 
-  Tooltip, 
+  Tooltip,
+  BarChart,
+  Bar,
+  Legend, 
 } from "recharts";
 
 import { GlassCard } from "@/app/components/ui/GlassCard";
@@ -42,6 +45,11 @@ import {
 import { formatWIB } from "@/lib/dateUtils";
 import { UI_COPY, formatString, getSeverityLabel } from "@/lib/copy";
 
+
+const formatIDR = (value: number) => {
+  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
+};
+
 export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +62,7 @@ export default function AnalyticsPage() {
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [selectedSensorId, setSelectedSensorId] = useState<number | undefined>(undefined);
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
+  const [isFinancialDetailsOpen, setIsFinancialDetailsOpen] = useState(false);
 
   const formatEvidenceKey = (key: string) => {
     const map: Record<string, string> = {
@@ -270,6 +279,7 @@ export default function AnalyticsPage() {
               </div>
             )}
 
+
             {trends && trends.points.length > 0 && (
               <GlassCard className="p-6">
                 <div className="flex items-center justify-between mb-6">
@@ -354,6 +364,179 @@ export default function AnalyticsPage() {
                   </ResponsiveContainer>
                 </div>
               </GlassCard>
+            )}
+
+            {/* Strategic Decision Row */}
+            {insights?.strategic_decision_support && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* AI Prescriptive Instruction */}
+                    <GlassCard className="p-6 flex flex-col h-full bg-gradient-to-br from-white/60 to-cyan-50/60 border-cyan-100">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="p-2 bg-cyan-100 text-cyan-700 rounded-lg">
+                                <Zap size={20} />
+                            </div>
+                            <h3 className="text-lg font-semibold text-slate-800">Tindakan Pencegahan Wajib</h3>
+                        </div>
+                        
+                        <div className="space-y-4 flex-1">
+                            <div className="p-4 bg-white/60 rounded-xl border border-white/50 shadow-sm">
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm font-medium text-slate-500">Dosis Kapur (CaO) Diperlukan</span>
+                                    <span className="text-xs font-semibold text-cyan-600 bg-cyan-100 px-2 py-0.5 rounded-full">Segera</span>
+                                </div>
+                                <div className="text-3xl font-bold text-slate-800">
+                                    {insights.strategic_decision_support.treatment.cao_dosage_kg_ph.toFixed(2)} <span className="text-lg font-medium text-slate-500">kg/jam</span>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                 <div className="p-3 bg-white/60 rounded-xl border border-white/50">
+                                    <span className="text-xs text-slate-500 block mb-1">Estimasi Waktu Kepatuhan</span>
+                                    <span className="text-xl font-bold text-slate-800">
+                                        {insights.strategic_decision_support.compliance_eta_minutes ?? 45} <span className="text-sm font-normal">mnt</span>
+                                    </span>
+                                 </div>
+                                 <div className="p-3 bg-white/60 rounded-xl border border-white/50">
+                                    <span className="text-xs text-slate-500 block mb-1">Status Risiko Hukum</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className={`w-2 h-2 rounded-full ${insights.strategic_decision_support.legal_risk_status === 'Pidana' ? 'bg-rose-500' : 'bg-amber-500'}`}></span>
+                                        <span className="font-semibold text-slate-700">
+                                            {insights.strategic_decision_support.legal_risk_status || "Administratif"}
+                                        </span>
+                                    </div>
+                                 </div>
+                            </div>
+                            
+                        {/* Infrastructure Alert */}
+                            {insights.strategic_decision_support.infrastructure_alert && (
+                                <div className="mb-4 p-3 bg-amber-50 text-amber-900 text-sm rounded-lg border border-amber-200 flex items-start gap-2 animate-pulse">
+                                    <AlertTriangle size={18} className="text-amber-600 mt-0.5" />
+                                    <div>
+                                        <p className="font-bold">{insights.strategic_decision_support.infrastructure_alert.title}</p>
+                                        <p>{insights.strategic_decision_support.infrastructure_alert.message}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {insights.strategic_decision_support.prescriptive_plan && (
+                                <div className="p-3 bg-cyan-50 text-cyan-900 text-sm rounded-lg border border-cyan-100">
+                                    <p className="font-medium mb-1">Instruksi:</p>
+                                    {insights.strategic_decision_support.prescriptive_plan}
+                                </div>
+                            )}
+                        </div>
+                    </GlassCard>
+
+                    {/* Financial Exposure Card with Improved Breakdown */}
+                    <GlassCard className="p-6 flex flex-col h-full">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold text-slate-800">Analisis Eksposur Finansial</h3>
+                             <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-md">Proyeksi Per Jam</span>
+                        </div>
+                        
+                        <div className="flex-1 w-full min-h-[250px]">
+                            <ResponsiveContainer width="100%" height={280}>
+                                <BarChart layout="vertical" data={[
+                                    {
+                                        name: 'OpEx',
+                                        'Kapur': insights.strategic_decision_support.treatment.cost_breakdown?.chemical || insights.strategic_decision_support.treatment.estimated_cost_idr_ph, // fallback
+                                        'Energi': insights.strategic_decision_support.treatment.cost_breakdown?.energy || 0,
+                                        'SDM & Maint': (insights.strategic_decision_support.treatment.cost_breakdown?.labor || 0) + (insights.strategic_decision_support.treatment.cost_breakdown?.maintenance || 0),
+                                    },
+                                    {
+                                        name: 'Risk',
+                                        'Denda': insights.strategic_decision_support.legal_risk.risk_breakdown?.fine || insights.strategic_decision_support.legal_risk.risk_exposure_idr, // fallback
+                                        'Restorasi': insights.strategic_decision_support.legal_risk.risk_breakdown?.restoration || 0,
+                                        'Infra Darurat': insights.strategic_decision_support.legal_risk.risk_breakdown?.infrastructure || 0,
+                                    }
+                                ]} margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                    <XAxis type="number" hide />
+                                    <YAxis type="category" dataKey="name" width={50} tick={{fontSize: 12, fontWeight: 600}} />
+                                    <Tooltip 
+                                        formatter={(value: number) => formatIDR(value)}
+                                        contentStyle={{ borderRadius: '8px', fontSize: '12px' }}
+                                    />
+                                    <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                                    
+                                    {/* OpEx Stacks */}
+                                    <Bar dataKey="Kapur" stackId="a" fill="#10b981" radius={[0, 4, 4, 0]} barSize={40} />
+                                    <Bar dataKey="Energi" stackId="a" fill="#34d399" header="Energi" />
+                                    <Bar dataKey="SDM & Maint" stackId="a" fill="#6ee7b7" />
+                                    
+                                    {/* Risk Stacks */}
+                                    <Bar dataKey="Denda" stackId="a" fill="#f43f5e" radius={[0, 4, 4, 0]} barSize={40} />
+                                    <Bar dataKey="Restorasi" stackId="a" fill="#fb7185" />
+                                    <Bar dataKey="Infra Darurat" stackId="a" fill="#be123c" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                        
+                        <div className="mt-4 pt-4 border-t border-slate-100 group relative">
+                            <div className="flex justify-between items-center cursor-help">
+                                <span className="text-sm font-medium text-slate-500 border-b border-dotted border-slate-400">Potensi Penghematan Bersih</span>
+                                <span className={`text-xl font-bold ${
+                                    (insights.strategic_decision_support.net_potential_savings_idr || 0) > 0 ? 'text-emerald-600' : 'text-rose-600'
+                                }`}>
+                                    {formatIDR(insights.strategic_decision_support.net_potential_savings_idr || 
+                                        ((insights.strategic_decision_support.legal_risk.risk_exposure_idr) - insights.strategic_decision_support.treatment.estimated_cost_idr_ph)
+                                    )}
+                                </span>
+                            </div>
+
+                            {/* Summary Highlight */}
+                             {insights.strategic_decision_support.financial_narrative?.summary_highlight && (
+                                <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 p-2 rounded border border-emerald-100 italic">
+                                    "{insights.strategic_decision_support.financial_narrative.summary_highlight}"
+                                </div>
+                            )}
+
+                            {/* Hover Details for Net Savings */}
+                            <div className="absolute bottom-full left-0 w-full mb-2 bg-slate-800 text-white text-xs rounded-lg p-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-lg">
+                                <div className="flex justify-between mb-1">
+                                    <span>Total Risiko:</span>
+                                    <span className="font-mono text-rose-300">{formatIDR(insights.strategic_decision_support.legal_risk.risk_exposure_idr)}</span>
+                                </div>
+                                <div className="flex justify-between mb-1">
+                                    <span>Total Treatment:</span>
+                                    <span className="font-mono text-emerald-300">-{formatIDR(insights.strategic_decision_support.treatment.estimated_cost_idr_ph)}</span>
+                                </div>
+                                <div className="border-t border-slate-600 mt-1 pt-1 flex justify-between font-bold">
+                                    <span>Net:</span>
+                                    <span>{formatIDR(insights.strategic_decision_support.net_potential_savings_idr || 0)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                         {/* Financial Details Accordion */}
+                         <div className="mt-4 border-t border-slate-100">
+                            <button 
+                                onClick={() => setIsFinancialDetailsOpen(!isFinancialDetailsOpen)}
+                                className="w-full flex items-center justify-between py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 transition"
+                            >
+                                <span>Rincian Kalkulasi Keuangan</span>
+                                {isFinancialDetailsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            </button>
+                            
+                            {isFinancialDetailsOpen && insights.strategic_decision_support.financial_narrative && (
+                                <div className="mt-2 space-y-3 text-xs text-slate-600 animate-in slide-in-from-top-2 fade-in duration-200">
+                                    <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                                        <span className="font-bold text-emerald-600 block mb-1">OpEx (Penanganan)</span>
+                                        <p>{insights.strategic_decision_support.financial_narrative.opex}</p>
+                                    </div>
+                                    <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                                        <span className="font-bold text-amber-600 block mb-1">CapEx (Infrastruktur)</span>
+                                        <p>{insights.strategic_decision_support.financial_narrative.capex}</p>
+                                    </div>
+                                    <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                                        <span className="font-bold text-rose-600 block mb-1">Risk Exposure</span>
+                                        <p>{insights.strategic_decision_support.financial_narrative.risk}</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </GlassCard>
+                </div>
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

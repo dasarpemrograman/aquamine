@@ -701,6 +701,69 @@ export interface InsightFinding {
   evidence: EvidenceCitation[];
 }
 
+
+export interface CostBreakdown {
+  chemical: number;
+  energy: number;
+  labor: number;
+  maintenance: number;
+}
+
+export interface RiskBreakdown {
+  fine: number;
+  restoration: number;
+  infrastructure: number;
+}
+
+export interface EmpiricalTreatmentResult {
+  acidity_deficit: number;
+  cao_dosage_kg_ph: number;
+  estimated_cost_idr_ph: number;
+  cost_breakdown?: CostBreakdown;
+}
+
+export interface ViolationDetail {
+  parameter: string;
+  value: number;
+  reference: string;
+  clause: string;
+}
+
+export interface LegalRiskResult {
+  compliant: boolean;
+  violations: ViolationDetail[];
+  risk_exposure_idr: number;
+  remediation_cost_idr_daily: number;
+  risk_breakdown?: RiskBreakdown;
+  legal_risk_status?: string;
+}
+
+export interface FinancialNarrative {
+  opex: string;
+  risk: string;
+  capex: string;
+  summary_highlight: string;
+}
+
+export interface StrategicDecisionSupport {
+  treatment: EmpiricalTreatmentResult;
+  legal_risk: LegalRiskResult;
+  technical_root_cause?: string;
+  legal_consequence?: string;
+  prescriptive_plan?: string;
+  compliance_eta_minutes?: number;
+  required_cao_dosing_kg_ph?: number;
+  legal_risk_status?: string;
+  net_potential_savings_idr?: number;
+  infrastructure_alert?: {
+    title: string;
+    message: string;
+    severity: string;
+    cost: number;
+  };
+  financial_narrative?: FinancialNarrative;
+}
+
 export interface AnalyticsInsightsEvidence {
   compliance: {
     ph: { percent: number; ok: number; total: number };
@@ -721,6 +784,7 @@ export interface AnalyticsInsightsResponse {
   executive_summary: InsightsExecutiveSummary;
   key_findings: InsightFinding[];
   evidence?: AnalyticsInsightsEvidence;
+  strategic_decision_support?: StrategicDecisionSupport;
 }
 
 export async function fetchAnalyticsSummary(

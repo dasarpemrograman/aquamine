@@ -144,9 +144,69 @@ class InsightFinding(BaseSchema):
     evidence: list[EvidenceCitation] = []
 
 
+class CostBreakdown(BaseSchema):
+    chemical: float
+    energy: float
+    labor: float
+    maintenance: float
+
+
+class RiskBreakdown(BaseSchema):
+    fine: float
+    restoration: float
+    infrastructure: float
+
+
+class FinancialNarrative(BaseSchema):
+    opex: str
+    risk: str
+    capex: str
+    summary_highlight: str
+
+
+class EmpiricalTreatmentResult(BaseSchema):
+    acidity_deficit: float
+    cao_dosage_kg_ph: float
+    estimated_cost_idr_ph: float
+    cost_breakdown: Optional[CostBreakdown] = None
+
+
+class ViolationDetail(BaseSchema):
+    parameter: str
+    value: float
+    reference: str
+    clause: str
+
+
+class LegalRiskResult(BaseSchema):
+    compliant: bool
+    violations: list[ViolationDetail]
+    risk_exposure_idr: float
+    remediation_cost_idr_daily: float
+    risk_breakdown: Optional[RiskBreakdown] = None
+    legal_risk_status: Optional[str] = None
+
+
+class StrategicDecisionSupport(BaseSchema):
+    treatment: EmpiricalTreatmentResult
+    legal_risk: LegalRiskResult
+    # Additional financial metrics
+    net_potential_savings_idr: Optional[float] = 0.0
+    infrastructure_alert: Optional[dict[str, Any]] = None
+    financial_narrative: Optional[FinancialNarrative] = None
+    
+    technical_root_cause: Optional[str] = None
+    legal_consequence: Optional[str] = None
+    prescriptive_plan: Optional[str] = None
+    compliance_eta_minutes: Optional[int] = None
+    required_cao_dosing_kg_ph: Optional[float] = None
+    legal_risk_status: Optional[str] = None
+
+
 class AnalyticsInsightsResponse(BaseSchema):
     generated_at: datetime
     period: str
     executive_summary: InsightsExecutiveSummary
     key_findings: list[InsightFinding]
     evidence: dict[str, Any]
+    strategic_decision_support: Optional[StrategicDecisionSupport] = None

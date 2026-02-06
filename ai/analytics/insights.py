@@ -20,6 +20,12 @@ from ai.analytics.patterns import (
     pearson_correlation,
     slope_per_hour,
 )
+from ai.analytics.calculations import (
+    calculate_empirical_treatment, 
+    evaluate_legal_risk,
+    generate_financial_narrative
+)
+from ai.constants.compliance import DEFAULT_FLOW_RATE_LPH
 from ai.chatbot.cerebras_client import CerebrasClient
 from ai.config import settings
 from ai.db.models import Alert, Anomaly, Reading, Sensor, SensorAlertState
@@ -28,6 +34,12 @@ from ai.schemas.analytics import (
     EvidenceCitation,
     InsightFinding,
     InsightsExecutiveSummary,
+    StrategicDecisionSupport,
+    EmpiricalTreatmentResult,
+    LegalRiskResult,
+    CostBreakdown,
+    RiskBreakdown,
+    FinancialNarrative
 )
 
 logger = logging.getLogger(__name__)
@@ -455,6 +467,29 @@ async def generate_insights_with_llm(
 ) -> Optional[AnalyticsInsightsResponse]:
     numeric_evidence = evidence.get("numeric") or {}
 
+    # Calculate Strategic Decision Support metrics
+    raw_samples = evidence.get("raw_samples")
+    strat_support_metrics = None
+    if raw_samples and len(raw_samples) > 0:
+        # Get samples with valid pH
+        valid_samples = [s for s in raw_samples if s.get("ph") is not None]
+        if valid_samples:
+            # Use Average pH
+            avg_ph = sum(float(s.get("ph")) for s in valid_samples) / len(valid_samples)
+            # Use Max Turbidity
+            max_turb = max(float(s.get("turbidity") or 0.0) for s in valid_samples)
+            
+            cur_ph = avg_ph
+            cur_turb = max_turb
+            
+            treatment_res = calculate_empirical_treatment(cur_ph, DEFAULT_FLOW_RATE_LPH)
+            legal_risk_res = evaluate_legal_risk(cur_ph, cur_turb, DEFAULT_FLOW_RATE_LPH)
+            
+            strat_support_metrics = {
+                "treatment": treatment_res,
+                "legal_risk": legal_risk_res
+            }
+
     prompt_payload = {
         "period": evidence.get("period"),
         "standard": evidence.get("standard"),
@@ -462,9 +497,10 @@ async def generate_insights_with_llm(
         "alerts": evidence.get("alerts"),
         "anomalies": evidence.get("anomalies"),
         "data_quality": evidence.get("data_quality"),
-        "raw_samples": evidence.get("raw_samples"),
+        "raw_samples": raw_samples,
         "sensors": evidence.get("sensors"),
         "compliance": evidence.get("compliance"),
+        "strategic_metrics": strat_support_metrics,
     }
 
     messages = [
@@ -474,11 +510,19 @@ async def generate_insights_with_llm(
             "content": (
                 "Buat output JSON yang valid dengan schema:\n"
                 "{generated_at, period, executive_summary{status,headline,severity_score,trend,recommendation,evidence[]}, "
-                "key_findings[{type,title,description,confidence,recommended_actions[],evidence[]}], evidence}.\n\n"
+                "key_findings[{type,title,description,confidence,recommended_actions[],evidence[]}], evidence, "
+                "strategic_decision_support{treatment,legal_risk,technical_root_cause,legal_consequence,prescriptive_plan,compliance_eta_minutes,required_cao_dosing_kg_ph,legal_risk_status}}.\n\n"
                 "PENJELASAN FIELD:\n"
                 "- status: 'NORMAL' | 'WARNING' | 'CRITICAL'\n"
                 "- severity_score: 0-100 (0=aman, 100=kritis)\n"
                 "- trend: 'improving' | 'stable' | 'degrading'\n\n"
+                "- strategic_decision_support: Gunakan data dari 'strategic_metrics' di input. \n"
+                "  * technical_root_cause: Analisis penyebab teknis (misal 'Curah hujan tinggi meningkatkan debit air dan melarutkan mineral sulfida').\n"
+                "  * legal_consequence: Sebutkan pasal pelanggaran dari PP 22/2021 atau Kepmen No. 1827 jika compliant=False. Jika aman, tulis 'Compliant'.\n"
+                "  * prescriptive_plan: Instruksi detail pencampuran kapur berdasarkan 'treatment.cao_dosage_kg_ph'. Contoh: 'Dosis Kapur: 50 kg/jam. Estimasi normalisasi pH dalam 45 menit.'\n"
+                "  * required_cao_dosing_kg_ph: ambil dari strategic_metrics.treatment.cao_dosage_kg_ph\n"
+                "  * compliance_eta_minutes: Estimasi waktu (integer minutes). Asumsi 30-60 menit untuk proses netralisasi.\n"
+                "  * legal_risk_status: 'Administratif' atau 'Pidana' (jika pelanggaran berat > 2 hari).\n\n"
                 "GAYA PENULISAN (WAJIB):\n"
                 "- headline: 1 kalimat (maks 120 karakter). Contoh: 'pH di Settling Pond A turun di bawah standar - perlu tindakan segera'\n"
                 "- recommendation: 2-3 kalimat. Jelaskan (1) kondisi saat ini, (2) risiko jika dibiarkan, (3) prioritas tindakan.\n"
@@ -516,6 +560,22 @@ async def generate_insights_with_llm(
 
     if not _validate_citations(parsed, {str(k): float(v) for k, v in numeric_evidence.items()}):
         return None
+    
+    # Inject Strategic Decision Support if LLM missed it or we prefer calculated values
+    if strat_support_metrics:
+        # If the LLM didn't return it, or we want to overwrite/augment (here we only add if missing)
+        if not parsed.strategic_decision_support:
+            parsed.strategic_decision_support = StrategicDecisionSupport(
+                treatment=EmpiricalTreatmentResult(**strat_support_metrics["treatment"]),
+                legal_risk=LegalRiskResult(**strat_support_metrics["legal_risk"]),
+                technical_root_cause="LLM tidak memberikan analisis. Fallback ke perhitungan otomatis.",
+                legal_consequence="Cek PP 22/2021.",
+                prescriptive_plan=f"Dosis Kapur: {strat_support_metrics['treatment']['cao_dosage_kg_ph']:.2f} kg/jam.",
+                compliance_eta_minutes=45,
+                required_cao_dosing_kg_ph=strat_support_metrics['treatment']['cao_dosage_kg_ph'],
+                legal_risk_status="Administratif"
+            )
+
     return parsed
 
 
@@ -539,8 +599,89 @@ def deterministic_insights_response(evidence: dict[str, Any]) -> AnalyticsInsigh
     turb_max = standard.get("turbidity_max_ntu", 50)
     standard_source = standard.get("source", "KepMen LH 113/2003")
 
+
     sensor_names = [s.get("name") or s.get("sensor_id", "Unknown") for s in sensors]
     sensor_context = sensor_names[0] if len(sensor_names) == 1 else f"{len(sensor_names)} sensor"
+
+    strat_support = None
+    raw_samples = evidence.get("raw_samples")
+    if raw_samples and len(raw_samples) > 0:
+        valid_samples = [s for s in raw_samples if s.get("ph") is not None]
+        if valid_samples:
+            # Use Average pH for more stable strategic decision support (aligns with displayed avg)
+            avg_ph = sum(float(s.get("ph")) for s in valid_samples) / len(valid_samples)
+            # Use Max Turbidity for conservative risk assessment
+            max_turb = max(float(s.get("turbidity") or 0.0) for s in valid_samples)
+            
+            cur_ph = avg_ph
+            cur_turb = max_turb
+            
+            # --- Detailed Calculations ---
+            treatment_res = calculate_empirical_treatment(cur_ph, DEFAULT_FLOW_RATE_LPH)
+            legal_risk_res = evaluate_legal_risk(cur_ph, cur_turb, DEFAULT_FLOW_RATE_LPH)
+            
+            # Reconstruct Pydantic Models from new detailed dicts
+            cost_bd = CostBreakdown(
+                chemical=treatment_res.get("cost_chemical", 0),
+                energy=treatment_res.get("cost_energy", 0),
+                labor=treatment_res.get("cost_labor", 0),
+                maintenance=treatment_res.get("cost_maintenance", 0)
+            )
+            
+            risk_bd = RiskBreakdown(
+                fine=legal_risk_res.get("risk_fine_idr", 0),
+                restoration=legal_risk_res.get("risk_restoration_idr", 0),
+                infrastructure=legal_risk_res.get("risk_infrastructure_capex_idr", 0)
+            )
+            
+            # Build Result Objects
+            emp_result = EmpiricalTreatmentResult(
+                acidity_deficit=treatment_res.get("acidity_deficit", 0),
+                cao_dosage_kg_ph=treatment_res.get("cao_dosage_kg_ph", 0),
+                estimated_cost_idr_ph=treatment_res.get("total_estimated_cost_idr_ph", 0),
+                cost_breakdown=cost_bd
+            )
+            
+            leg_result = LegalRiskResult(
+                compliant=legal_risk_res.get("compliant", False),
+                violations=legal_risk_res.get("violations", []),
+                risk_exposure_idr=legal_risk_res.get("total_risk_exposure_idr", 0),
+                remediation_cost_idr_daily=legal_risk_res.get("risk_restoration_idr", 0) * 24, # Approximate for legacy field
+                risk_breakdown=risk_bd,
+                legal_risk_status=legal_risk_res.get("legal_risk_status", "Unknown")
+            )
+            
+            # Calculate Net Potential Savings
+            net_savings = leg_result.risk_exposure_idr - emp_result.estimated_cost_idr_ph
+            
+            # Infrastructure Alert
+            infra_alert = None
+            if risk_bd.infrastructure > 0:
+                infra_alert = {
+                   "title": "Peringatan Kapasitas",
+                   "message": f"Investasi lahan tambahan (Settling Pond) senilai Rp {risk_bd.infrastructure:,.0f} diperlukan untuk mencegah luapan.",
+                   "severity": "high",
+                   "cost": risk_bd.infrastructure
+                }
+
+            # Generate Financial Narrative
+            narratives = generate_financial_narrative(treatment_res, legal_risk_res, cur_ph, DEFAULT_FLOW_RATE_LPH)
+            fin_narrative = FinancialNarrative(**narratives)
+
+            strat_support = StrategicDecisionSupport(
+                treatment=emp_result,
+                legal_risk=leg_result,
+                net_potential_savings_idr=net_savings,
+                infrastructure_alert=infra_alert,
+                financial_narrative=fin_narrative,
+                
+                technical_root_cause=f"pH Rata-rata {cur_ph:.2f} di bawah baku mutu (6-9)." if not legal_risk_res['compliant'] else "Kondisi air terpantau aman.",
+                legal_consequence="Potensi pelanggaran administratif PP 22/2021." if not legal_risk_res['compliant'] else "Compliant",
+                prescriptive_plan=f"Dosis Kapur: {emp_result.cao_dosage_kg_ph:.2f} kg/jam (Basis: Rata-rata pH 24 jam)." if emp_result.cao_dosage_kg_ph > 0 else "Tidak diperlukan tindakan korektif.",
+                compliance_eta_minutes=45 if emp_result.cao_dosage_kg_ph > 0 else 0,
+                required_cao_dosing_kg_ph=emp_result.cao_dosage_kg_ph,
+                legal_risk_status=legal_risk_res.get("legal_risk_status", "Administratif")
+            )
 
     worst_pct = None
     worst_param = None
@@ -738,5 +879,4 @@ def deterministic_insights_response(evidence: dict[str, Any]) -> AnalyticsInsigh
             evidence=citations,
         ),
         key_findings=findings,
-        evidence=evidence,
-    )
+        evidence=evidence,        strategic_decision_support=strat_support,    )
