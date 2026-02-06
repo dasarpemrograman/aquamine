@@ -1,4 +1,4 @@
-from typing import Dict, Final
+from typing import Final
 
 # PP No. 22/2021: Baku Mutu Air Limbah
 PH_MIN: Final[float] = 6.0

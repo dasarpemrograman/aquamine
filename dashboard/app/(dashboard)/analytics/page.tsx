@@ -461,7 +461,7 @@ export default function AnalyticsPage() {
                                     
                                     {/* OpEx Stacks */}
                                     <Bar dataKey="Kapur" stackId="a" fill="#10b981" radius={[0, 4, 4, 0]} barSize={40} />
-                                    <Bar dataKey="Energi" stackId="a" fill="#34d399" header="Energi" />
+                                    <Bar dataKey="Energi" stackId="a" fill="#34d399" />
                                     <Bar dataKey="SDM & Maint" stackId="a" fill="#6ee7b7" />
                                     
                                     {/* Risk Stacks */}

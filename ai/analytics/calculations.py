@@ -58,7 +58,7 @@ def calculate_empirical_treatment(current_pH: float, flow_rate_lph: float) -> di
         "total_estimated_cost_idr_ph": total_opex
     }
 
-def evaluate_legal_risk(current_pH: float, turbidity: float, flow_rate_lph: float) -> Dict[str, Any]:
+def evaluate_legal_risk(current_pH: float, turbidity: float, flow_rate_lph: float) -> dict[str, Any]:
     """
     Evaluate legal risks, potential fines, restoration costs, and infrastructure needs.
     """
@@ -133,18 +133,16 @@ def evaluate_legal_risk(current_pH: float, turbidity: float, flow_rate_lph: floa
         "legal_risk_status": severity_level
     }
 def generate_financial_narrative(
-    treatment_res: Dict[str, Any],
-    risk_res: Dict[str, Any],
+    treatment_res: dict[str, Any],
+    risk_res: dict[str, Any],
     current_ph: float,
     flow_rate_lph: float
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     Generate narrative explanations for financial breakdown.
     """
     # 1. OpEx Narrative
-    chem_cost = treatment_res.get("cost_chemical", 0)
     dosage = treatment_res.get("cao_dosage_kg_ph", 0)
-    energy_cost = treatment_res.get("cost_energy", 0)
     
     opex_narrative = (
         f"Biaya pengolahan Rp {treatment_res.get('total_estimated_cost_idr_ph', 0):,.0f} per jam terdiri dari: "
@@ -153,7 +151,6 @@ def generate_financial_narrative(
     )
 
     # 2. Risk Narrative
-    fine = risk_res.get("risk_fine_idr", 0)
     restoration = risk_res.get("risk_restoration_idr", 0)
     risk_status = risk_res.get("legal_risk_status", "Aman")
     
