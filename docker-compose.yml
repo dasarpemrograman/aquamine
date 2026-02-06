@@ -53,6 +53,7 @@ services:
       MQTT_USERNAME: ${MQTT_USERNAME}
       MQTT_PASSWORD: ${MQTT_PASSWORD}
       MQTT_TLS_INSECURE: ${MQTT_TLS_INSECURE}
+      SENSOR_HIDDEN_IDS: ${SENSOR_HIDDEN_IDS}
     depends_on:
       db:
         condition: service_healthy

@@ -1,4 +1,4 @@
-# pyright: reportUnusedParameter=false
+# pyright: reportUnusedParameter=false, reportPrivateImportUsage=false
 
 import asyncio
 from contextlib import suppress
@@ -19,6 +19,27 @@ logger = logging.getLogger("mqtt_listener")
 loop = None
 
 
+def build_mqtt_client() -> mqtt.Client:
+    client = mqtt.Client(client_id=mqtt_config.resolved_client_id)
+
+    if mqtt_config.use_tls:
+        if mqtt_config.tls_insecure:
+            client.tls_set(cert_reqs=ssl.CERT_NONE)
+            client.tls_insecure_set(True)
+            logger.warning("MQTT TLS certificate verification DISABLED - insecure mode")
+        else:
+            client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
+            logger.info("TLS enabled for MQTT connection with certificate verification")
+
+    if mqtt_config.username:
+        client.username_pw_set(mqtt_config.username, mqtt_config.password)
+
+    client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
+    client.on_message = on_message
+    return client
+
+
 def _reason_code_value(reason_code) -> int:
     value = getattr(reason_code, "value", reason_code)
     try:
@@ -27,7 +48,7 @@ def _reason_code_value(reason_code) -> int:
         return -1
 
 
-def on_connect(client, _userdata, _flags, reason_code, _properties=None):
+def on_connect(client, _userdata, _flags, reason_code=0, *_extra):
     """Callback for when the client receives a CONNACK response from the server."""
     rc_value = _reason_code_value(reason_code)
     if rc_value == 0:
@@ -39,7 +60,13 @@ def on_connect(client, _userdata, _flags, reason_code, _properties=None):
         logger.error("Failed to connect, return code %s", rc_value)
 
 
-def on_disconnect(_client, _userdata, _disconnect_flags, reason_code, _properties=None):
+def on_disconnect(_client, _userdata, *args):
+    if len(args) >= 2:
+        reason_code = args[1]
+    elif len(args) == 1:
+        reason_code = args[0]
+    else:
+        reason_code = 0
     rc_value = _reason_code_value(reason_code)
     if rc_value != 0:
         logger.warning("Unexpected MQTT disconnect (rc=%s). Client will retry.", rc_value)
@@ -87,31 +114,6 @@ async def main_loop():
     global loop
     loop = asyncio.get_running_loop()
 
-    if mqtt_config.use_tls:
-        client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-            client_id=mqtt_config.resolved_client_id,
-        )
-        if mqtt_config.tls_insecure:
-            client.tls_set(cert_reqs=ssl.CERT_NONE)
-            client.tls_insecure_set(True)
-            logger.warning("MQTT TLS certificate verification DISABLED - insecure mode")
-        else:
-            client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
-            logger.info("TLS enabled for MQTT connection with certificate verification")
-    else:
-        client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-            client_id=mqtt_config.resolved_client_id,
-        )
-
-    if mqtt_config.username:
-        client.username_pw_set(mqtt_config.username, mqtt_config.password)
-
-    client.on_connect = on_connect
-    client.on_disconnect = on_disconnect
-    client.on_message = on_message
-
     logger.info(
         "Starting MQTT listener broker=%s port=%s topic_prefix=%s client_id=%s",
         mqtt_config.broker,
@@ -122,6 +124,7 @@ async def main_loop():
 
     reconnect_delay = 3
     while True:
+        client = build_mqtt_client()
         try:
             client.connect(mqtt_config.broker, mqtt_config.port, 60)
             client.loop_start()
