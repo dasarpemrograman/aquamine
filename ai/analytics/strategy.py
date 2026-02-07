@@ -613,6 +613,11 @@ def analyze_financial_history(
     
     sorted_series = sorted(timestamp_ph_series, key=lambda x: x[0])
     
+    # Validate all timestamps are timezone-aware
+    for t, _ in sorted_series:
+        if t.tzinfo is None:
+            raise ValueError(f"Timestamp {t} is timezone-naive. All timestamps must be timezone-aware.")
+
     # 1. Hitung statistik pelanggaran
     violation_stats = compute_violation_stats(
         sorted_series,

@@ -299,9 +299,9 @@ async def build_insights_evidence(
         db, start=start_7d, end=now_utc, aggregation="hourly", sensor_id=sensor_id, max_points=200
     )
     series_7d = [
-        (p["timestamp"], float(p["ph_avg"])) 
+        (ts.replace(tzinfo=timezone.utc) if ts.tzinfo is None else ts, float(p["ph_avg"])) 
         for p in trend_points_7d 
-        if p.get("timestamp") and p.get("ph_avg") is not None and 0 <= float(p["ph_avg"]) <= 14
+        if (ts := p.get("timestamp")) and isinstance(ts, datetime) and p.get("ph_avg") is not None and 0 <= float(p["ph_avg"]) <= 14
     ]
 
     # Handle empty time series edge cases - return zero values if no data available
@@ -690,6 +690,7 @@ async def generate_insights_with_llm(
                         estimated_recovery_time_minutes=v.get("estimated_recovery_time_minutes", 0.0),
                         holding_pond_cost_risk=v.get("holding_pond_cost_risk", 0.0),
                         violation_stats=violation_stats_obj,
+                        risk_parameters_used=v.get("risk_parameters_used"),
                     )
                 except (KeyError, TypeError, ValueError) as e:
                     logger.warning(f"Failed to parse financial breakdown for period {k}: {e}")

@@ -22,9 +22,10 @@ export function FinancialProjectionCard({ data }: FinancialProjectionCardProps) 
     new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
 
   // Configurable rates
-  const riskRatePerMinute = 1_000_000;
+  const riskRatePerMinute = data.risk_parameters_used?.tarif_risiko_per_menit ?? 1_000_000;
   const handlingCostPerHour = data.treatment_cost_hourly;
-  const violationMinutes = data.risk_exposure > 0 ? Math.round(data.risk_exposure / riskRatePerMinute) : 0;
+  const violationMinutes = data.violation_stats?.violation_minutes ?? 0;
+
 
   return (
     <GlassCard className="p-6 relative overflow-hidden">

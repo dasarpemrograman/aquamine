@@ -58,6 +58,14 @@ function FinancialProjectionCard({ data, breakdown }: { data: FinancialImpact, b
   // Determine which data to use based on selection
   const activeData = breakdown?.[period] ?? data;
   const isDataAvailable = breakdown && period in breakdown;
+  
+  if (!isDataAvailable && period !== "1h") {
+    return (
+      <GlassCard className="p-6">
+        <p className="text-slate-500">Data tidak tersedia untuk periode {periods.find(p => p.id === period)?.label}</p>
+      </GlassCard>
+    );
+  }
 
   const chartData = [
     { name: 'Biaya Penanganan (Rp/jam)', value: activeData.treatment_cost_hourly, color: '#3b82f6' },
