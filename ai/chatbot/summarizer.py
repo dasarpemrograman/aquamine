@@ -5,7 +5,7 @@ LLM-based summarization and title generation for chat compaction.
 import logging
 from typing import List, Dict, Any
 
-from ai.chatbot.cerebras_client import CerebrasClient
+from ai.chatbot.openrouter_client import OpenRouterClient
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +60,9 @@ def format_conversation_for_summary(messages: List[Dict[str, Any]]) -> str:
 
 async def generate_conversation_summary(
     messages: List[Dict[str, Any]],
-    cerebras_client: CerebrasClient | None = None,
+    llm_client: OpenRouterClient | None = None,
 ) -> str:
-    client = cerebras_client or CerebrasClient()
+    client = llm_client or OpenRouterClient()
     conversation = format_conversation_for_summary(messages)
     if not conversation.strip():
         return "Percakapan tentang monitoring kualitas air AquaMine."
@@ -82,9 +82,9 @@ async def generate_conversation_summary(
 async def generate_thread_title(
     first_user_message: str,
     first_assistant_message: str,
-    cerebras_client: CerebrasClient | None = None,
+    llm_client: OpenRouterClient | None = None,
 ) -> str:
-    client = cerebras_client or CerebrasClient()
+    client = llm_client or OpenRouterClient()
     prompt = TITLE_GENERATION_PROMPT.format(
         user_message=first_user_message[:200],
         assistant_message=first_assistant_message[:200],
