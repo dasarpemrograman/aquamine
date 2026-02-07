@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Any
 
-from ai.chatbot.cerebras_client import CerebrasClient
+from ai.chatbot.openrouter_client import OpenRouterClient
 from ai.chatbot.token_budget import should_compact, estimate_message_tokens
 from ai.chatbot.tools import (
     TOOLS_SCHEMA,
@@ -44,8 +44,8 @@ PENTING - TIMEZONE:
 
 
 class ChatOrchestrator:
-    def __init__(self, cerebras_client: CerebrasClient | None = None) -> None:
-        self.cerebras_client = cerebras_client or CerebrasClient()
+    def __init__(self, llm_client: OpenRouterClient | None = None) -> None:
+        self.llm_client = llm_client or OpenRouterClient()
         self.sessions: dict[str, list[dict[str, Any]]] = {}
         self.tool_handlers = {
             "retrieve_knowledge": retrieve_knowledge,
@@ -87,7 +87,7 @@ class ChatOrchestrator:
         # Let's verify assumption: main.py appends user message to 'conversation' before calling.
 
         for _ in range(10):
-            response = await self.cerebras_client.chat_completion(messages, tools=TOOLS_SCHEMA)
+            response = await self.llm_client.chat_completion(messages, tools=TOOLS_SCHEMA)
 
             if isinstance(response, dict) and "error" in response and "choices" not in response:
                 error_msg = str(response["error"])

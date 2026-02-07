@@ -12,6 +12,7 @@ dependencies = [
     "alembic>=1.14.0",
     "cerebras_cloud_sdk>=1.0.0",
     "fastapi>=0.115.0",
+    "openai>=1.0.0",
     "faiss-cpu>=1.7.4",
     "nixtla>=0.6.0",
     "slowapi>=0.1.9",

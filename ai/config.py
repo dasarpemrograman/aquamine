@@ -27,11 +27,13 @@ class Settings(BaseModel):
     # Network / Security
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]
 
-    # Optional Services (TimeGPT, Email, WA, Chatbot)
+    # Optional Services (TimeGPT, Email, WA, Chatbot, LLM)
     NIXTLA_API_KEY: Optional[str] = None
     RESEND_API_KEY: Optional[str] = None
     FONNTE_API_TOKEN: Optional[str] = None
     CEREBRAS_API_KEY: Optional[str] = None
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_MODEL: str = "openai/gpt-4o-mini"
 
     # Compliance standards based on KepMen LH 113/2003 (Coal Mining Effluent)
     # pH range 6-9 per Indonesian mining regulation for coal effluent discharge
