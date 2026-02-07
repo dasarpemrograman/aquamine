@@ -14,6 +14,8 @@ import {
   ChevronUp,
   ClipboardList,
   Radio,
+  Clock,
+  Gavel
 } from "lucide-react";
 import { 
   ResponsiveContainer, 
@@ -23,6 +25,9 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
+  BarChart, 
+  Bar, 
+  Cell
 } from "recharts";
 
 import { GlassCard } from "@/app/components/ui/GlassCard";
@@ -39,10 +44,316 @@ import {
   AnalyticsComplianceResponse,
   AnalyticsInsightsResponse,
   Sensor,
+  StrategicImpact,
+  FinancialImpact
 } from "@/lib/api";
 import { formatWIB } from "@/lib/dateUtils";
 import { UI_COPY, formatString, getSeverityLabel } from "@/lib/copy";
 import { useRealtimeAnalytics } from "@/lib/useRealtimeAnalytics";
+
+function FinancialProjectionCard({ data, breakdown }: { data: FinancialImpact, breakdown?: Record<string, FinancialImpact> }) {
+  const [period, setPeriod] = useState<"1h" | "24h" | "7d">("1h");
+  const [showCalculation, setShowCalculation] = useState(false);
+
+  // Determine which data to use based on selection
+  const activeData = breakdown?.[period] ?? data;
+  const isDataAvailable = breakdown && period in breakdown;
+  
+  if (!isDataAvailable && period !== "1h") {
+    return (
+      <GlassCard className="p-6">
+        <p className="text-slate-500">Data tidak tersedia untuk periode {periods.find(p => p.id === period)?.label}</p>
+      </GlassCard>
+    );
+  }
+
+  const chartData = [
+    { name: 'Biaya Penanganan (Rp/jam)', value: activeData.treatment_cost_hourly, color: '#3b82f6' },
+    { name: 'Risiko Finansial (Rp/jam)', value: activeData.risk_exposure, color: '#ef4444' },
+  ];
+
+  const formatIDR = (value: number) => 
+    new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
+
+  const periods = [
+    { id: '1h', label: '1 Jam' },
+    { id: '24h', label: '24 Jam' },
+    { id: '7d', label: '7 Hari' },
+  ];
+
+  // Configurable rates
+  const riskRatePerMinute = 1_000_000;
+  const handlingCostPerHour = activeData.treatment_cost_hourly;
+  // Use violation_stats if available, otherwise estimate from risk_exposure
+  const violationMinutes = activeData.violation_stats?.violation_minutes ?? 0;
+
+  return (
+    <GlassCard className="p-6 relative overflow-hidden">
+      <div className="flex flex-col h-full">
+        <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-slate-800">Proyeksi Finansial Evaluasi</h3>
+            </div>
+            
+            <div className="flex bg-slate-100 rounded-lg p-1 gap-1">
+                {periods.map((p) => (
+                    <button
+                        key={p.id}
+                        onClick={() => setPeriod(p.id as  "1h" | "24h" | "7d")}
+                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                            period === p.id 
+                            ? 'bg-white text-cyan-600 shadow-sm' 
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                    >
+                        {p.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+
+        <p className="text-xs text-slate-500 mb-4 -mt-2">
+          Window: {periods.find(p => p.id === period)?.label} terakhir
+          {!isDataAvailable && (
+            <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded border border-amber-200">
+              ⚠️ Data tidak tersedia untuk periode ini
+            </span>
+          )}
+        </p>
+        
+        <div className="flex-grow w-full h-[200px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e2e8f0" />
+              <XAxis type="number" hide />
+              <YAxis dataKey="name" type="category" width={150} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+              <Tooltip 
+                cursor={{ fill: '#f1f5f9' }}
+                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                formatter={(value: number | undefined ) => [formatIDR(value ?? 0), '']}
+              />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col items-center">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm text-slate-500 font-medium uppercase tracking-wider">Potensi Penghematan (Rp / jam)</span>
+              <div className="group relative">
+                <svg className="w-3.5 h-3.5 text-slate-400 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 w-64 z-10 shadow-lg">
+                  <p className="font-medium mb-1">Nilai Rate per Jam</p>
+                  <p className="text-slate-300">Nilai ini merupakan estimasi rata-rata per jam, bukan total kumulatif periode.</p>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1">
+                    <div className="border-4 border-transparent border-t-slate-800"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-400 italic text-center mb-2">Estimasi laju penghematan rata-rata pada window waktu yang dipilih</p>
+            <span className="text-3xl font-bold text-emerald-500">
+              {formatIDR(activeData.potential_savings)}
+            </span>
+            {activeData.potential_savings > 0 && violationMinutes > 0 && (
+              <p className="text-xs text-slate-500 mt-2 px-3 py-1.5 bg-emerald-50 rounded border border-emerald-100">
+                ≈ {formatIDR(activeData.potential_savings * (
+                  period === '1h' ? 1 : 
+                  period === '24h' ? 24 : 
+                  168
+                ))} estimasi untuk {periods.find(p => p.id === period)?.label}
+              </p>
+            )}
+        </div>
+
+        {/* Accordion: Rincian Perhitungan & Asumsi */}
+        <div className="mt-4 border border-slate-200 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowCalculation(!showCalculation)}
+            className="w-full flex flex-col items-start gap-1 p-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+          >
+            <div className="w-full flex items-center justify-between">
+              <span className="text-sm font-medium text-cyan-600">Lihat penjelasan teknis</span>
+              {showCalculation ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+            </div>
+            <p className="text-[10px] text-slate-400 italic">Transparansi perhitungan, parameter operasional, dan metodologi</p>
+          </button>
+
+          {showCalculation && (
+            <div className="p-4 bg-white space-y-5">
+              {/* 1. Nilai pada Window Saat Ini */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-semibold text-slate-700 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
+                  Kondisi Window Aktif
+                </h4>
+                <p className="text-[10px] text-slate-500 italic mb-2">Ringkasan kondisi pada periode {periods.find(p => p.id === period)?.label} terakhir</p>
+                
+                {violationMinutes > 0 && (
+                  <div className="mb-3 p-3 bg-amber-50/50 rounded-lg border border-amber-200">
+                    <div className="flex items-center gap-2 text-amber-700 text-xs font-medium mb-1">
+                      <AlertTriangle size={12} />
+                      <span>Periode Pelanggaran Terdeteksi</span>
+                    </div>
+                    <div className="text-sm font-bold text-amber-800">{violationMinutes} menit pelanggaran baku mutu</div>
+                    <div className="text-[10px] text-amber-600 mt-1">Kondisi ini mempengaruhi estimasi risiko finansial</div>
+                  </div>
+                )}
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="flex justify-between items-center px-3 py-2 bg-cyan-50/50 rounded border border-cyan-100 text-xs">
+                    <span className="text-slate-600">Biaya Penanganan Aktual</span>
+                    <span className="font-semibold text-slate-800">{formatIDR(handlingCostPerHour)} / jam</span>
+                  </div>
+                  <div className="flex justify-between items-center px-3 py-2 bg-cyan-50/50 rounded border border-cyan-100 text-xs">
+                    <span className="text-slate-600">Window Observasi</span>
+                    <span className="font-semibold text-slate-800">{periods.find(p => p.id === period)?.label}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Parameter & Asumsi (Dapat Dikustomisasi) */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-semibold text-slate-700 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                  Parameter Operasional Aktif
+                </h4>
+                <p className="text-[10px] text-slate-500 italic mb-2">Parameter yang digunakan dalam perhitungan estimasi finansial</p>
+                <div className="space-y-2">
+                  <div className="px-3 py-2 bg-amber-50/50 rounded border border-amber-100">
+                    <div className="flex justify-between items-center text-xs mb-0.5">
+                      <span className="text-slate-600 font-medium">Tarif Risiko Aktif</span>
+                      <span className="font-bold text-slate-800">{formatIDR(riskRatePerMinute)} / menit</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 italic">Berdasarkan kebijakan internal site</p>
+                    <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-white rounded text-[9px] text-slate-500 border border-slate-200">
+                      <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                      </svg>
+                      <span>Parameter operasional (dapat dikonfigurasi)</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center px-3 py-2 bg-amber-50/50 rounded border border-amber-100 text-xs">
+                    <span className="text-slate-600">Standar Baku Mutu pH</span>
+                    <span className="font-semibold text-slate-800">6.0 – 9.0</span>
+                  </div>
+                  <div className="flex justify-between items-center px-3 py-2 bg-amber-50/50 rounded border border-amber-100 text-xs">
+                    <span className="text-slate-600">Regulasi Acuan</span>
+                    <span className="font-semibold text-slate-800">KepMen LH 113/2003</span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-2 px-2 py-1.5 bg-slate-50 rounded border border-slate-100">
+                  <span className="font-medium">Catatan:</span> Nilai tarif risiko mencerminkan estimasi proksi denda regulasi dan biaya pemulihan lingkungan. Nilai aktual dapat berbeda tergantung kondisi lapangan.
+                </p>
+              </div>
+
+              {/* 3. Metode Perhitungan */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-semibold text-slate-700 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                  Metode Perhitungan
+                </h4>
+                <p className="text-[10px] text-slate-500 italic mb-2">Penjelasan logika perhitungan finansial</p>
+                <div className="space-y-2.5 text-xs text-slate-700">
+                  <div className="px-3 py-2.5 bg-slate-50 rounded border border-slate-100 leading-relaxed">
+                    <p className="font-medium text-slate-800 mb-1">Risiko Finansial (Rp/jam)</p>
+                    <p className="text-slate-600">Dihitung dari <span className="font-semibold text-slate-800">Durasi Pelanggaran (menit)</span> dikalikan <span className="font-semibold text-slate-800">Tarif Risiko per Menit</span>.</p>
+                  </div>
+                  <div className="px-3 py-2.5 bg-slate-50 rounded border border-slate-100 leading-relaxed">
+                    <p className="font-medium text-slate-800 mb-1">Biaya Penanganan (Rp/jam)</p>
+                    <p className="text-slate-600">Dihitung dari <span className="font-semibold text-slate-800">Total Dosis Aktual</span> dikalikan <span className="font-semibold text-slate-800">Harga per Unit</span> bahan kimia yang digunakan.</p>
+                  </div>
+                  <div className="px-3 py-2.5 bg-slate-50 rounded border border-slate-100 leading-relaxed">
+                    <p className="font-medium text-slate-800 mb-1">Potensi Penghematan (Rp/jam)</p>
+                    <p className="text-slate-600">Merupakan selisih antara <span className="font-semibold text-slate-800">Baseline Tanpa Tindakan</span> dan <span className="font-semibold text-slate-800">Biaya Aktual</span> yang terjadi.</p>
+                    {activeData.potential_savings === 0 && (
+                      <p className="text-amber-600 font-medium mt-1.5">⚠️ Baseline pembanding belum tersedia untuk periode ini.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </GlassCard>
+  );
+}
+
+function MandatoryActionCard({ data }: { data: StrategicImpact }) {
+  const { compliance, financial } = data;
+  const isCompliant = compliance.is_compliant;
+  
+  return (
+    <GlassCard className={`p-6 border-l-4 ${isCompliant ? 'border-l-emerald-500' : 'border-l-rose-500'}`}>
+        <div className="flex items-start justify-between mb-4">
+            <div>
+                <div className="flex items-center gap-2 group relative w-fit">
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 cursor-help">
+                        {isCompliant ? <CheckCircle2 className="text-emerald-500" /> : <AlertTriangle className="text-rose-500" />}
+                        Tindakan Wajib
+                    </h3>
+                    <div className="absolute left-0 top-full mt-2 w-60 p-2 bg-slate-800 text-white text-xs rounded z-50 hidden group-hover:block">
+                        Rekomendasi tindakan operasional selalu menggunakan kondisi terkini untuk mencegah kesalahan operasional.
+                    </div>
+                </div>
+                <p className="text-sm text-slate-500 mt-1">Analitik preskriptif berbasis regulasi</p>
+                <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-400 font-medium bg-slate-50 px-2 py-0.5 rounded w-fit">
+                    <Clock size={10} />
+                    Berdasarkan data real-time (±5 menit terakhir)
+                </div>
+            </div>
+            <StatusChip 
+                status={isCompliant ? 'active' : 'critical'} 
+                label={compliance.status_label}
+            />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
+            <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                <div className="flex items-center gap-2 text-slate-500 text-xs mb-1 font-medium bg-white w-fit px-2 py-0.5 rounded border border-slate-200">
+                   <Activity size={12} /> REKOMENDASI DOSIS
+                </div>
+                <div className="text-xl font-bold text-slate-800">
+                    {financial.recommended_lime_dosage_kg_h > 0 
+                        ? `${financial.recommended_lime_dosage_kg_h.toFixed(1)} kg/jam` 
+                        : "Tidak membutuhkan dosis tambahan"}
+                </div>
+            </div>
+            
+            <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                 <div className="flex items-center gap-2 text-slate-500 text-xs mb-1 font-medium bg-white w-fit px-2 py-0.5 rounded border border-slate-200">
+                   <Clock size={12} /> ESTIMASI PEMULIHAN
+                </div>
+                <div className="text-xl font-bold text-slate-800">
+                  {financial.estimated_recovery_time_minutes > 0
+                      ? `${Math.round(financial.estimated_recovery_time_minutes)} Menit`
+                      : "Kondisi stabil"}
+                </div>
+            </div>
+        </div>
+
+        {!isCompliant && (
+           <div className="mt-4 bg-rose-50 rounded-lg p-3 border border-rose-100">
+              <div className="flex items-center gap-2 text-rose-700 font-semibold text-sm mb-2">
+                  <Gavel size={14} /> STATUS LEGAL
+              </div>
+              <ul className="list-disc list-inside text-xs text-rose-600 space-y-1">
+                  {compliance.violated_regulations.map((reg, idx) => (
+                      <li key={idx}>{reg}</li>
+                  ))}
+              </ul>
+           </div>
+        )}
+    </GlassCard>
+  );
+}
 
 export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
@@ -131,6 +442,85 @@ export default function AnalyticsPage() {
 
   const chartPoints = realtimeEnabled ? realtimeState.points : (trends?.points ?? []);
   const chartTitle = realtimeEnabled ? UI_COPY.realtime_chart : UI_COPY.water_quality_trends;
+  
+  // Custom Tooltip for Water Quality Chart
+  const CustomWaterQualityTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload || payload.length === 0) return null;
+    
+    const phValue = payload.find((p: any) => p.dataKey === 'ph_avg')?.value;
+    const turbValue = payload.find((p: any) => p.dataKey === 'turbidity_avg')?.value;
+    const tempValue = payload.find((p: any) => p.dataKey === 'temperature_avg')?.value;
+    
+    const isViolation = phValue !== null && phValue !== undefined && (phValue < 6 || phValue > 9);
+    
+    // Use actual risk from backend if available, otherwise estimate
+    const estimatedRisk = insights?.strategic_impact?.financial?.regulatory_fine_risk ?? 0;
+    
+    return (
+      <div className="bg-white/95 backdrop-blur-sm p-3 rounded-xl border border-slate-200 shadow-lg min-w-[240px]">
+        <p className="text-xs font-medium text-slate-600 mb-2">{formatWIB(label)}</p>
+        <div className="space-y-1.5">
+          {phValue !== null && phValue !== undefined && (
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-cyan-500"></div>
+                <span className="text-slate-600">pH:</span>
+              </div>
+              <span className={`font-semibold ${isViolation ? 'text-rose-600' : 'text-slate-800'}`}>
+                {phValue.toFixed(2)}
+                {isViolation && <span className="ml-1 text-[10px]">⚠️</span>}
+              </span>
+            </div>
+          )}
+          {turbValue !== null && turbValue !== undefined && (
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                <span className="text-slate-600">Kekeruhan:</span>
+              </div>
+              <span className="font-semibold text-slate-800">{turbValue.toFixed(1)} NTU</span>
+            </div>
+          )}
+          {tempValue !== null && tempValue !== undefined && (
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                <span className="text-slate-600">Suhu:</span>
+              </div>
+              <span className="font-semibold text-slate-800">{tempValue.toFixed(1)} °C</span>
+            </div>
+          )}
+        </div>
+        
+        {isViolation && (
+          <div className="mt-2 pt-2 border-t border-rose-100">
+            <div className="flex items-center gap-1.5 text-[10px] text-rose-600 font-medium mb-1">
+              <AlertTriangle size={10} />
+              <span>Pelanggaran Baku Mutu</span>
+            </div>
+            <div className="text-[10px] text-slate-600">
+              <span className="font-medium">Estimasi risiko finansial:</span>
+              <div className="text-rose-700 font-semibold mt-0.5">
+                +{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(estimatedRisk)} / jam
+              </div>
+            </div>
+            <div className="mt-1 px-2 py-1 bg-rose-50 rounded text-[9px] text-rose-600 italic">
+              Periode pelanggaran memerlukan tindakan treatment
+            </div>
+          </div>
+        )}
+        
+        {!isViolation && phValue !== null && phValue !== undefined && (
+          <div className="mt-2 pt-2 border-t border-emerald-100">
+            <div className="flex items-center gap-1.5 text-[10px] text-emerald-600 font-medium">
+              <CheckCircle2 size={10} />
+              <span>Kondisi Stabil - Tidak memerlukan treatment khusus</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">
@@ -366,13 +756,7 @@ export default function AnalyticsPage() {
                           label={{ value: 'Turbidity (NTU) / Temp (°C)', angle: 90, position: 'insideRight', fill: '#94a3b8' }}
                         />
                         <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)', 
-                            borderRadius: '12px', 
-                            border: '1px solid rgba(255, 255, 255, 0.5)',
-                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                          }}
-                          labelFormatter={(label) => formatWIB(label)}
+                          content={<CustomWaterQualityTooltip />}
                         />
                         <Line 
                           yAxisId="left"
@@ -412,6 +796,16 @@ export default function AnalyticsPage() {
                   )}
                 </div>
               </GlassCard>
+            )}
+
+            {insights?.strategic_impact && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <MandatoryActionCard data={insights.strategic_impact} />
+                <FinancialProjectionCard 
+                    data={insights.strategic_impact.financial} 
+                    breakdown={insights.financial_breakdown}
+                />
+              </div>
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
