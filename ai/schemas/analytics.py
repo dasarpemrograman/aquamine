@@ -103,6 +103,15 @@ class ComplianceStandard(BaseSchema):
     temperature_max_c: float
 
 
+class ViolationStatsSchema(BaseSchema):
+    """Statistik pelanggaran berbasis durasi dan kejadian"""
+    violation_minutes: float
+    event_count: int
+    max_severity_ph: Optional[float] = None
+    min_severity_ph: Optional[float] = None
+    affected_volume_m3: float
+
+
 class FinancialImpactSchema(BaseSchema):
     treatment_cost_hourly: float
     regulatory_fine_risk: float
@@ -112,6 +121,10 @@ class FinancialImpactSchema(BaseSchema):
     recommended_lime_dosage_kg_h: float
     estimated_recovery_time_minutes: float
     holding_pond_cost_risk: float
+    
+    # Field transparansi tambahan
+    violation_stats: Optional[ViolationStatsSchema] = None
+    risk_parameters_used: Optional[dict] = None
 
 
 class RegulatoryMappingSchema(BaseSchema):

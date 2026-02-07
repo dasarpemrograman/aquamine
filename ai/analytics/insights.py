@@ -33,6 +33,7 @@ from ai.schemas.analytics import (
     StrategicImpactSchema,
     FinancialImpactSchema,
     RegulatoryMappingSchema,
+    ViolationStatsSchema,
 )
 
 logger = logging.getLogger(__name__)
@@ -518,6 +519,14 @@ async def generate_insights_with_llm(
             recommended_lime_dosage_kg_h=fi_data.recommended_lime_dosage_kg_h,
             estimated_recovery_time_minutes=fi_data.estimated_recovery_time_minutes,
             holding_pond_cost_risk=fi_data.holding_pond_cost_risk,
+            violation_stats=None if fi_data.violation_stats is None else ViolationStatsSchema(
+                violation_minutes=fi_data.violation_stats.violation_minutes,
+                event_count=fi_data.violation_stats.event_count,
+                max_severity_ph=fi_data.violation_stats.max_severity_ph,
+                min_severity_ph=fi_data.violation_stats.min_severity_ph,
+                affected_volume_m3=fi_data.violation_stats.affected_volume_m3
+            ),
+            risk_parameters_used=fi_data.risk_parameters_used,
         ),
         compliance=RegulatoryMappingSchema(
             is_compliant=comp_data.is_compliant,
@@ -664,6 +673,14 @@ def deterministic_insights_response(evidence: dict[str, Any]) -> AnalyticsInsigh
                 recommended_lime_dosage_kg_h=fi.recommended_lime_dosage_kg_h,
                 estimated_recovery_time_minutes=fi.estimated_recovery_time_minutes,
                 holding_pond_cost_risk=fi.holding_pond_cost_risk,
+                violation_stats=None if fi.violation_stats is None else ViolationStatsSchema(
+                    violation_minutes=fi.violation_stats.violation_minutes,
+                    event_count=fi.violation_stats.event_count,
+                    max_severity_ph=fi.violation_stats.max_severity_ph,
+                    min_severity_ph=fi.violation_stats.min_severity_ph,
+                    affected_volume_m3=fi.violation_stats.affected_volume_m3
+                ),
+                risk_parameters_used=fi.risk_parameters_used,
             ),
             compliance=RegulatoryMappingSchema(
                 is_compliant=rm.is_compliant,

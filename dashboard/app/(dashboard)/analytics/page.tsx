@@ -113,7 +113,7 @@ function FinancialProjectionCard({ data, breakdown }: { data: FinancialImpact, b
               <Tooltip 
                 cursor={{ fill: '#f1f5f9' }}
                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                formatter={(value: number) => [formatIDR(value), '']}
+                formatter={(value: number | undefined ) => [formatIDR(value ?? 0), '']}
               />
               <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24}>
                 {chartData.map((entry, index) => (
@@ -125,10 +125,34 @@ function FinancialProjectionCard({ data, breakdown }: { data: FinancialImpact, b
         </div>
 
         <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col items-center">
-            <span className="text-sm text-slate-500 font-medium uppercase tracking-wider">Potensi Penghematan (Rp/jam)</span>
-            <span className="text-3xl font-bold text-emerald-500 mt-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm text-slate-500 font-medium uppercase tracking-wider">Potensi Penghematan (Rp / jam)</span>
+              <div className="group relative">
+                <svg className="w-3.5 h-3.5 text-slate-400 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 w-64 z-10 shadow-lg">
+                  <p className="font-medium mb-1">Nilai Rate per Jam</p>
+                  <p className="text-slate-300">Nilai ini merupakan estimasi rata-rata per jam, bukan total kumulatif periode.</p>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1">
+                    <div className="border-4 border-transparent border-t-slate-800"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-400 italic text-center mb-2">Estimasi laju penghematan rata-rata pada window waktu yang dipilih</p>
+            <span className="text-3xl font-bold text-emerald-500">
               {formatIDR(activeData.potential_savings)}
             </span>
+            {activeData.potential_savings > 0 && violationMinutes > 0 && (
+              <p className="text-xs text-slate-500 mt-2 px-3 py-1.5 bg-emerald-50 rounded border border-emerald-100">
+                ≈ {formatIDR(activeData.potential_savings * (
+                  period === '1h' ? 1 : 
+                  period === '24h' ? 24 : 
+                  168
+                ))} estimasi untuk {periods.find(p => p.id === period)?.label}
+              </p>
+            )}
         </div>
 
         {/* Accordion: Rincian Perhitungan & Asumsi */}
@@ -138,10 +162,10 @@ function FinancialProjectionCard({ data, breakdown }: { data: FinancialImpact, b
             className="w-full flex flex-col items-start gap-1 p-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
           >
             <div className="w-full flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-600">Rincian Perhitungan & Asumsi</span>
+              <span className="text-sm font-medium text-cyan-600">Lihat penjelasan teknis</span>
               {showCalculation ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
             </div>
-            <p className="text-[10px] text-slate-400 italic">Nilai ditampilkan berdasarkan window waktu yang dipilih dan parameter yang dapat dikonfigurasi.</p>
+            <p className="text-[10px] text-slate-400 italic">Transparansi perhitungan, parameter operasional, dan metodologi</p>
           </button>
 
           {showCalculation && (
@@ -150,21 +174,29 @@ function FinancialProjectionCard({ data, breakdown }: { data: FinancialImpact, b
               <div className="space-y-2">
                 <h4 className="text-xs font-semibold text-slate-700 flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
-                  Nilai pada Window Saat Ini
+                  Kondisi Window Aktif
                 </h4>
-                <p className="text-[10px] text-slate-500 italic mb-2">Data observasi aktual dari sistem monitoring</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div className="flex justify-between items-center px-3 py-2 bg-cyan-50/50 rounded border border-cyan-100 text-xs">
-                    <span className="text-slate-600">Durasi Pelanggaran</span>
-                    <span className="font-semibold text-slate-800">{violationMinutes} menit</span>
+                <p className="text-[10px] text-slate-500 italic mb-2">Ringkasan kondisi pada periode {periods.find(p => p.id === period)?.label} terakhir</p>
+                
+                {violationMinutes > 0 && (
+                  <div className="mb-3 p-3 bg-amber-50/50 rounded-lg border border-amber-200">
+                    <div className="flex items-center gap-2 text-amber-700 text-xs font-medium mb-1">
+                      <AlertTriangle size={12} />
+                      <span>Periode Pelanggaran Terdeteksi</span>
+                    </div>
+                    <div className="text-sm font-bold text-amber-800">{violationMinutes} menit pelanggaran baku mutu</div>
+                    <div className="text-[10px] text-amber-600 mt-1">Kondisi ini mempengaruhi estimasi risiko finansial</div>
                   </div>
+                )}
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div className="flex justify-between items-center px-3 py-2 bg-cyan-50/50 rounded border border-cyan-100 text-xs">
                     <span className="text-slate-600">Biaya Penanganan Aktual</span>
                     <span className="font-semibold text-slate-800">{formatIDR(handlingCostPerHour)} / jam</span>
                   </div>
                   <div className="flex justify-between items-center px-3 py-2 bg-cyan-50/50 rounded border border-cyan-100 text-xs">
-                    <span className="text-slate-600">Periode Observasi</span>
-                    <span className="font-semibold text-slate-800">{periods.find(p => p.id === period)?.label} terakhir</span>
+                    <span className="text-slate-600">Window Observasi</span>
+                    <span className="font-semibold text-slate-800">{periods.find(p => p.id === period)?.label}</span>
                   </div>
                 </div>
               </div>
@@ -173,25 +205,34 @@ function FinancialProjectionCard({ data, breakdown }: { data: FinancialImpact, b
               <div className="space-y-2">
                 <h4 className="text-xs font-semibold text-slate-700 flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                  Parameter & Asumsi (Dapat Dikustomisasi)
+                  Parameter Operasional Aktif
                 </h4>
-                <p className="text-[10px] text-slate-500 italic mb-2">Parameter dapat disesuaikan sesuai kebijakan perusahaan atau regulasi yang berlaku</p>
+                <p className="text-[10px] text-slate-500 italic mb-2">Parameter yang digunakan dalam perhitungan estimasi finansial</p>
                 <div className="space-y-2">
-                  <div className="flex justify-between items-center px-3 py-2 bg-amber-50/50 rounded border border-amber-100 text-xs">
-                    <span className="text-slate-600">Tarif Risiko per Menit</span>
-                    <span className="font-semibold text-slate-800">{formatIDR(riskRatePerMinute)}</span>
+                  <div className="px-3 py-2 bg-amber-50/50 rounded border border-amber-100">
+                    <div className="flex justify-between items-center text-xs mb-0.5">
+                      <span className="text-slate-600 font-medium">Tarif Risiko Aktif</span>
+                      <span className="font-bold text-slate-800">{formatIDR(riskRatePerMinute)} / menit</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 italic">Berdasarkan kebijakan internal site</p>
+                    <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-white rounded text-[9px] text-slate-500 border border-slate-200">
+                      <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                      </svg>
+                      <span>Parameter operasional (dapat dikonfigurasi)</span>
+                    </div>
                   </div>
                   <div className="flex justify-between items-center px-3 py-2 bg-amber-50/50 rounded border border-amber-100 text-xs">
-                    <span className="text-slate-600">Standar pH yang Berlaku</span>
-                    <span className="font-semibold text-slate-800">6.0 – 9.0 (KepMen LH 113/2003)</span>
+                    <span className="text-slate-600">Standar Baku Mutu pH</span>
+                    <span className="font-semibold text-slate-800">6.0 – 9.0</span>
                   </div>
                   <div className="flex justify-between items-center px-3 py-2 bg-amber-50/50 rounded border border-amber-100 text-xs">
-                    <span className="text-slate-600">Status Baseline Pembanding</span>
-                    <span className="font-semibold text-slate-800">{activeData.potential_savings > 0 ? 'Tersedia' : 'Belum Tersedia'}</span>
+                    <span className="text-slate-600">Regulasi Acuan</span>
+                    <span className="font-semibold text-slate-800">KepMen LH 113/2003</span>
                   </div>
                 </div>
                 <p className="text-[10px] text-slate-500 mt-2 px-2 py-1.5 bg-slate-50 rounded border border-slate-100">
-                  <span className="font-medium">Catatan:</span> Tarif risiko merepresentasikan estimasi denda regulasi dan biaya pemulihan lingkungan berdasarkan kebijakan internal.
+                  <span className="font-medium">Catatan:</span> Nilai tarif risiko mencerminkan estimasi proksi denda regulasi dan biaya pemulihan lingkungan. Nilai aktual dapat berbeda tergantung kondisi lapangan.
                 </p>
               </div>
 
@@ -383,6 +424,83 @@ export default function AnalyticsPage() {
 
   const chartPoints = realtimeEnabled ? realtimeState.points : (trends?.points ?? []);
   const chartTitle = realtimeEnabled ? UI_COPY.realtime_chart : UI_COPY.water_quality_trends;
+  
+  // Custom Tooltip for Water Quality Chart
+  const CustomWaterQualityTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload || payload.length === 0) return null;
+    
+    const phValue = payload.find((p: any) => p.dataKey === 'ph_avg')?.value;
+    const turbValue = payload.find((p: any) => p.dataKey === 'turbidity_avg')?.value;
+    const tempValue = payload.find((p: any) => p.dataKey === 'temperature_avg')?.value;
+    
+    const isViolation = phValue !== null && phValue !== undefined && (phValue < 6 || phValue > 9);
+    const estimatedRisk = isViolation ? Math.abs(6 - phValue) * 5_200_000 : 0; // Estimasi proksi
+    
+    return (
+      <div className="bg-white/95 backdrop-blur-sm p-3 rounded-xl border border-slate-200 shadow-lg min-w-[240px]">
+        <p className="text-xs font-medium text-slate-600 mb-2">{formatWIB(label)}</p>
+        <div className="space-y-1.5">
+          {phValue !== null && phValue !== undefined && (
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-cyan-500"></div>
+                <span className="text-slate-600">pH:</span>
+              </div>
+              <span className={`font-semibold ${isViolation ? 'text-rose-600' : 'text-slate-800'}`}>
+                {phValue.toFixed(2)}
+                {isViolation && <span className="ml-1 text-[10px]">⚠️</span>}
+              </span>
+            </div>
+          )}
+          {turbValue !== null && turbValue !== undefined && (
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                <span className="text-slate-600">Kekeruhan:</span>
+              </div>
+              <span className="font-semibold text-slate-800">{turbValue.toFixed(1)} NTU</span>
+            </div>
+          )}
+          {tempValue !== null && tempValue !== undefined && (
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                <span className="text-slate-600">Suhu:</span>
+              </div>
+              <span className="font-semibold text-slate-800">{tempValue.toFixed(1)} °C</span>
+            </div>
+          )}
+        </div>
+        
+        {isViolation && (
+          <div className="mt-2 pt-2 border-t border-rose-100">
+            <div className="flex items-center gap-1.5 text-[10px] text-rose-600 font-medium mb-1">
+              <AlertTriangle size={10} />
+              <span>Pelanggaran Baku Mutu</span>
+            </div>
+            <div className="text-[10px] text-slate-600">
+              <span className="font-medium">Estimasi risiko finansial:</span>
+              <div className="text-rose-700 font-semibold mt-0.5">
+                +{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(estimatedRisk)} / jam
+              </div>
+            </div>
+            <div className="mt-1 px-2 py-1 bg-rose-50 rounded text-[9px] text-rose-600 italic">
+              Periode pelanggaran memerlukan tindakan treatment
+            </div>
+          </div>
+        )}
+        
+        {!isViolation && phValue !== null && phValue !== undefined && (
+          <div className="mt-2 pt-2 border-t border-emerald-100">
+            <div className="flex items-center gap-1.5 text-[10px] text-emerald-600 font-medium">
+              <CheckCircle2 size={10} />
+              <span>Kondisi Stabil - Tidak memerlukan treatment khusus</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen px-6 py-8 md:px-8 md:py-10">
@@ -618,13 +736,7 @@ export default function AnalyticsPage() {
                           label={{ value: 'Turbidity (NTU) / Temp (°C)', angle: 90, position: 'insideRight', fill: '#94a3b8' }}
                         />
                         <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)', 
-                            borderRadius: '12px', 
-                            border: '1px solid rgba(255, 255, 255, 0.5)',
-                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                          }}
-                          labelFormatter={(label) => formatWIB(label)}
+                          content={<CustomWaterQualityTooltip />}
                         />
                         <Line 
                           yAxisId="left"

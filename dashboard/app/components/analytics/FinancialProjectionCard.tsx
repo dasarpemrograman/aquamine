@@ -40,7 +40,7 @@ export function FinancialProjectionCard({ data }: FinancialProjectionCardProps) 
               <Tooltip 
                 cursor={{ fill: '#f1f5f9' }}
                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                formatter={(value: number) => [formatIDR(value), '']}
+                formatter={(value: number | undefined) => [formatIDR(value ?? 0), '']}
               />
               <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={30}>
                 {chartData.map((entry, index) => (
