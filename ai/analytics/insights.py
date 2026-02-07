@@ -283,7 +283,12 @@ async def build_insights_evidence(
     readings_rows = readings_res.all()
 
     # --- Financial Breakdown Calculation ---
-    series_24h = [(r.timestamp.replace(tzinfo=timezone.utc) if r.timestamp.tzinfo is None else r.timestamp, float(r.ph)) for r in readings_rows if r.ph is not None]
+    # Validate pH bounds (0-14 range) to prevent invalid sensor readings from affecting calculations
+    series_24h = [
+        (r.timestamp.replace(tzinfo=timezone.utc) if r.timestamp.tzinfo is None else r.timestamp, float(r.ph)) 
+        for r in readings_rows 
+        if r.ph is not None and 0 <= float(r.ph) <= 14
+    ]
     
     cutoff_1h = now_utc - timedelta(hours=1)
     series_1h = [x for x in series_24h if x[0] >= cutoff_1h]
@@ -296,13 +301,58 @@ async def build_insights_evidence(
     series_7d = [
         (p["timestamp"], float(p["ph_avg"])) 
         for p in trend_points_7d 
-        if p.get("timestamp") and p.get("ph_avg") is not None
+        if p.get("timestamp") and p.get("ph_avg") is not None and 0 <= float(p["ph_avg"]) <= 14
     ]
 
-    fin_1h = analyze_financial_history(series_1h, 1.0)
-    fin_24h = analyze_financial_history(series_24h, 24.0)
+    # Handle empty time series edge cases - return zero values if no data available
+    if series_1h:
+        fin_1h = analyze_financial_history(series_1h, 1.0)
+    else:
+        from ai.analytics.strategy import FinancialImpact, ViolationStats
+        fin_1h = FinancialImpact(
+            treatment_cost_hourly=0.0,
+            regulatory_fine_risk=0.0,
+            ecosystem_remediation_risk=0.0,
+            risk_exposure=0.0,
+            potential_savings=0.0,
+            recommended_lime_dosage_kg_h=0.0,
+            estimated_recovery_time_minutes=0.0,
+            holding_pond_cost_risk=0.0,
+            violation_stats=ViolationStats(0.0, 0, None, None, 0.0),
+        )
+    
+    if series_24h:
+        fin_24h = analyze_financial_history(series_24h, 24.0)
+    else:
+        from ai.analytics.strategy import FinancialImpact, ViolationStats
+        fin_24h = FinancialImpact(
+            treatment_cost_hourly=0.0,
+            regulatory_fine_risk=0.0,
+            ecosystem_remediation_risk=0.0,
+            risk_exposure=0.0,
+            potential_savings=0.0,
+            recommended_lime_dosage_kg_h=0.0,
+            estimated_recovery_time_minutes=0.0,
+            holding_pond_cost_risk=0.0,
+            violation_stats=ViolationStats(0.0, 0, None, None, 0.0),
+        )
+    
     # Using 168 hours (7d) as duration baseline
-    fin_7d = analyze_financial_history(series_7d, 168.0) 
+    if series_7d:
+        fin_7d = analyze_financial_history(series_7d, 168.0)
+    else:
+        from ai.analytics.strategy import FinancialImpact, ViolationStats
+        fin_7d = FinancialImpact(
+            treatment_cost_hourly=0.0,
+            regulatory_fine_risk=0.0,
+            ecosystem_remediation_risk=0.0,
+            risk_exposure=0.0,
+            potential_savings=0.0,
+            recommended_lime_dosage_kg_h=0.0,
+            estimated_recovery_time_minutes=0.0,
+            holding_pond_cost_risk=0.0,
+            violation_stats=ViolationStats(0.0, 0, None, None, 0.0),
+        ) 
 
     financial_breakdown_dict = {
         "1h": asdict(fin_1h),
@@ -503,8 +553,14 @@ async def generate_insights_with_llm(
     current_ph_val = numeric_evidence.get("current.ph")
     current_turb_val = numeric_evidence.get("current.turbidity")
     
+    # Flag to distinguish between actual pH = 7.0 and missing data fallback
+    ph_is_fallback = current_ph_val is None
     current_ph = float(current_ph_val) if current_ph_val is not None else 7.0
     current_turb = float(current_turb_val) if current_turb_val is not None else None
+    
+    # Log warning if using fallback pH value
+    if ph_is_fallback:
+        logger.warning("Current pH value missing from numeric evidence, using fallback value of 7.0")
 
     fi_data = analyze_strategic_impact(current_ph)
     comp_data = evaluate_compliance_risk(current_ph, current_turb)
@@ -605,19 +661,39 @@ async def generate_insights_with_llm(
         
         financial_breakdown_raw = evidence.get("financial_breakdown")
         if financial_breakdown_raw:
-            parsed.financial_breakdown = {
-                k: FinancialImpactSchema(
-                    treatment_cost_hourly=v["treatment_cost_hourly"],
-                    regulatory_fine_risk=v["regulatory_fine_risk"],
-                    ecosystem_remediation_risk=v["ecosystem_remediation_risk"],
-                    risk_exposure=v["risk_exposure"],
-                    potential_savings=v["potential_savings"],
-                    recommended_lime_dosage_kg_h=v["recommended_lime_dosage_kg_h"],
-                    estimated_recovery_time_minutes=v["estimated_recovery_time_minutes"],
-                    holding_pond_cost_risk=v["holding_pond_cost_risk"],
-                ) 
-                for k, v in financial_breakdown_raw.items()
-            }
+            # Handle financial breakdown construction with graceful error handling
+            parsed.financial_breakdown = {}
+            for k, v in financial_breakdown_raw.items():
+                try:
+                    # Extract violation_stats if present
+                    violation_stats_data = v.get("violation_stats")
+                    violation_stats_obj = None
+                    if violation_stats_data:
+                        try:
+                            violation_stats_obj = ViolationStatsSchema(
+                                violation_minutes=violation_stats_data.get("violation_minutes", 0.0),
+                                event_count=violation_stats_data.get("event_count", 0),
+                                max_severity_ph=violation_stats_data.get("max_severity_ph"),
+                                min_severity_ph=violation_stats_data.get("min_severity_ph"),
+                                affected_volume_m3=violation_stats_data.get("affected_volume_m3", 0.0),
+                            )
+                        except (KeyError, TypeError, ValueError) as e:
+                            logger.warning(f"Failed to parse violation_stats for period {k}: {e}")
+                    
+                    parsed.financial_breakdown[k] = FinancialImpactSchema(
+                        treatment_cost_hourly=v.get("treatment_cost_hourly", 0.0),
+                        regulatory_fine_risk=v.get("regulatory_fine_risk", 0.0),
+                        ecosystem_remediation_risk=v.get("ecosystem_remediation_risk", 0.0),
+                        risk_exposure=v.get("risk_exposure", 0.0),
+                        potential_savings=v.get("potential_savings", 0.0),
+                        recommended_lime_dosage_kg_h=v.get("recommended_lime_dosage_kg_h", 0.0),
+                        estimated_recovery_time_minutes=v.get("estimated_recovery_time_minutes", 0.0),
+                        holding_pond_cost_risk=v.get("holding_pond_cost_risk", 0.0),
+                        violation_stats=violation_stats_obj,
+                    )
+                except (KeyError, TypeError, ValueError) as e:
+                    logger.warning(f"Failed to parse financial breakdown for period {k}: {e}")
+                    continue
             
     except Exception:
         return None

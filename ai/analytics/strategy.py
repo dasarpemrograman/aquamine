@@ -265,6 +265,10 @@ def compute_violation_stats(
         t0, ph0 = sorted_series[i]
         t1, ph1 = sorted_series[i + 1]
         
+        # Ensure both timestamps have consistent timezone handling
+        if t0.tzinfo is None or t1.tzinfo is None:
+            raise ValueError("Timestamps must be timezone-aware for accurate duration calculations")
+        
         dt_hours = (t1 - t0).total_seconds() / 3600.0
         if dt_hours <= 0:
             continue

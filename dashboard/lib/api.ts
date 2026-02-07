@@ -706,6 +706,14 @@ export interface InsightFinding {
   evidence: EvidenceCitation[];
 }
 
+export interface ViolationStats {
+  violation_minutes: number;
+  event_count: number;
+  max_severity_ph: number | null;
+  min_severity_ph: number | null;
+  affected_volume_m3: number;
+}
+
 export interface FinancialImpact {
   treatment_cost_hourly: number;
   regulatory_fine_risk: number;
@@ -715,6 +723,8 @@ export interface FinancialImpact {
   recommended_lime_dosage_kg_h: number;
   estimated_recovery_time_minutes: number;
   holding_pond_cost_risk: number;
+  violation_stats?: ViolationStats | null;
+  risk_parameters_used?: Record<string, any> | null;
 }
 
 export interface RegulatoryMapping {

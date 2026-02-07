@@ -23,9 +23,10 @@ export function MandatoryActionCard({ data }: MandatoryActionCardProps) {
                 </h3>
                 <p className="text-sm text-slate-500 mt-1">Prescriptive analytics based on regulation</p>
             </div>
-            <StatusChip status={isCompliant ? 'normal' : 'critical'}>
-                {compliance.status_label}
-            </StatusChip>
+            <StatusChip 
+                status={isCompliant ? 'active' : 'critical'} 
+                label={compliance.status_label}
+            />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">

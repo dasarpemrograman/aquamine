@@ -56,7 +56,8 @@ function FinancialProjectionCard({ data, breakdown }: { data: FinancialImpact, b
   const [showCalculation, setShowCalculation] = useState(false);
 
   // Determine which data to use based on selection
-  const activeData = breakdown ? (breakdown[period] || breakdown['24h'] || data) : data;
+  const activeData = breakdown?.[period] ?? data;
+  const isDataAvailable = breakdown && period in breakdown;
 
   const chartData = [
     { name: 'Biaya Penanganan (Rp/jam)', value: activeData.treatment_cost_hourly, color: '#3b82f6' },
@@ -75,7 +76,8 @@ function FinancialProjectionCard({ data, breakdown }: { data: FinancialImpact, b
   // Configurable rates
   const riskRatePerMinute = 1_000_000;
   const handlingCostPerHour = activeData.treatment_cost_hourly;
-  const violationMinutes = activeData.risk_exposure > 0 ? Math.round(activeData.risk_exposure / riskRatePerMinute) : 0;
+  // Use violation_stats if available, otherwise estimate from risk_exposure
+  const violationMinutes = activeData.violation_stats?.violation_minutes ?? 0;
 
   return (
     <GlassCard className="p-6 relative overflow-hidden">
@@ -102,7 +104,14 @@ function FinancialProjectionCard({ data, breakdown }: { data: FinancialImpact, b
             </div>
         </div>
 
-        <p className="text-xs text-slate-500 mb-4 -mt-2">Window: {periods.find(p => p.id === period)?.label} terakhir</p>
+        <p className="text-xs text-slate-500 mb-4 -mt-2">
+          Window: {periods.find(p => p.id === period)?.label} terakhir
+          {!isDataAvailable && (
+            <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded border border-amber-200">
+              ⚠️ Data tidak tersedia untuk periode ini
+            </span>
+          )}
+        </p>
         
         <div className="flex-grow w-full h-[200px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -292,9 +301,10 @@ function MandatoryActionCard({ data }: { data: StrategicImpact }) {
                     Berdasarkan data real-time (±5 menit terakhir)
                 </div>
             </div>
-            <StatusChip status={isCompliant ? 'normal' : 'critical'}>
-                {compliance.status_label}
-            </StatusChip>
+            <StatusChip 
+                status={isCompliant ? 'active' : 'critical'} 
+                label={compliance.status_label}
+            />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
@@ -434,7 +444,9 @@ export default function AnalyticsPage() {
     const tempValue = payload.find((p: any) => p.dataKey === 'temperature_avg')?.value;
     
     const isViolation = phValue !== null && phValue !== undefined && (phValue < 6 || phValue > 9);
-    const estimatedRisk = isViolation ? Math.abs(6 - phValue) * 5_200_000 : 0; // Estimasi proksi
+    
+    // Use actual risk from backend if available, otherwise estimate
+    const estimatedRisk = insights?.strategic_impact?.financial?.regulatory_fine_risk ?? 0;
     
     return (
       <div className="bg-white/95 backdrop-blur-sm p-3 rounded-xl border border-slate-200 shadow-lg min-w-[240px]">
