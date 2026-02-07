@@ -103,6 +103,29 @@ class ComplianceStandard(BaseSchema):
     temperature_max_c: float
 
 
+class FinancialImpactSchema(BaseSchema):
+    treatment_cost_hourly: float
+    regulatory_fine_risk: float
+    ecosystem_remediation_risk: float
+    risk_exposure: float
+    potential_savings: float
+    recommended_lime_dosage_kg_h: float
+    estimated_recovery_time_minutes: float
+    holding_pond_cost_risk: float
+
+
+class RegulatoryMappingSchema(BaseSchema):
+    is_compliant: bool
+    status_label: str
+    violated_regulations: list[str]
+    action_plan: list[str]
+
+
+class StrategicImpactSchema(BaseSchema):
+    financial: FinancialImpactSchema
+    compliance: RegulatoryMappingSchema
+
+
 class ComplianceMetric(BaseSchema):
     percent_compliance: Optional[float] = None
     sample_count: int
@@ -150,3 +173,5 @@ class AnalyticsInsightsResponse(BaseSchema):
     executive_summary: InsightsExecutiveSummary
     key_findings: list[InsightFinding]
     evidence: dict[str, Any]
+    strategic_impact: Optional[StrategicImpactSchema] = None
+    financial_breakdown: Optional[dict[str, FinancialImpactSchema]] = None

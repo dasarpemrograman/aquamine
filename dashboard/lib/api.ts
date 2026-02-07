@@ -706,6 +706,29 @@ export interface InsightFinding {
   evidence: EvidenceCitation[];
 }
 
+export interface FinancialImpact {
+  treatment_cost_hourly: number;
+  regulatory_fine_risk: number;
+  ecosystem_remediation_risk: number;
+  risk_exposure: number;
+  potential_savings: number;
+  recommended_lime_dosage_kg_h: number;
+  estimated_recovery_time_minutes: number;
+  holding_pond_cost_risk: number;
+}
+
+export interface RegulatoryMapping {
+  is_compliant: boolean;
+  status_label: string;
+  violated_regulations: string[];
+  action_plan: string[];
+}
+
+export interface StrategicImpact {
+  financial: FinancialImpact;
+  compliance: RegulatoryMapping;
+}
+
 export interface AnalyticsInsightsEvidence {
   compliance: {
     ph: { percent: number; ok: number; total: number };
@@ -726,6 +749,8 @@ export interface AnalyticsInsightsResponse {
   executive_summary: InsightsExecutiveSummary;
   key_findings: InsightFinding[];
   evidence?: AnalyticsInsightsEvidence;
+  strategic_impact?: StrategicImpact;
+  financial_breakdown?: Record<string, FinancialImpact>;
 }
 
 export async function fetchAnalyticsSummary(
